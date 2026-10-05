@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "853358670896",
+    "project_id": "sevgili-app-fb6f4",
+    "storage_bucket": "sevgili-app-fb6f4.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:853358670896:android:670133eaca36a6c0f969f5",
+        "android_client_info": {
+          "package_name": "com.lovera.app.lovera"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBx28jI920bKlbC2FdW-yeOOWmqcgBjBhs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
