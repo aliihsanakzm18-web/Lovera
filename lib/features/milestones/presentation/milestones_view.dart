@@ -83,20 +83,35 @@ class MilestonesView extends ConsumerWidget {
                 child: Row(
                   children: [
                     Container(
-                      width: 58,
-                      height: 58,
+                      width: 60,
+                      height: 60,
                       decoration: BoxDecoration(
-                        color: LoveraColors.primarySoft.withValues(alpha: 0.14),
-                        borderRadius: BorderRadius.circular(18),
+                        gradient: LoveraColors.goldGradient,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: LoveraColors.accentGold.withValues(alpha: 0.3),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                       ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Text('${m.daysLeft}',
-                              style: theme.textTheme.titleLarge?.copyWith(
-                                  fontWeight: FontWeight.w800, color: LoveraColors.primary)),
-                          Text('gün kaldı',
-                              style: const TextStyle(fontSize: 10, color: LoveraColors.textMuted)),
+                              style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.white,
+                                  height: 1)),
+                          const SizedBox(height: 2),
+                          const Text('GÜN KALDI',
+                              style: TextStyle(
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                  letterSpacing: 0.5)),
                         ],
                       ),
                     ),

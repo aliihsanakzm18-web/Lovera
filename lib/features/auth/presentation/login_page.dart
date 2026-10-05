@@ -66,14 +66,15 @@ class LoginPage extends ConsumerWidget {
           children: [
             const Spacer(flex: 2),
             Container(
-              width: 96,
-              height: 96,
+              width: 100,
+              height: 100,
               decoration: BoxDecoration(
-                color: LoveraColors.primarySoft.withValues(alpha: 0.14),
+                gradient: LoveraColors.primaryGradient,
                 shape: BoxShape.circle,
+                boxShadow: AppTheme.primaryGlow,
               ),
-              child: const Icon(Icons.favorite_rounded, color: LoveraColors.primary, size: 48),
-            ).animate().scale(duration: 600.ms, curve: Curves.easeOutBack),
+              child: const Icon(Icons.favorite_rounded, color: Colors.white, size: 50),
+            ).animate().scale(duration: 700.ms, curve: Curves.easeOutBack),
             const SizedBox(height: 28),
             Text('Lovera',
                 style: theme.textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w800)),

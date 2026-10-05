@@ -371,20 +371,20 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                   children: [
                     Expanded(
                       child: _ActionTile(
-                        icon: Icons.map_outlined,
+                        icon: Icons.map_rounded,
                         title: 'Canlı Harita',
                         subtitle: partner == null ? 'Eşleşme bekleniyor' : 'Konumu gör',
-                        color: LoveraColors.secondary,
+                        color: LoveraColors.accentViolet,
                         onTap: () => _push(const LiveMapView()),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: _ActionTile(
-                        icon: Icons.calendar_month_outlined,
+                        icon: Icons.favorite_border_rounded,
                         title: 'Özel Günler',
                         subtitle: milestones.isEmpty ? 'Henüz eklenmedi' : '${milestones.length} gün',
-                        color: LoveraColors.primarySoft,
+                        color: LoveraColors.accentGold,
                         onTap: () => _push(const MilestonesView()),
                       ),
                     ),
@@ -392,10 +392,10 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                 ).animate(delay: 180.ms).fadeIn(duration: 500.ms).slideY(begin: 0.08),
                 const SizedBox(height: 12),
                 _ActionTile(
-                  icon: Icons.photo_library_outlined,
+                  icon: Icons.photo_library_rounded,
                   title: 'Ortak Anı Albümü',
-                  subtitle: 'Birlikte biriktirdiğiniz anılar',
-                  color: const Color(0xFFC49A76),
+                  subtitle: 'Birlikte biriktirdiğiniz eşsiz anılar',
+                  color: const Color(0xFFEC4899),
                   onTap: () => _push(const MemoriesGalleryView()),
                 ).animate(delay: 220.ms).fadeIn(duration: 500.ms).slideY(begin: 0.08),
                 const SizedBox(height: 20),
@@ -571,24 +571,75 @@ class _HeroCounterState extends State<_HeroCounter> {
     }
 
     final elapsed = DateTime.now().difference(widget.start!);
-    return _BentoCard(
-      color: cardColor,
-      padding: const EdgeInsets.all(24),
+    final isLight = theme.brightness == Brightness.light;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 24),
+      decoration: BoxDecoration(
+        color: isLight ? Colors.white : theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(AppTheme.radius),
+        border: Border.all(
+          color: isLight ? LoveraColors.primary.withValues(alpha: 0.15) : theme.dividerColor,
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: LoveraColors.primary.withValues(alpha: 0.06),
+            blurRadius: 30,
+            offset: const Offset(0, 10),
+          ),
+          ...AppTheme.ambientShadow,
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Text('Birlikte geçen', style: theme.textTheme.bodyMedium?.copyWith(color: muted)),
-          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: LoveraColors.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.favorite_rounded, size: 14, color: LoveraColors.primary),
+                const SizedBox(width: 6),
+                Text(
+                  'BİRLİKTE GEÇEN ZAMAN',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.2,
+                    color: LoveraColors.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text('${elapsed.inDays}',
-                  style: theme.textTheme.displayLarge?.copyWith(
-                      fontWeight: FontWeight.w800, color: LoveraColors.primary, height: 1)),
-              const SizedBox(width: 8),
-              Text('gün', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
+              Text(
+                '${elapsed.inDays}',
+                style: theme.textTheme.displayLarge?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: LoveraColors.primary,
+                  letterSpacing: -1,
+                  height: 1,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'gün',
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: isLight ? LoveraColors.textDark : LoveraColors.darkText,
+                ),
+              ),
             ],
           ),
         ],
@@ -724,7 +775,7 @@ class _PartnerCard extends StatelessWidget {
                       : Icons.wb_sunny_rounded,
                   label: p.city != null && p.city!.isNotEmpty ? p.city! : 'Hava Durumu',
                   value: p.weather ?? 'Güneşli 22°',
-                  color: LoveraColors.primarySoft,
+                  color: LoveraColors.accentGold,
                 ),
               ),
             ],
@@ -770,27 +821,34 @@ class _ThinkingButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: LoveraColors.primary,
-      borderRadius: BorderRadius.circular(AppTheme.radius),
-      child: InkWell(
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LoveraColors.primaryGradient,
         borderRadius: BorderRadius.circular(AppTheme.radius),
-        onTap: onPressed,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 22),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.favorite_rounded, color: Colors.white)
-                  .animate(onPlay: (c) => c.repeat(reverse: true))
-                  .scale(end: const Offset(1.2, 1.2), duration: 900.ms),
-              const SizedBox(width: 10),
-              Text('Seni Düşünüyorum',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
-            ],
+        boxShadow: AppTheme.primaryGlow,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(AppTheme.radius),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppTheme.radius),
+          onTap: onPressed,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.favorite_rounded, color: Colors.white, size: 24)
+                    .animate(onPlay: (c) => c.repeat(reverse: true))
+                    .scale(end: const Offset(1.25, 1.25), duration: 800.ms),
+                const SizedBox(width: 12),
+                Text('Seni Düşünüyorum',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(color: Colors.white, fontWeight: FontWeight.w800, letterSpacing: 0.3)),
+              ],
+            ),
           ),
         ),
       ),
