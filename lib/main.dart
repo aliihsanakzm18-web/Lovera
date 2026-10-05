@@ -8,9 +8,18 @@ import 'core/theme/app_theme.dart';
 import 'features/dashboard/presentation/dashboard_view.dart';
 import 'features/onboarding/presentation/onboarding_flow.dart';
 
+import 'firebase_options.dart';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    debugPrint('Firebase init error: $e');
+  }
+  
   final prefs = await SharedPreferences.getInstance();
   final onboarded = prefs.getBool('onboarded') ?? false;
   final name = prefs.getString('name') ?? '';
