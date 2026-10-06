@@ -274,7 +274,7 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
             child: Column(
               children: [
                 ListTile(
-                  leading: const Icon(Icons.person_outline_rounded, color: LoveraColors.textDark),
+                  leading: Icon(Icons.person_outline_rounded, color: theme.colorScheme.onSurface),
                   title: const Text('Kullanıcı Adı', style: TextStyle(fontWeight: FontWeight.w600)),
                   subtitle: Text(userName.isNotEmpty ? userName : 'Belirtilmedi', style: const TextStyle(color: LoveraColors.textMuted)),
                   trailing: const Icon(Icons.edit_outlined, size: 20, color: LoveraColors.secondary),
@@ -282,13 +282,13 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
                 ),
                 Divider(height: 1, indent: 56, color: theme.dividerColor),
                 ListTile(
-                  leading: const Icon(Icons.email_outlined, color: LoveraColors.textDark),
+                  leading: Icon(Icons.email_outlined, color: theme.colorScheme.onSurface),
                   title: const Text('E-posta', style: TextStyle(fontWeight: FontWeight.w600)),
                   subtitle: Text(email, style: const TextStyle(color: LoveraColors.textMuted)),
                 ),
                 Divider(height: 1, indent: 56, color: theme.dividerColor),
                 ListTile(
-                  leading: const Icon(Icons.lock_reset_rounded, color: LoveraColors.textDark),
+                  leading: Icon(Icons.lock_reset_rounded, color: theme.colorScheme.onSurface),
                   title: const Text('Şifre Değiştir', style: TextStyle(fontWeight: FontWeight.w600)),
                   subtitle: const Text('••••••••', style: TextStyle(color: LoveraColors.textMuted)),
                   trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),

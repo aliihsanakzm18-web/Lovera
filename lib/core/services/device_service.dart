@@ -62,8 +62,11 @@ class DeviceService {
         if (current != null) {
           final temp = (current['temperature'] as num).round();
           final code = current['weathercode'] as int? ?? 0;
-          final isDay = (current['is_day'] as int? ?? 1) == 1;
-          final period = getTimeOfDayPeriod(DateTime.now());
+          final now = DateTime.now();
+          final isNightByHour = now.hour >= 20 || now.hour < 6;
+          final isDayApi = (current['is_day'] as int? ?? 1) == 1;
+          final isDay = isNightByHour ? false : isDayApi;
+          final period = getTimeOfDayPeriod(now);
           final desc = _mapWeatherCode(code, isDay: isDay);
           return '$period · $desc $temp°';
         }
@@ -76,7 +79,7 @@ class DeviceService {
 
   String _mapWeatherCode(int code, {required bool isDay}) {
     if (code == 0) return isDay ? 'Güneşli' : 'Açık';
-    if (code >= 1 && code <= 3) return 'Parçalı Bulutlu';
+    if (code >= 1 && code <= 3) return isDay ? 'Parçalı Bulutlu' : 'Bulutlu';
     if (code >= 45 && code <= 48) return 'Sisli';
     if (code >= 51 && code <= 67) return 'Yağmurlu';
     if (code >= 71 && code <= 77) return 'Karlı';
@@ -103,13 +106,14 @@ class DeviceService {
         if (permission == LocationPermission.always || permission == LocationPermission.whileInUse) {
           Position? pos;
           try {
-            pos = await Geolocator.getCurrentPosition(
-              desiredAccuracy: LocationAccuracy.high,
-              timeLimit: const Duration(seconds: 4),
-            );
-          } catch (_) {
             pos = await Geolocator.getLastKnownPosition();
-          }
+            if (pos == null) {
+              pos = await Geolocator.getCurrentPosition(
+                desiredAccuracy: LocationAccuracy.medium,
+                timeLimit: const Duration(seconds: 3),
+              );
+            }
+          } catch (_) {}
 
           if (pos != null) {
             lat = pos.latitude;
@@ -121,9 +125,11 @@ class DeviceService {
       } catch (_) {}
 
       // Fallback hava durumu, şehir ve vakit
-      final period = getTimeOfDayPeriod(DateTime.now());
+      final now = DateTime.now();
+      final period = getTimeOfDayPeriod(now);
+      final isNight = now.hour >= 20 || now.hour < 6 || period == 'Gece' || period == 'Akşam';
       if (weather == null) {
-        weather = '$period · Güneşli 22°';
+        weather = isNight ? '$period · Yıldızlı 20°' : '$period · Açık 22°';
       }
       if (city == null || city.isEmpty) {
         // GPS henüz konum vermediyse veya ilk açılışsa Türkiye varsayılanı

@@ -193,9 +193,11 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: LoveraColors.lightSurfaceAlt,
+                color: Theme.of(context).brightness == Brightness.light
+                    ? LoveraColors.lightSurfaceAlt
+                    : LoveraColors.darkSurfaceAlt,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
+                border: Border.all(color: Theme.of(context).dividerColor),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -261,12 +263,26 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     _partnerSub = DatabaseService().partnerStream(partnerUid).listen((doc) {
       if (!doc.exists || doc.data() == null || !mounted) return;
       final data = doc.data()!;
+      final rawWeather = data['weather'] as String?;
+      String? cleanWeather = rawWeather;
+      if (cleanWeather != null) {
+        final now = DateTime.now();
+        final isNight = now.hour >= 20 || now.hour < 6;
+        if (isNight) {
+          cleanWeather = cleanWeather.replaceAll('Güneşli', 'Açık');
+        }
+      } else {
+        final now = DateTime.now();
+        final isNight = now.hour >= 20 || now.hour < 6;
+        cleanWeather = isNight ? 'Gece · Açık 20°' : 'Öğlen · Açık 22°';
+      }
+
       final partnerUser = AppUser(
         id: doc.id,
         name: data['name'] ?? 'Partnerin',
         avatarUrl: data['avatarUrl'],
         batteryLevel: data['batteryLevel'] ?? 88,
-        weather: data['weather'] ?? 'Güneşli 22°',
+        weather: cleanWeather,
         city: data['city'],
         lat: (data['lat'] as num?)?.toDouble(),
         lng: (data['lng'] as num?)?.toDouble(),
@@ -395,7 +411,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                   icon: Icons.photo_library_rounded,
                   title: 'Ortak Anı Albümü',
                   subtitle: 'Birlikte biriktirdiğiniz eşsiz anılar',
-                  color: const Color(0xFFEC4899),
+                  color: LoveraColors.secondary,
                   onTap: () => _push(const MemoriesGalleryView()),
                 ).animate(delay: 220.ms).fadeIn(duration: 500.ms).slideY(begin: 0.08),
                 const SizedBox(height: 20),
@@ -491,8 +507,16 @@ class _ActionTile extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? LoveraColors.darkSurfaceAlt
+                      : color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? color.withValues(alpha: 0.3)
+                        : Colors.transparent,
+                    width: 1,
+                  ),
                 ),
                 child: Icon(icon, color: color, size: 22),
               ),
@@ -500,7 +524,11 @@ class _ActionTile extends StatelessWidget {
               Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
               const SizedBox(height: 2),
               Text(subtitle,
-                  style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? LoveraColors.darkTextMuted
+                        : LoveraColors.textMuted,
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis),
             ],
@@ -580,17 +608,21 @@ class _HeroCounterState extends State<_HeroCounter> {
         color: isLight ? Colors.white : theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(AppTheme.radius),
         border: Border.all(
-          color: isLight ? LoveraColors.primary.withValues(alpha: 0.15) : theme.dividerColor,
+          color: isLight
+              ? LoveraColors.primary.withValues(alpha: 0.15)
+              : LoveraColors.primary.withValues(alpha: 0.2),
           width: 1.2,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: LoveraColors.primary.withValues(alpha: 0.06),
-            blurRadius: 30,
-            offset: const Offset(0, 10),
-          ),
-          ...AppTheme.ambientShadow,
-        ],
+        boxShadow: isLight
+            ? [
+                BoxShadow(
+                  color: LoveraColors.primary.withValues(alpha: 0.06),
+                  blurRadius: 30,
+                  offset: const Offset(0, 10),
+                ),
+                ...AppTheme.ambientShadow,
+              ]
+            : AppTheme.ambientShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -770,11 +802,17 @@ class _PartnerCard extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: _Stat(
-                  icon: (p.weather ?? '').contains('Gece') || (p.weather ?? '').contains('Akşam')
+                  icon: (p.weather ?? '').contains('Gece') ||
+                          (p.weather ?? '').contains('Akşam') ||
+                          DateTime.now().hour >= 20 ||
+                          DateTime.now().hour < 6
                       ? Icons.nights_stay_rounded
                       : Icons.wb_sunny_rounded,
                   label: p.city != null && p.city!.isNotEmpty ? p.city! : 'Hava Durumu',
-                  value: p.weather ?? 'Güneşli 22°',
+                  value: p.weather ??
+                      (DateTime.now().hour >= 20 || DateTime.now().hour < 6
+                          ? 'Gece · Açık 20°'
+                          : 'Öğlen · Açık 22°'),
                   color: LoveraColors.accentGold,
                 ),
               ),
@@ -796,18 +834,24 @@ class _Stat extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
+        color: isDark ? LoveraColors.darkSurfaceAlt : color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isDark ? color.withValues(alpha: 0.25) : Colors.transparent,
+          width: 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, color: color, size: 22),
           const SizedBox(height: 8),
-          Text(label, style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted)),
+          Text(label, style: theme.textTheme.bodySmall?.copyWith(color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted)),
           Text(value, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
         ],
       ),
@@ -821,11 +865,20 @@ class _ThinkingButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
-        gradient: LoveraColors.primaryGradient,
+        gradient: isDark ? LoveraColors.darkPrimaryGradient : LoveraColors.primaryGradient,
         borderRadius: BorderRadius.circular(AppTheme.radius),
-        boxShadow: AppTheme.primaryGlow,
+        boxShadow: isDark
+            ? [
+                BoxShadow(
+                  color: LoveraColors.primaryDark.withValues(alpha: 0.2),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
+                ),
+              ]
+            : AppTheme.primaryGlow,
       ),
       child: Material(
         color: Colors.transparent,

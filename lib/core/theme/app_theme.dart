@@ -1,54 +1,58 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Lovera Lüks & Modern Aşk Paleti (Rose Quartz, Deep Wine, Warm Cream, Frosted Glass)
+/// Lovera Renk Paleti - Spotify, Instagram ve iOS Standartlarında Kusursuz Koyu & Açık Mod
 class LoveraColors {
   LoveraColors._();
 
-  // Ana Aşk Vurguları (Modern & Asil Gül Kurusu / Şarap / Kırmızı)
-  static const primary = Color(0xFFFF4B6E); // Canlı, modern, premium aşk pembesi/mercanı
-  static const primaryDeep = Color(0xFFE02B52); // Gradient derinliği için
-  static const primarySoft = Color(0xFFFF7E98); // Yumuşak pembe parıltı
-  static const primarySubtle = Color(0xFFFFF0F3); // Kart arkaplan hafif pembe tül
+  // Ana Vurgular (Asil, zarif, göz yormayan romantik leylak & gül kurusu tonu - çiğ kırmızı tamamen kaldırıldı)
+  static const primary = Color(0xFF8B5CF6); // Zarif & asil yumuşak leylak/mor (Lüks aşk hissi)
+  static const primaryDark = Color(0xFFA78BFA); // Dark modda göz dinlendiren açık pastel leylak
+  static const primaryDeep = Color(0xFF7C3AED);
+  static const primarySoft = Color(0xFFC4B5FD);
 
-  // İkincil Vurgular (Zümrüt Yeşil & Altın Işıltı)
-  static const secondary = Color(0xFF10B981); // Ferah ve modern zümrüt yeşil (aktiflik/pil)
-  static const accentGold = Color(0xFFF59E0B); // Özel günler, yıldızlar, hatıralar için sıcak kehribar/altın
-  static const accentViolet = Color(0xFF8B5CF6); // Harita ve albüm için asil lila/mor
+  // İkincil & Aksiyon Renkleri
+  static const secondary = Color(0xFF34D399); // Dinlendirici nane zümrütü
+  static const accentGold = Color(0xFFFBBF24); // Sıcak pastel altın sarısı
+  static const accentViolet = Color(0xFFA78BFA); // Zarif lavanta moru
+  static const accentPink = Color(0xFFF472B6); // Pastel pembe
 
-  // Light Tema Renkleri
-  static const lightBg = Color(0xFFF8F9FD); // Temiz, modern, havadar iOS arka planı
-  static const lightSurface = Color(0xFFFFFFFF); // Kar beyazı kartlar
-  static const lightSurfaceAlt = Color(0xFFF1F3FA); // Hafif gölgeli ayrık alanlar
-  static const lightBorder = Color(0xFFE5E7EB); // İnce, şık sınır çizgisi
+  // Light Tema
+  static const lightBg = Color(0xFFF8F9FA);
+  static const lightSurface = Color(0xFFFFFFFF);
+  static const lightSurfaceAlt = Color(0xFFF1F3F5);
+  static const lightBorder = Color(0xFFE9ECEF);
+  static const textDark = Color(0xFF1E2024);
+  static const textMuted = Color(0xFF6C757D);
 
-  static const textDark = Color(0xFF111827); // Simsiyah değil, ultra derin lüks gri-siyah
-  static const textMuted = Color(0xFF6B7280); // Narin gri alt başlık
-  static const textLight = Color(0xFF9CA3AF);
-
-  // Dark Tema Renkleri (OLED Siyah & Koyu Gece Mavisi)
-  static const darkBg = Color(0xFF0F1016); // Derin gece gökyüzü
-  static const darkSurface = Color(0xFF181A24); // Lüks mat kart yüzeyi
-  static const darkSurfaceAlt = Color(0xFF222533);
-  static const darkBorder = Color(0xFF2A2E3D);
-  static const darkText = Color(0xFFF9FAFB);
-  static const darkTextMuted = Color(0xFF9CA3AF);
+  // Dark Tema - Instagram / Spotify / iOS Gerçek Karanlık Mod Standartları
+  // Katman 1: Derin AMOLED Gece Arka Planı
+  static const darkBg = Color(0xFF0C0D12); 
+  // Katman 2: Kartlar ve Yüzeyler (Arka plandan net ayrışan, lüks mat grafit tonu)
+  static const darkSurface = Color(0xFF161820); 
+  // Katman 3: Kart içi butonlar ve bölmeler
+  static const darkSurfaceAlt = Color(0xFF20232E); 
+  // Kenarlıklar: Çok ince, zarif sınır
+  static const darkBorder = Color(0xFF272A36); 
+  // Metinler: Gözü kamaştırmayan pürüzsüz beyaz ve açık gri
+  static const darkText = Color(0xFFF3F4F6); 
+  static const darkTextMuted = Color(0xFF94A3B8); 
 
   // Gradientler
   static const primaryGradient = LinearGradient(
-    colors: [Color(0xFFFF4B6E), Color(0xFFFF6584)],
+    colors: [Color(0xFF8B5CF6), Color(0xFFA855F7)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const darkPrimaryGradient = LinearGradient(
+    colors: [Color(0xFF7C3AED), Color(0xFF9333EA)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
   static const goldGradient = LinearGradient(
     colors: [Color(0xFFF59E0B), Color(0xFFFBBF24)],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
-
-  static const purpleGradient = LinearGradient(
-    colors: [Color(0xFF8B5CF6), Color(0xFFA78BFA)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
@@ -61,18 +65,17 @@ class AppTheme {
 
   static List<BoxShadow> ambientShadow = [
     BoxShadow(
-      color: const Color(0xFF111827).withValues(alpha: 0.04),
-      blurRadius: 24,
-      spreadRadius: 0,
-      offset: const Offset(0, 8),
+      color: Colors.black.withValues(alpha: 0.04),
+      blurRadius: 20,
+      offset: const Offset(0, 6),
     ),
   ];
 
   static List<BoxShadow> primaryGlow = [
     BoxShadow(
-      color: LoveraColors.primary.withValues(alpha: 0.28),
-      blurRadius: 20,
-      offset: const Offset(0, 8),
+      color: LoveraColors.primary.withValues(alpha: 0.22),
+      blurRadius: 18,
+      offset: const Offset(0, 6),
     ),
   ];
 
@@ -83,6 +86,7 @@ class AppTheme {
         text: LoveraColors.textDark,
         muted: LoveraColors.textMuted,
         border: LoveraColors.lightBorder,
+        primaryColor: LoveraColors.primary,
       );
 
   static ThemeData get dark => _build(
@@ -92,6 +96,7 @@ class AppTheme {
         text: LoveraColors.darkText,
         muted: LoveraColors.darkTextMuted,
         border: LoveraColors.darkBorder,
+        primaryColor: LoveraColors.primaryDark,
       );
 
   static ThemeData _build({
@@ -101,12 +106,14 @@ class AppTheme {
     required Color text,
     required Color muted,
     required Color border,
+    required Color primaryColor,
   }) {
+    final isDark = brightness == Brightness.dark;
     final scheme = ColorScheme.fromSeed(
-      seedColor: LoveraColors.primary,
+      seedColor: primaryColor,
       brightness: brightness,
     ).copyWith(
-      primary: LoveraColors.primary,
+      primary: primaryColor,
       secondary: LoveraColors.secondary,
       surface: surface,
       onSurface: text,
@@ -121,6 +128,10 @@ class AppTheme {
       scaffoldBackgroundColor: bg,
       textTheme: textTheme,
       dividerColor: border,
+      listTileTheme: ListTileThemeData(
+        textColor: text,
+        iconColor: text,
+      ),
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -139,12 +150,12 @@ class AppTheme {
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radius),
-          side: BorderSide(color: border, width: 1),
+          side: BorderSide(color: border, width: 1.2),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: LoveraColors.primary,
+          backgroundColor: primaryColor,
           foregroundColor: Colors.white,
           elevation: 0,
           minimumSize: const Size.fromHeight(56),
@@ -157,7 +168,7 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: surface,
+        fillColor: isDark ? LoveraColors.darkSurfaceAlt : surface,
         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
         hintStyle: TextStyle(color: muted, fontSize: 14),
         border: OutlineInputBorder(
@@ -170,7 +181,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(radius),
-          borderSide: const BorderSide(color: LoveraColors.primary, width: 2),
+          borderSide: BorderSide(color: primaryColor, width: 2),
         ),
       ),
     );

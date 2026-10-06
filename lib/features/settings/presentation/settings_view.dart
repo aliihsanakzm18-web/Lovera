@@ -442,15 +442,18 @@ class _SettingsTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final defaultColor = theme.colorScheme.onSurface;
+
     return Material(
       color: Colors.transparent,
       child: ListTile(
-        leading: Icon(icon, color: iconColor ?? LoveraColors.textDark),
+        leading: Icon(icon, color: iconColor ?? defaultColor),
         title: Text(
           title,
           style: TextStyle(
             fontWeight: FontWeight.w600,
-            color: titleColor ?? LoveraColors.textDark,
+            color: titleColor ?? defaultColor,
           ),
         ),
         trailing: trailing,

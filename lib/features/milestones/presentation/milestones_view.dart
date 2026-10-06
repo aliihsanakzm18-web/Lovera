@@ -152,8 +152,8 @@ class MilestonesView extends ConsumerWidget {
                               ),
                               FilledButton(
                                 onPressed: () => Navigator.pop(ctx, true),
-                                style: FilledButton.styleFrom(backgroundColor: LoveraColors.primary),
-                                child: const Text('Sil'),
+                                style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+                                child: const Text('Sil', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                               ),
                             ],
                           ),

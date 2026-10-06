@@ -21,34 +21,66 @@ class LiveMapView extends ConsumerStatefulWidget {
 
 class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderStateMixin {
   final MapController _mapController = MapController();
+  AnimationController? _flightController;
+
+  double? _roadDistanceMeters;
+  bool _calculatingRoad = false;
+  LatLng? _lastRouteStart;
+  LatLng? _lastRouteEnd;
 
   @override
   void initState() {
     super.initState();
-    DeviceService().syncStatusToFirebase();
+    // Arka planda güvenli durum senkronizasyonu
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      DeviceService().syncStatusToFirebase();
+      _initInitialRoute();
+    });
   }
 
-  /// Snap Map Uçuş Animasyonu (Flight Animation):
-  /// Önce yukarı doğru zoom-out yapar, havalanır, hedef koordinata kayar ve hedefe yumuşakça zoom-in yapar
+  void _initInitialRoute() {
+    final user = ref.read(currentUserProvider);
+    final partner = ref.read(partnerProvider);
+    if (user?.lat != null && user?.lng != null && partner?.lat != null && partner?.lng != null) {
+      final my = LatLng(user!.lat!, user.lng!);
+      final part = LatLng(partner!.lat!, partner.lng!);
+      _checkAndFetchRoute(my, part);
+    }
+  }
+
+  @override
+  void dispose() {
+    _flightController?.stop();
+    _flightController?.dispose();
+    _mapController.dispose();
+    super.dispose();
+  }
+
+  /// Snap Map Akıcı Uçuş Animasyonu:
+  /// Havalanır, tepe irtifasına çıkar, hedefe süzülür ve yumuşakça iniş yapar (60 FPS)
   void _animatedFlightMove(LatLng destLocation, double targetZoom) {
+    _flightController?.stop();
+    _flightController?.dispose();
+    _flightController = null;
+
     final startLoc = _mapController.camera.center;
     final startZoom = _mapController.camera.zoom;
 
-    // Aradaki mesafeye göre tepe noktası (uçuş irtifası) zoom seviyesi belirle
     final distMeters = Geolocator.distanceBetween(
       startLoc.latitude,
       startLoc.longitude,
       destLocation.latitude,
       destLocation.longitude,
     );
-    
-    // Kısa mesafede az, şehirlerarası mesafede daha yüksekten uç
-    final double apexZoom = distMeters > 50000 ? 7.5 : (startZoom < targetZoom ? startZoom - 1.5 : targetZoom - 1.5);
+
+    // Mesafeye göre tepe irtifası
+    final double apexZoom = distMeters > 50000 ? 7.5 : (startZoom < targetZoom ? startZoom - 1.2 : targetZoom - 1.2);
 
     final controller = AnimationController(
-      duration: Duration(milliseconds: distMeters > 50000 ? 1100 : 750),
+      duration: Duration(milliseconds: distMeters > 50000 ? 950 : 650),
       vsync: this,
     );
+    _flightController = controller;
 
     final Animation<double> curve = CurvedAnimation(
       parent: controller,
@@ -56,12 +88,11 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     );
 
     controller.addListener(() {
+      if (!mounted) return;
       final t = curve.value;
-      // Konum doğrusal geçişi
       final currentLat = startLoc.latitude + (destLocation.latitude - startLoc.latitude) * t;
       final currentLng = startLoc.longitude + (destLocation.longitude - startLoc.longitude) * t;
 
-      // Parabolik zoom eğrisi: Başlangıç -> Tepe (uçuş irtifası) -> Hedef zoom
       double currentZoom;
       if (t < 0.5) {
         final upT = t * 2.0;
@@ -74,33 +105,31 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
       _mapController.move(LatLng(currentLat, currentLng), currentZoom);
     });
 
-    controller.addStatusListener((status) {
-      if (status == AnimationStatus.completed || status == AnimationStatus.dismissed) {
-        controller.dispose();
-      }
-    });
-
     controller.forward();
   }
 
-  double? _roadDistanceMeters;
-  bool _calculatingRoad = false;
-  LatLng? _lastRouteStart;
-  LatLng? _lastRouteEnd;
+  void _checkAndFetchRoute(LatLng my, LatLng partner) {
+    if (_lastRouteStart?.latitude == my.latitude &&
+        _lastRouteStart?.longitude == my.longitude &&
+        _lastRouteEnd?.latitude == partner.latitude &&
+        _lastRouteEnd?.longitude == partner.longitude) {
+      return;
+    }
+    _lastRouteStart = my;
+    _lastRouteEnd = partner;
+    _fetchRoadDistance(my, partner);
+  }
 
   Future<void> _fetchRoadDistance(LatLng start, LatLng end) async {
     if (_calculatingRoad) return;
-    if (_lastRouteStart == start && _lastRouteEnd == end) return;
     _calculatingRoad = true;
-    _lastRouteStart = start;
-    _lastRouteEnd = end;
 
     try {
       final url = Uri.parse(
         'https://router.project-osrm.org/route/v1/driving/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?overview=false',
       );
-      final res = await http.get(url).timeout(const Duration(seconds: 4));
-      if (res.statusCode == 200) {
+      final res = await http.get(url).timeout(const Duration(seconds: 3));
+      if (res.statusCode == 200 && mounted) {
         final data = jsonDecode(res.body);
         final routes = data['routes'] as List?;
         if (routes != null && routes.isNotEmpty) {
@@ -109,12 +138,15 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
             setState(() {
               _roadDistanceMeters = dist;
             });
-            return;
           }
         }
       }
-    } catch (_) {} finally {
-      _calculatingRoad = false;
+    } catch (_) {
+      // Hata olursa fallback düz çizgi çarpanı gösterilmeye devam eder
+    } finally {
+      if (mounted) {
+        _calculatingRoad = false;
+      }
     }
   }
 
@@ -129,7 +161,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final partner = ref.watch(partnerProvider);
     final currentUser = ref.watch(currentUserProvider);
 
@@ -141,27 +173,39 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
         ? LatLng(partner!.lat!, partner.lng!)
         : null;
 
+    // Yol mesafesi sorgusunu UI döngüsünden bağımsız post-frame olarak tetikle
     if (myLatLng != null && partnerLatLng != null) {
-      if (_lastRouteStart != myLatLng || _lastRouteEnd != partnerLatLng) {
-        _fetchRoadDistance(myLatLng, partnerLatLng);
+      if (_lastRouteStart?.latitude != myLatLng.latitude ||
+          _lastRouteStart?.longitude != myLatLng.longitude ||
+          _lastRouteEnd?.latitude != partnerLatLng.latitude ||
+          _lastRouteEnd?.longitude != partnerLatLng.longitude) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _checkAndFetchRoute(myLatLng, partnerLatLng);
+          }
+        });
       }
     }
 
+    final double? straightDist = (myLatLng != null && partnerLatLng != null)
+        ? Geolocator.distanceBetween(
+            myLatLng.latitude,
+            myLatLng.longitude,
+            partnerLatLng.latitude,
+            partnerLatLng.longitude,
+          )
+        : null;
+
     final double? displayDistance = _roadDistanceMeters ??
-        ((myLatLng != null && partnerLatLng != null)
-            ? Geolocator.distanceBetween(
-                myLatLng.latitude,
-                myLatLng.longitude,
-                partnerLatLng.latitude,
-                partnerLatLng.longitude,
-              ) * 1.25 // Yol viraj payı yaklaşık çarpanı
-            : null);
+        (straightDist != null ? straightDist * 1.25 : null);
 
     final initialCenter = myLatLng ?? partnerLatLng ?? const LatLng(39.0, 35.0);
     final initialZoom = (myLatLng != null || partnerLatLng != null) ? 14.5 : 6.0;
 
+    final mapBgColor = isDark ? const Color(0xFF141620) : const Color(0xFFE8EEF3);
+
     return Scaffold(
-      backgroundColor: const Color(0xFFE5E9EC),
+      backgroundColor: mapBgColor,
       body: Stack(
         children: [
           FlutterMap(
@@ -170,50 +214,59 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
               initialCenter: initialCenter,
               initialZoom: initialZoom,
               minZoom: 3.0,
-              maxZoom: 19.0,
+              maxZoom: 20.0,
+              backgroundColor: mapBgColor,
               interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.all & ~InteractiveFlag.rotate, // Stabil 60fps pan & pinch zoom
+                flags: InteractiveFlag.all & ~InteractiveFlag.rotate, // Silah gibi akıcı 60fps pan/pinch
               ),
             ),
             children: [
-              // Google Maps ultra-hızlı CDN tile katmanı (Snap Map akıcılığı, sıfır takılma, Türkçe etiketler)
+              // Yüksek Hızlı, Filigransız Google Harita Katmanı (Koyu Modda Snap Gece Matrisi)
               TileLayer(
                 urlTemplate: 'https://{s}.google.com/vt/lyrs=m&hl=tr&x={x}&y={y}&z={z}',
                 subdomains: const ['mt0', 'mt1', 'mt2', 'mt3'],
                 userAgentPackageName: 'com.lovera.app.lovera',
                 maxZoom: 20,
                 maxNativeZoom: 20,
-                keepBuffer: 4,
-                panBuffer: 2,
+                keepBuffer: 3,
+                panBuffer: 1,
+                tileBuilder: isDark ? _snapMapDarkTileBuilder : null,
               ),
-              // Snap Map avatar pinleri
+
+              // Snap Map Canlı Avatar Pinleri
               MarkerLayer(
                 markers: [
                   if (myLatLng != null)
                     Marker(
                       point: myLatLng,
-                      width: 90,
-                      height: 95,
+                      width: 140,
+                      height: 115,
                       alignment: Alignment.topCenter,
                       child: _SnapAvatarMarker(
                         name: currentUser?.name ?? 'Ben',
                         avatarUrl: currentUser?.avatarUrl,
-                        borderColor: const Color(0xFF388AF6), // Canlı mavi rozet
+                        batteryLevel: currentUser?.batteryLevel,
+                        borderColor: const Color(0xFF388AF6), // Okyanus Mavisi Rozet
+                        glowColor: const Color(0xFF388AF6).withValues(alpha: 0.35),
                         isMe: true,
+                        isDark: isDark,
                         onTap: () => _animatedFlightMove(myLatLng, 16.0),
                       ),
                     ),
                   if (partnerLatLng != null)
                     Marker(
                       point: partnerLatLng,
-                      width: 90,
-                      height: 95,
+                      width: 140,
+                      height: 115,
                       alignment: Alignment.topCenter,
                       child: _SnapAvatarMarker(
                         name: partner?.name ?? 'Partner',
                         avatarUrl: partner?.avatarUrl,
-                        borderColor: const Color(0xFFFF2A6D), // Canlı pembe kalp rozet
+                        batteryLevel: partner?.batteryLevel,
+                        borderColor: LoveraColors.primary, // Asil Leylak Rozet
+                        glowColor: LoveraColors.primary.withValues(alpha: 0.35),
                         isMe: false,
+                        isDark: isDark,
                         onTap: () => _animatedFlightMove(partnerLatLng, 16.0),
                       ),
                     ),
@@ -222,7 +275,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
             ],
           ),
 
-          // Üst Bar: Geri Dönüş & İkimiz Tuşu
+          // Üst Bar: Geri Dönüş & İkimizi Göster Butonu
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -232,19 +285,22 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                   _GlassButton(
                     icon: Icons.arrow_back_ios_new_rounded,
                     iconSize: 18,
+                    tooltip: 'Geri',
+                    isDark: isDark,
                     onTap: () => Navigator.of(context).maybePop(),
                   ),
                   if (myLatLng != null && partnerLatLng != null)
                     _GlassButton(
-                      icon: Icons.favorite_rounded,
-                      iconColor: const Color(0xFFFF2A6D),
+                      icon: Icons.all_inclusive_rounded,
+                      iconColor: LoveraColors.primary,
                       tooltip: 'İkimizi Göster',
+                      isDark: isDark,
                       onTap: () {
                         final bounds = LatLngBounds.fromPoints([myLatLng, partnerLatLng]);
                         _mapController.fitCamera(
                           CameraFit.bounds(
                             bounds: bounds,
-                            padding: const EdgeInsets.symmetric(horizontal: 65, vertical: 160),
+                            padding: const EdgeInsets.only(left: 70, right: 70, top: 200, bottom: 230),
                           ),
                         );
                       },
@@ -254,7 +310,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
             ),
           ),
 
-          // Alt Bölüm: Snap Map Tarzı Hızlı Işınlanma Butonları (Partnerime Uç & Konumuma Uç) + Bilgi Kartı
+          // Alt Bölüm: Snap Map Tarzı Hızlı Işınlanma Butonları & Canlı Bilgi Kartı
           Positioned(
             left: 16,
             right: 16,
@@ -264,139 +320,36 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
               children: [
                 // Snap Tarzı Hızlı Işınlanma Yüzen Butonları (Sol: Partner, Sağ: Ben)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 12, left: 4, right: 4),
+                  padding: const EdgeInsets.only(bottom: 12, left: 2, right: 2),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // Partnerin Yanına Uç Butonu (Snap Arkadaş Rozeti)
+                      // Partnerin Yanına Uç Butonu
                       if (partnerLatLng != null)
-                        InkWell(
-                          borderRadius: BorderRadius.circular(30),
+                        _SnapQuickActionButton(
+                          title: '${partner?.name ?? "Partner"}\'a Uç',
+                          subtitle: partner?.city ?? 'Konuma Git',
+                          avatarUrl: partner?.avatarUrl,
+                          fallbackIcon: Icons.favorite_rounded,
+                          accentColor: LoveraColors.primary,
+                          isDark: isDark,
                           onTap: () => _animatedFlightMove(partnerLatLng, 16.0),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(30),
-                              border: Border.all(color: const Color(0xFFFF2A6D).withValues(alpha: 0.3), width: 1.5),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(0xFFFF2A6D).withValues(alpha: 0.25),
-                                  blurRadius: 16,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 32,
-                                  height: 32,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFFF2A6D).withValues(alpha: 0.15),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: const Color(0xFFFF2A6D), width: 2),
-                                  ),
-                                  child: ClipOval(
-                                    child: partner?.avatarUrl != null && partner!.avatarUrl!.isNotEmpty
-                                        ? Image.network(partner.avatarUrl!, fit: BoxFit.cover)
-                                        : const Icon(Icons.favorite_rounded, color: Color(0xFFFF2A6D), size: 16),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      '${partner?.name ?? "Partner"}\'a Uç',
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w800,
-                                        color: Color(0xFF1E2022),
-                                      ),
-                                    ),
-                                    Text(
-                                      partner?.city ?? 'Konumu gör',
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w600,
-                                        color: Color(0xFFFF2A6D),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
                         )
                       else
                         const SizedBox.shrink(),
 
-                      // Kendi Konumuma Uç Butonu (Snap Hedef Butonu)
+                      // Kendi Konumuma Uç Butonu
                       if (myLatLng != null)
-                        InkWell(
-                          borderRadius: BorderRadius.circular(30),
+                        _SnapQuickActionButton(
+                          title: 'Bana Dön',
+                          subtitle: 'Konumum',
+                          fallbackIcon: Icons.my_location_rounded,
+                          accentColor: const Color(0xFF388AF6),
+                          isDark: isDark,
                           onTap: () async {
                             DeviceService().syncStatusToFirebase();
                             _animatedFlightMove(myLatLng, 16.0);
                           },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(30),
-                              border: Border.all(color: const Color(0xFF388AF6).withValues(alpha: 0.3), width: 1.5),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(0xFF388AF6).withValues(alpha: 0.25),
-                                  blurRadius: 16,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 32,
-                                  height: 32,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF388AF6).withValues(alpha: 0.15),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: const Color(0xFF388AF6), width: 2),
-                                  ),
-                                  child: const Center(
-                                    child: Icon(Icons.my_location_rounded, color: Color(0xFF388AF6), size: 16),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                const Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      'Bana Dön',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w800,
-                                        color: Color(0xFF1E2022),
-                                      ),
-                                    ),
-                                    Text(
-                                      'Konumum',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w600,
-                                        color: Color(0xFF388AF6),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
                         )
                       else
                         const SizedBox.shrink(),
@@ -404,109 +357,20 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                   ),
                 ),
 
-                // Alt Mesafe ve Durum Kartı (Dokunulduğunda da Partner'a Uçar)
-                Material(
-                  color: Colors.transparent,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.95),
-                      borderRadius: BorderRadius.circular(26),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.12),
-                          blurRadius: 20,
-                          offset: const Offset(0, 6),
-                        ),
-                      ],
-                    ),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(26),
-                      onTap: () {
-                        if (partnerLatLng != null) {
-                          _animatedFlightMove(partnerLatLng, 16.0);
-                        }
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 46,
-                              height: 46,
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: [Color(0xFFFF5376), Color(0xFFFF2A6D)],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: const Color(0xFFFF2A6D).withValues(alpha: 0.35),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 3),
-                                  ),
-                                ],
-                              ),
-                              child: const Icon(Icons.favorite_rounded, color: Colors.white, size: 24),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    'ARANIZDAKİ YOL MESAFESİ',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w800,
-                                      color: Colors.black.withValues(alpha: 0.45),
-                                      letterSpacing: 0.8,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    displayDistance != null
-                                        ? _formatDistance(displayDistance)
-                                        : (partner == null ? 'Partner bekleniyor' : 'Yol hesaplanıyor...'),
-                                    style: const TextStyle(
-                                      fontSize: 19,
-                                      fontWeight: FontWeight.w900,
-                                      color: Color(0xFF1E2022),
-                                      letterSpacing: -0.5,
-                                    ),
-                                  ),
-                                  if (partner?.city != null) ...[
-                                    const SizedBox(height: 1),
-                                    Text(
-                                      '📍 ${partner!.name} şu an ${partner.city}\'de',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.black.withValues(alpha: 0.6),
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFF2A6D).withValues(alpha: 0.1),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(Icons.flight_takeoff_rounded, color: Color(0xFFFF2A6D), size: 18),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
+                // Alt Snap Map Kartı (Partner Durumu & Mesafe)
+                _SnapMapBottomCard(
+                  partner: partner,
+                  displayDistance: displayDistance,
+                  distanceText: displayDistance != null ? _formatDistance(displayDistance) : null,
+                  isDark: isDark,
+                  onTap: () {
+                    if (partnerLatLng != null) {
+                      _animatedFlightMove(partnerLatLng, 16.0);
+                    }
+                  },
                 ),
               ],
-            ).animate().slideY(begin: 0.2, duration: 350.ms, curve: Curves.easeOut),
+            ).animate().slideY(begin: 0.15, duration: 300.ms, curve: Curves.easeOut),
           ),
         ],
       ),
@@ -514,20 +378,26 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
   }
 }
 
-/// Snap Map Tarzı Avatar Pin Tasarımı (Bitmoji hissi, parlak gölge ve isim etiketi)
+/// Snap Map Tarzı Avatar Pin Tasarımı (3D zemin gölgesi, canlı rozet ve bilgi hapı)
 class _SnapAvatarMarker extends StatelessWidget {
   const _SnapAvatarMarker({
     required this.name,
     this.avatarUrl,
+    this.batteryLevel,
     required this.borderColor,
+    required this.glowColor,
     required this.isMe,
+    required this.isDark,
     required this.onTap,
   });
 
   final String name;
   final String? avatarUrl;
+  final int? batteryLevel;
   final Color borderColor;
+  final Color glowColor;
   final bool isMe;
+  final bool isDark;
   final VoidCallback onTap;
 
   @override
@@ -537,16 +407,19 @@ class _SnapAvatarMarker extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // İsim Rozeti (Snap Map hap tasarımı)
+          // Üst Snap Bilgi Hapı: İsim + Pil Durumu
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: isDark ? const Color(0xFF22252E) : Colors.white,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: borderColor.withValues(alpha: 0.3), width: 1.5),
+              border: Border.all(
+                color: isDark ? Colors.white.withValues(alpha: 0.12) : borderColor.withValues(alpha: 0.25),
+                width: 1.2,
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.15),
+                  color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.14),
                   blurRadius: 8,
                   offset: const Offset(0, 3),
                 ),
@@ -555,73 +428,133 @@ class _SnapAvatarMarker extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // Canlı Yeşil / Leylak Göstergesi
                 Container(
                   width: 6,
                   height: 6,
                   decoration: BoxDecoration(
-                    color: isMe ? const Color(0xFF388AF6) : const Color(0xFFFF2A6D),
+                    color: isMe ? const Color(0xFF388AF6) : const Color(0xFF10B981),
                     shape: BoxShape.circle,
                   ),
                 ),
                 const SizedBox(width: 4),
-                Text(
-                  name,
-                  style: const TextStyle(
-                    color: Color(0xFF1E2022),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 75),
+                  child: Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: isDark ? Colors.white : const Color(0xFF1E2022),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
+                if (batteryLevel != null) ...[
+                  const SizedBox(width: 4),
+                  Text(
+                    '%$batteryLevel',
+                    style: TextStyle(
+                      color: isDark ? const Color(0xFFA0A6B2) : const Color(0xFF6B7280),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
           const SizedBox(height: 3),
-          // Yuvarlak Avatar & Gölge
+
+          // Yuvarlak Avatar & Hologram / Snap Halo Gölgesi
           Stack(
             alignment: Alignment.center,
             children: [
+              // Parlama halkası
               Container(
-                width: 54,
-                height: 54,
+                width: 52,
+                height: 52,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: borderColor.withValues(alpha: 0.4),
-                      blurRadius: 12,
+                      color: glowColor,
+                      blurRadius: 14,
                       spreadRadius: 2,
                     ),
                   ],
                 ),
               ),
+              // Ana Avatar Dairesi
               Container(
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: isDark ? const Color(0xFF22252E) : Colors.white,
                   shape: BoxShape.circle,
-                  border: Border.all(color: borderColor, width: 3.5),
+                  border: Border.all(color: borderColor, width: 3),
                 ),
                 child: ClipOval(
                   child: avatarUrl != null && avatarUrl!.isNotEmpty
-                      ? Image.network(avatarUrl!, fit: BoxFit.cover)
-                      : Center(
-                          child: Icon(
-                            isMe ? Icons.person_rounded : Icons.favorite_rounded,
-                            color: borderColor,
-                            size: 24,
-                          ),
-                        ),
+                      ? Image.network(
+                          avatarUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => _buildFallbackIcon(),
+                        )
+                      : _buildFallbackIcon(),
+                ),
+              ),
+              // Alt köşe minik rozet (Kalp veya Ben simgesi)
+              Positioned(
+                bottom: 0,
+                right: 0,
+                child: Container(
+                  width: 16,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    color: borderColor,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: isDark ? const Color(0xFF22252E) : Colors.white, width: 1.5),
+                  ),
+                  child: Center(
+                    child: Icon(
+                      isMe ? Icons.near_me_rounded : Icons.favorite_rounded,
+                      color: Colors.white,
+                      size: 9,
+                    ),
+                  ),
                 ),
               ),
             ],
           ),
+
           // Pin İğnesi Ucu
           CustomPaint(
-            size: const Size(12, 6),
+            size: const Size(10, 5),
             painter: _TrianglePainter(color: borderColor),
           ),
+
+          // Zemin 3D Gölgesi (Snapchat Bitmoji zemin hissi)
+          Container(
+            width: 18,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.22),
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildFallbackIcon() {
+    return Center(
+      child: Icon(
+        isMe ? Icons.person_rounded : Icons.favorite_rounded,
+        color: borderColor,
+        size: 24,
       ),
     );
   }
@@ -650,42 +583,292 @@ class _TrianglePainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+/// Snap Hızlı Işınlanma Düğmesi
+class _SnapQuickActionButton extends StatelessWidget {
+  const _SnapQuickActionButton({
+    required this.title,
+    required this.subtitle,
+    this.avatarUrl,
+    required this.fallbackIcon,
+    required this.accentColor,
+    required this.isDark,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final String? avatarUrl;
+  final IconData fallbackIcon;
+  final Color accentColor;
+  final bool isDark;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cardBg = isDark ? const Color(0xFF1E212A) : Colors.white;
+    final textColor = isDark ? Colors.white : const Color(0xFF1E2022);
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(30),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(
+            color: isDark ? Colors.white.withValues(alpha: 0.1) : accentColor.withValues(alpha: 0.25),
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: isDark ? Colors.black.withValues(alpha: 0.4) : accentColor.withValues(alpha: 0.2),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: accentColor.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+                border: Border.all(color: accentColor, width: 2),
+              ),
+              child: ClipOval(
+                child: avatarUrl != null && avatarUrl!.isNotEmpty
+                    ? Image.network(avatarUrl!, fit: BoxFit.cover)
+                    : Icon(fallbackIcon, color: accentColor, size: 16),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: textColor,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: accentColor,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Snap Map Alt Bilgi & Mesafe Kartı
+class _SnapMapBottomCard extends StatelessWidget {
+  const _SnapMapBottomCard({
+    required this.partner,
+    required this.displayDistance,
+    required this.distanceText,
+    required this.isDark,
+    required this.onTap,
+  });
+
+  final dynamic partner;
+  final double? displayDistance;
+  final String? distanceText;
+  final bool isDark;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cardBg = isDark ? const Color(0xFF1E212A).withValues(alpha: 0.96) : Colors.white.withValues(alpha: 0.96);
+    final titleColor = isDark ? Colors.white : const Color(0xFF1E2022);
+    final subColor = isDark ? const Color(0xFFA0A6B2) : const Color(0xFF6B7280);
+
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: BorderRadius.circular(26),
+          border: Border.all(
+            color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.04),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.12),
+              blurRadius: 20,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(26),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    gradient: LoveraColors.primaryGradient,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: LoveraColors.primary.withValues(alpha: 0.35),
+                        blurRadius: 10,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(Icons.favorite_rounded, color: Colors.white, size: 24),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'ARANIZDAKİ YOL MESAFESİ',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: subColor,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        distanceText ?? (partner == null ? 'Partner bekleniyor' : 'Mesafe hesaplanıyor...'),
+                        style: TextStyle(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w900,
+                          color: titleColor,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                      if (partner != null) ...[
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            if (partner.city != null) ...[
+                              const Icon(Icons.location_on_rounded, size: 12, color: LoveraColors.primary),
+                              const SizedBox(width: 2),
+                              Text(
+                                '${partner.name} · ${partner.city}',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: subColor,
+                                ),
+                              ),
+                            ],
+                            if (partner.batteryLevel != null) ...[
+                              const SizedBox(width: 8),
+                              const Icon(Icons.battery_std_rounded, size: 12, color: Color(0xFF10B981)),
+                              Text(
+                                '%${partner.batteryLevel}',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF10B981),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(9),
+                  decoration: BoxDecoration(
+                    color: LoveraColors.primary.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.flight_takeoff_rounded, color: LoveraColors.primary, size: 18),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Snap Map Buton Stili (Glassmorphism & Hafif Gölge)
 class _GlassButton extends StatelessWidget {
   const _GlassButton({
     required this.icon,
     this.iconSize = 20,
-    this.iconColor = const Color(0xFF1E2022),
+    this.iconColor,
     this.tooltip,
+    required this.isDark,
     required this.onTap,
   });
 
   final IconData icon;
   final double iconSize;
-  final Color iconColor;
+  final Color? iconColor;
   final String? tooltip;
+  final bool isDark;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final effectiveColor = iconColor ?? (isDark ? Colors.white : const Color(0xFF1E2022));
+
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.94),
+        color: isDark ? const Color(0xFF1E2028).withValues(alpha: 0.92) : Colors.white.withValues(alpha: 0.94),
         shape: BoxShape.circle,
+        border: Border.all(
+          color: isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.05),
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
+            color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.12),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
         ],
       ),
       child: IconButton(
-        icon: Icon(icon, size: iconSize, color: iconColor),
+        icon: Icon(icon, size: iconSize, color: effectiveColor),
         tooltip: tooltip,
         onPressed: onTap,
       ),
     );
   }
+}
+
+/// Snap Map Koyu Mod Renk Matrisi (Suyu gece laciverti, karaları koyu grafit, yazıları beyaz yapar)
+Widget _snapMapDarkTileBuilder(BuildContext context, Widget tileWidget, TileImage tile) {
+  return ColorFiltered(
+    colorFilter: const ColorFilter.matrix(<double>[
+      0.0, 0.0, -0.65, 0.0, 180.0,
+      0.0, -0.65, 0.0, 0.0, 180.0,
+      -0.65, 0.0, 0.0, 0.0, 225.0,
+      0.0, 0.0, 0.0, 1.0, 0.0,
+    ]),
+    child: tileWidget,
+  );
 }
 
