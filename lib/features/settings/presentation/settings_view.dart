@@ -277,12 +277,96 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     );
   }
 
+  // 4. Görünüm ve Tema Seçimi
+  void _openThemeSettings() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (ctx) {
+        return Consumer(
+          builder: (context, ref, _) {
+            final theme = Theme.of(context);
+            final activeMode = ref.watch(themeModeProvider);
+
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Text(
+                      'Görünüm ve Tema',
+                      style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Center(
+                    child: Text(
+                      'Uygulama temasını tercihinize göre ayarlayın',
+                      style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  _ThemeOptionTile(
+                    icon: Icons.light_mode_rounded,
+                    iconColor: const Color(0xFFF59E0B),
+                    title: 'Açık Mod',
+                    subtitle: 'Aydınlık ve ferah görünüm',
+                    isSelected: activeMode == ThemeMode.light,
+                    onTap: () {
+                      ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.light);
+                      Navigator.pop(ctx);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _ThemeOptionTile(
+                    icon: Icons.dark_mode_rounded,
+                    iconColor: LoveraColors.primary,
+                    title: 'Koyu Mod',
+                    subtitle: 'Göz yormayan asil gece teması',
+                    isSelected: activeMode == ThemeMode.dark,
+                    onTap: () {
+                      ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.dark);
+                      Navigator.pop(ctx);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _ThemeOptionTile(
+                    icon: Icons.settings_brightness_rounded,
+                    iconColor: const Color(0xFF388AF6),
+                    title: 'Sistem Varsayılanı',
+                    subtitle: 'Telefonunuzun ayarlarına göre otomatik değişir',
+                    isSelected: activeMode == ThemeMode.system,
+                    onTap: () {
+                      ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.system);
+                      Navigator.pop(ctx);
+                    },
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final userName = ref.watch(userNameProvider);
     final avatarPath = ref.watch(userAvatarProvider);
+    final currentThemeMode = ref.watch(themeModeProvider);
     final auth = AuthService();
+    final String themeModeLabel = currentThemeMode == ThemeMode.light
+        ? 'Açık Mod'
+        : (currentThemeMode == ThemeMode.dark ? 'Koyu Mod' : 'Sistem');
     final email = auth.currentUser?.email ?? 'Giriş yapılmadı';
 
     return Scaffold(
@@ -376,6 +460,27 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
             child: Column(
               children: [
                 _SettingsTile(
+                  icon: Icons.palette_outlined,
+                  title: 'Görünüm ve Tema',
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        themeModeLabel,
+                        style: const TextStyle(
+                          color: LoveraColors.textMuted,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                    ],
+                  ),
+                  onTap: _openThemeSettings,
+                ),
+                Divider(height: 1, indent: 56, color: theme.dividerColor),
+                _SettingsTile(
                   icon: Icons.notifications_none_rounded,
                   title: 'Bildirimler',
                   trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
@@ -463,3 +568,101 @@ class _SettingsTile extends StatelessWidget {
     );
   }
 }
+
+class _ThemeOptionTile extends StatelessWidget {
+  const _ThemeOptionTile({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? LoveraColors.primary.withValues(alpha: 0.08)
+              : theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: isSelected ? LoveraColors.primary : theme.dividerColor,
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: iconColor, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      color: isSelected ? LoveraColors.primary : theme.colorScheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: LoveraColors.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isSelected)
+              Container(
+                width: 24,
+                height: 24,
+                decoration: const BoxDecoration(
+                  color: LoveraColors.primary,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.check_rounded, color: Colors.white, size: 16),
+              )
+            else
+              Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: theme.dividerColor, width: 2),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+

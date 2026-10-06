@@ -1,4 +1,6 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/models.dart';
 
@@ -26,3 +28,38 @@ final milestonesProvider = StateProvider<List<Milestone>>((ref) => []);
 /// Giriş yapmış kullanıcının anlık bilgileri (konum, pil, şehir vb.)
 final currentUserProvider = StateProvider<AppUser?>((ref) => null);
 
+/// Tema modu yöneticisi (Açık, Koyu veya Sistem)
+final themeModeProvider = StateNotifierProvider<ThemeModeNotifier, ThemeMode>((ref) {
+  return ThemeModeNotifier();
+});
+
+class ThemeModeNotifier extends StateNotifier<ThemeMode> {
+  ThemeModeNotifier({ThemeMode initialMode = ThemeMode.system}) : super(initialMode) {
+    _loadThemeMode();
+  }
+
+  Future<void> _loadThemeMode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final modeStr = prefs.getString('theme_mode');
+      if (modeStr == 'light') {
+        state = ThemeMode.light;
+      } else if (modeStr == 'dark') {
+        state = ThemeMode.dark;
+      } else if (modeStr == 'system') {
+        state = ThemeMode.system;
+      }
+    } catch (_) {}
+  }
+
+  Future<void> setThemeMode(ThemeMode mode) async {
+    state = mode;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final modeStr = mode == ThemeMode.light
+          ? 'light'
+          : (mode == ThemeMode.dark ? 'dark' : 'system');
+      await prefs.setString('theme_mode', modeStr);
+    } catch (_) {}
+  }
+}

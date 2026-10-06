@@ -15,12 +15,21 @@ class PermissionsPage extends StatefulWidget {
 
 class _PermissionsPageState extends State<PermissionsPage> {
   final Map<Permission, bool> _granted = {
-    Permission.locationWhenInUse: false,
+    Permission.locationAlways: false,
     Permission.notification: false,
     Permission.camera: false,
   };
 
   Future<void> _request(Permission p) async {
+    // Android/iOS: Arka plan izni için önce ön plan, ardından her zaman izin istenir
+    if (p == Permission.locationAlways) {
+      final whenInUse = await Permission.locationWhenInUse.request();
+      if (whenInUse.isGranted) {
+        final status = await Permission.locationAlways.request();
+        if (mounted) setState(() => _granted[p] = status.isGranted || whenInUse.isGranted);
+        return;
+      }
+    }
     final status = await p.request();
     if (mounted) setState(() => _granted[p] = status.isGranted);
   }
@@ -29,8 +38,8 @@ class _PermissionsPageState extends State<PermissionsPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final items = [
-      (Permission.locationWhenInUse, Icons.location_on_rounded, 'Konum',
-          'Partnerinle aranızdaki mesafeyi canlı haritada gösterelim.'),
+      (Permission.locationAlways, Icons.location_on_rounded, 'Canlı Konum & Snap Map',
+          'Uygulama kapalıyken bile partnerinin seni haritada görebilmesi için.'),
       (Permission.notification, Icons.notifications_rounded, 'Bildirimler',
           '“Seni düşünüyorum” mesajları ve özel gün hatırlatıcıları için.'),
       (Permission.camera, Icons.photo_camera_rounded, 'Kamera',

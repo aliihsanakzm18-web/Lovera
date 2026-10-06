@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:battery_plus/battery_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'database_service.dart';
@@ -10,6 +12,9 @@ class DeviceService {
   DeviceService._internal();
 
   final Battery _battery = Battery();
+  StreamSubscription<Position>? _positionStreamSub;
+  Timer? _periodicSyncTimer;
+  bool _isBackgroundTrackingActive = false;
 
   /// Cihazın gerçek pil seviyesini alır (0-100)
   Future<int?> getBatteryLevel() async {
@@ -88,6 +93,88 @@ class DeviceService {
     return isDay ? 'Açık' : 'Yıldızlı';
   }
 
+  /// Snap Map tarzı: Uygulama açıkken veya arka plandayken canlı konum, şarj ve hava durumu servisini başlatır
+  Future<void> startContinuousLocationTracking() async {
+    if (_isBackgroundTrackingActive) return;
+
+    try {
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.deniedForever) return;
+
+      late LocationSettings locationSettings;
+
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        locationSettings = AndroidSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 15, // 15 metre hareket ettiğinde anında tetikler
+          intervalDuration: const Duration(seconds: 15), // Arka planda 15 sn periyot
+          foregroundNotificationConfig: const ForegroundNotificationConfig(
+            notificationTitle: 'Lovera · Canlı Bağlantı Aktif',
+            notificationText: 'Partnerinle canlı konum, şarj ve hava durumu eşitleniyor 💕',
+            enableWakeLock: true,
+            setOngoing: true,
+          ),
+        );
+      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+        locationSettings = AppleSettings(
+          accuracy: LocationAccuracy.high,
+          activityType: ActivityType.fitness,
+          distanceFilter: 15,
+          allowBackgroundLocationUpdates: true,
+          pauseLocationUpdatesAutomatically: false,
+          showBackgroundLocationIndicator: true,
+        );
+      } else {
+        locationSettings = const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 15,
+        );
+      }
+
+      await _positionStreamSub?.cancel();
+      _positionStreamSub = Geolocator.getPositionStream(locationSettings: locationSettings).listen(
+        (position) async {
+          await _onNewPositionReceived(position);
+        },
+        onError: (e) {
+          debugPrint('Geolocator stream error: $e');
+        },
+      );
+
+      // Ayrıca hareket edilmese dahi şarj ve saati düzenli olarak 30 saniyede bir gönder
+      _periodicSyncTimer?.cancel();
+      _periodicSyncTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+        syncStatusToFirebase();
+      });
+
+      _isBackgroundTrackingActive = true;
+      // İlk açılışta hemen tetikle
+      await syncStatusToFirebase();
+    } catch (e) {
+      debugPrint('startContinuousLocationTracking error: $e');
+    }
+  }
+
+  /// Yeni GPS konumu alındığında çalışır
+  Future<void> _onNewPositionReceived(Position pos) async {
+    try {
+      final battery = await getBatteryLevel();
+      final weather = await getWeatherForLocation(pos.latitude, pos.longitude);
+      final city = await getCityForLocation(pos.latitude, pos.longitude);
+
+      await DatabaseService().updateStatus(
+        lat: pos.latitude,
+        lng: pos.longitude,
+        batteryLevel: battery,
+        weather: weather,
+        city: city,
+      );
+    } catch (_) {}
+  }
+
   /// Gerçek cihaz durumunu (Pil, Konum, Şehir, Hava Durumu, Aktiflik) Firebase'e kaydeder
   Future<void> syncStatusToFirebase() async {
     try {
@@ -107,12 +194,10 @@ class DeviceService {
           Position? pos;
           try {
             pos = await Geolocator.getLastKnownPosition();
-            if (pos == null) {
-              pos = await Geolocator.getCurrentPosition(
-                desiredAccuracy: LocationAccuracy.medium,
-                timeLimit: const Duration(seconds: 3),
-              );
-            }
+            pos ??= await Geolocator.getCurrentPosition(
+              desiredAccuracy: LocationAccuracy.medium,
+              timeLimit: const Duration(seconds: 4),
+            );
           } catch (_) {}
 
           if (pos != null) {
@@ -128,11 +213,8 @@ class DeviceService {
       final now = DateTime.now();
       final period = getTimeOfDayPeriod(now);
       final isNight = now.hour >= 20 || now.hour < 6 || period == 'Gece' || period == 'Akşam';
-      if (weather == null) {
-        weather = isNight ? '$period · Yıldızlı 20°' : '$period · Açık 22°';
-      }
+      weather ??= (isNight ? '$period · Yıldızlı 20°' : '$period · Açık 22°');
       if (city == null || city.isEmpty) {
-        // GPS henüz konum vermediyse veya ilk açılışsa Türkiye varsayılanı
         city = 'İstanbul';
       }
 
@@ -144,5 +226,11 @@ class DeviceService {
         city: city,
       );
     } catch (_) {}
+  }
+
+  void stopTracking() {
+    _positionStreamSub?.cancel();
+    _periodicSyncTimer?.cancel();
+    _isBackgroundTrackingActive = false;
   }
 }

@@ -37,12 +37,8 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
   void initState() {
     super.initState();
 
-    // Cihazın gerçek pil ve hava durumunu anında Firebase'e aktar
-    DeviceService().syncStatusToFirebase();
-    // Her 30 saniyede bir pil ve aktiflik durumunu güncelle
-    _statusSyncTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      DeviceService().syncStatusToFirebase();
-    });
+    // Snap Map Modeli: Canlı konum, şarj, şehir ve hava durumu arka planda da kesintisiz çalışsın
+    DeviceService().startContinuousLocationTracking();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // 1. Kendi profilimizi dinle

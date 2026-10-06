@@ -36,6 +36,10 @@
 	<string>Lovera, partnerinizle ortak anı albümüne fotoğraf yüklemek ve karekod taramak için kameraya ihtiyaç duyar.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Lovera, anı albümüne fotoğraf eklemek için galerinize erişim ister.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

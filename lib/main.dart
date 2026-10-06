@@ -23,24 +23,34 @@ Future<void> main() async {
   final prefs = await SharedPreferences.getInstance();
   final onboarded = prefs.getBool('onboarded') ?? false;
   final name = prefs.getString('name') ?? '';
+  final themeModeStr = prefs.getString('theme_mode') ?? 'system';
+  final initialThemeMode = themeModeStr == 'light'
+      ? ThemeMode.light
+      : (themeModeStr == 'dark' ? ThemeMode.dark : ThemeMode.system);
+
   runApp(ProviderScope(
-    overrides: [userNameProvider.overrideWith((ref) => name)],
+    overrides: [
+      userNameProvider.overrideWith((ref) => name),
+      themeModeProvider.overrideWith((ref) => ThemeModeNotifier(initialMode: initialThemeMode)),
+    ],
     child: LoveraApp(onboarded: onboarded),
   ));
 }
 
-class LoveraApp extends StatelessWidget {
+class LoveraApp extends ConsumerWidget {
   const LoveraApp({super.key, required this.onboarded});
   final bool onboarded;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeModeProvider);
+
     return MaterialApp(
       title: 'Lovera',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
-      themeMode: ThemeMode.system,
+      themeMode: themeMode,
       home: onboarded ? const DashboardView() : const OnboardingFlow(),
     );
   }
