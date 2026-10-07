@@ -200,7 +200,7 @@ class NotificationService {
   /// Aktif FCM tokenını döner
   Future<String?> getFcmToken() async {
     try {
-      return await _fcm.getToken();
+      return await _fcm.getToken().timeout(const Duration(seconds: 2), onTimeout: () => null);
     } catch (_) {
       return null;
     }
@@ -209,7 +209,7 @@ class NotificationService {
   /// Oturum kapatıldığında FCM token'ını iptal eder ve tüm bildirimleri temizler
   Future<void> clearFcmTokenOnSignOut() async {
     try {
-      await _fcm.deleteToken();
+      await _fcm.deleteToken().timeout(const Duration(seconds: 2), onTimeout: () => null);
       await _localPlugin.cancelAll();
       _ready = false;
       debugPrint('[FCM] Token silindi ve yerel bildirimler temizlendi.');
@@ -221,7 +221,7 @@ class NotificationService {
   /// Cihazın tokenını Firestore profilimize yazar
   Future<void> updateFcmTokenInFirestore() async {
     try {
-      final token = await _fcm.getToken();
+      final token = await getFcmToken();
       debugPrint('[FCM] Aldığımız cihaz FCM Token: $token');
       if (token != null) {
         await _saveTokenToFirestore(token);
@@ -241,11 +241,11 @@ class NotificationService {
           'fcmToken': token,
           'currentDeviceId': deviceId,
           'fcmUpdatedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
+        }, SetOptions(merge: true)).timeout(const Duration(seconds: 3));
         debugPrint('[FCM] Token ve Cihaz ID ($deviceId) Firestore’a başarıyla kaydedildi!');
       }
     } catch (e) {
-      debugPrint('[FCM] Token kaydetme hatası: $e');
+      debugPrint('[FCM] Token kaydetme hatası (veya zaman aşımı): $e');
     }
   }
 

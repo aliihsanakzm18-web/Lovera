@@ -21,11 +21,13 @@ Future<void> main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-    await NotificationService().init();
-    await BackgroundTrackingService().initialize();
   } catch (e) {
-    debugPrint('Service init error: $e');
+    debugPrint('Firebase init error: $e');
   }
+
+  // Arka plan ve bildirim servislerini UI render'ı bloke etmeden asenkron başlat
+  NotificationService().init().catchError((e) => debugPrint('Notification init error: $e'));
+  BackgroundTrackingService().initialize().catchError((e) => debugPrint('BG init error: $e'));
   
   final prefs = await SharedPreferences.getInstance();
   final currentUid = FirebaseAuth.instance.currentUser?.uid;
@@ -37,6 +39,7 @@ Future<void> main() async {
 
   final onboarded = prefs.getBool('onboarded') ?? false;
   final name = prefs.getString('name') ?? '';
+  final initialAvatar = currentUid != null ? prefs.getString('avatar_$currentUid') : null;
   final themeModeStr = prefs.getString('theme_mode') ?? 'system';
   final initialThemeMode = themeModeStr == 'light'
       ? ThemeMode.light
@@ -45,6 +48,7 @@ Future<void> main() async {
   runApp(ProviderScope(
     overrides: [
       userNameProvider.overrideWith((ref) => name),
+      userAvatarProvider.overrideWith((ref) => initialAvatar),
       themeModeProvider.overrideWith((ref) => ThemeModeNotifier(initialMode: initialThemeMode)),
     ],
     child: LoveraApp(onboarded: onboarded),

@@ -1,9 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/services/database_service.dart';
+import '../../../core/state/app_state.dart';
 import '../../auth/presentation/login_page.dart';
 import '../../auth/presentation/pairing_view.dart';
 import '../../dashboard/presentation/main_navigation_shell.dart';
@@ -11,14 +14,14 @@ import 'permissions_page.dart';
 import 'welcome_page.dart';
 
 /// Giriş -> (Gerekliyse Hoş Geldin) -> (Eşleşmemişse Eşleşme) -> (Eksik İzin Varsa İzinler) -> Ana ekran
-class OnboardingFlow extends StatefulWidget {
+class OnboardingFlow extends ConsumerStatefulWidget {
   const OnboardingFlow({super.key});
 
   @override
-  State<OnboardingFlow> createState() => _OnboardingFlowState();
+  ConsumerState<OnboardingFlow> createState() => _OnboardingFlowState();
 }
 
-class _OnboardingFlowState extends State<OnboardingFlow> {
+class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
   final _page = PageController();
   List<Widget> _steps = [];
   bool _ready = false;
@@ -33,14 +36,14 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   }
 
   Future<void> _next() async {
+    if (!_page.hasClients) return;
     // Eğer sıradaki adım PermissionsPage ise ve tüm izinler zaten verilmişse doğrudan _finish() çağır
     final nextPageIndex = (_page.page?.round() ?? 0) + 1;
     if (nextPageIndex < _steps.length && _steps[nextPageIndex] is PermissionsPage) {
       final locWhenInUse = await Permission.locationWhenInUse.isGranted;
       final locAlways = await Permission.locationAlways.isGranted;
       final notif = await Permission.notification.isGranted;
-      final cam = await Permission.camera.isGranted;
-      final hasMissing = !(locWhenInUse || locAlways) || !notif || !cam;
+      final hasMissing = !(locWhenInUse || locAlways) || !notif;
       if (!hasMissing) {
         await _finish();
         return;
@@ -53,10 +56,14 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     );
   }
 
-  void _back() => _page.previousPage(
+  void _back() {
+    if (_page.hasClients) {
+      _page.previousPage(
         duration: const Duration(milliseconds: 450),
         curve: Curves.easeInOutCubic,
       );
+    }
+  }
 
   Future<void> _handleSignedIn(bool isNewUser) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -65,9 +72,13 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       return;
     }
 
+    // Her hesap değişiminde önceki oturumun durumunu tamamen sıfırla
+    ref.read(userNameProvider.notifier).state = '';
+    ref.read(userAvatarProvider.notifier).state = null;
+
     String? name;
     String? coupleId;
-    String? birthDate;
+    String? avatarUrl;
 
     try {
       final doc = await FirebaseFirestore.instance
@@ -79,22 +90,43 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         final data = doc.data()!;
         name = data['name'] as String?;
         coupleId = data['coupleId'] as String?;
-        birthDate = data['birthDate'] as String?;
+        avatarUrl = data['avatarUrl'] as String?;
       }
     } catch (_) {}
 
     final prefs = await SharedPreferences.getInstance();
     name ??= prefs.getString('name');
 
-    final bool needsWelcome = isNewUser || name == null || name.trim().isEmpty || birthDate == null;
+    // Kullanıcı adı ve profil fotoğrafını Riverpod ve SharedPreferences'a hemen yükle
+    if (name != null && name.trim().isNotEmpty) {
+      await prefs.setString('name', name);
+      ref.read(userNameProvider.notifier).state = name;
+    }
+    if (avatarUrl != null && avatarUrl.isNotEmpty) {
+      await prefs.setString('avatar_$uid', avatarUrl);
+      ref.read(userAvatarProvider.notifier).state = avatarUrl;
+    } else {
+      // Eğer Firestore'da avatar henüz yoksa bu kullanıcının yerel önbelleğindeki fotoğrafı kontrol et
+      final cachedAvatar = prefs.getString('avatar_$uid');
+      if (cachedAvatar != null && cachedAvatar.isNotEmpty) {
+        ref.read(userAvatarProvider.notifier).state = cachedAvatar;
+        DatabaseService().updateAvatar(cachedAvatar);
+      } else {
+        ref.read(userAvatarProvider.notifier).state = null;
+      }
+    }
+
+    // Hoş geldin ekranı: Sadece ilk kez kayıt olan ya da henüz ismi hiç girilmemiş kullanıcıya sorulur.
+    // Giriş yapan mevcut kullanıcılara ASLA tekrar sorulmaz!
+    final bool needsWelcome = isNewUser || name == null || name.trim().isEmpty;
+    // Eşleşme ekranı: Sadece henüz bir çifte bağlı olmayanlara sorulur.
     final bool needsPairing = coupleId == null || coupleId.isEmpty;
 
-    // İzinleri kontrol et
+    // İzinleri kontrol et: Eksik izin yoksa ASLA izin ekranını gösterme!
     final locWhenInUse = await Permission.locationWhenInUse.isGranted;
     final locAlways = await Permission.locationAlways.isGranted;
     final notif = await Permission.notification.isGranted;
-    final cam = await Permission.camera.isGranted;
-    final bool hasMissingPermissions = !(locWhenInUse || locAlways) || !notif || !cam;
+    final bool hasMissingPermissions = !(locWhenInUse || locAlways) || !notif;
 
     final List<Widget> dynamicSteps = [
       LoginPage(onSignedIn: _handleSignedIn),

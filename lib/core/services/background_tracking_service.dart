@@ -123,7 +123,11 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
 
       // Firestore'dan bu kullanıcının aktif cihazını sorgula
       try {
-        final userDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .get()
+            .timeout(const Duration(seconds: 4));
         if (!userDoc.exists) {
           service.stopSelf();
           return;
@@ -197,7 +201,8 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
       await FirebaseFirestore.instance
           .collection('users')
           .doc(uid)
-          .set(updateData, SetOptions(merge: true));
+          .set(updateData, SetOptions(merge: true))
+          .timeout(const Duration(seconds: 4));
 
       if (service is AndroidServiceInstance) {
         final batText = batteryLevel != null ? '%$batteryLevel' : '';
@@ -220,7 +225,7 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
     Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 2,
+        distanceFilter: 20, // 20 metre: Arka planda pil ve kota tasarrufu
       ),
     ).listen(
       (newPosition) async {

@@ -17,7 +17,6 @@ class _PermissionsPageState extends State<PermissionsPage> with WidgetsBindingOb
   final Map<Permission, bool> _granted = {
     Permission.locationAlways: false,
     Permission.notification: false,
-    Permission.camera: false,
   };
   bool _checking = true;
 
@@ -45,19 +44,17 @@ class _PermissionsPageState extends State<PermissionsPage> with WidgetsBindingOb
     final locWhenInUse = await Permission.locationWhenInUse.isGranted;
     final locAlways = await Permission.locationAlways.isGranted;
     final notif = await Permission.notification.isGranted;
-    final cam = await Permission.camera.isGranted;
 
     if (mounted) {
       final locOk = locAlways || locWhenInUse;
       setState(() {
         _granted[Permission.locationAlways] = locOk;
         _granted[Permission.notification] = notif;
-        _granted[Permission.camera] = cam;
         _checking = false;
       });
 
-      // Eğer tüm izinler verilmişse kullanıcıyı boş ekranda bekletmeden doğrudan devam et
-      if (locOk && notif && cam) {
+      // Eğer tüm gerekli izinler verilmişse kullanıcıyı bekletmeden doğrudan devam et
+      if (locOk && notif) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             widget.onFinish();
@@ -73,12 +70,23 @@ class _PermissionsPageState extends State<PermissionsPage> with WidgetsBindingOb
       final whenInUse = await Permission.locationWhenInUse.request();
       if (whenInUse.isGranted) {
         final status = await Permission.locationAlways.request();
-        if (mounted) setState(() => _granted[p] = status.isGranted || whenInUse.isGranted);
+        final locOk = status.isGranted || whenInUse.isGranted;
+        if (mounted) {
+          setState(() => _granted[p] = locOk);
+          if (locOk && (_granted[Permission.notification] ?? false)) {
+            widget.onFinish();
+          }
+        }
         return;
       }
     }
     final status = await p.request();
-    if (mounted) setState(() => _granted[p] = status.isGranted);
+    if (mounted) {
+      setState(() => _granted[p] = status.isGranted);
+      if (status.isGranted && (_granted[Permission.locationAlways] ?? false)) {
+        widget.onFinish();
+      }
+    }
   }
 
   @override
@@ -89,8 +97,6 @@ class _PermissionsPageState extends State<PermissionsPage> with WidgetsBindingOb
           'Uygulama kapalıyken bile partnerinin seni haritada görebilmesi için.'),
       (Permission.notification, Icons.notifications_rounded, 'Bildirimler',
           '“Seni düşünüyorum” mesajları ve özel gün hatırlatıcıları için.'),
-      (Permission.camera, Icons.photo_camera_rounded, 'Kamera',
-          'Anı fotoğrafı çekmek ve QR kod okutmak için.'),
     ];
 
     final missingItems = allItems.where((it) => !(_granted[it.$1] ?? false)).toList();

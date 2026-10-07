@@ -46,11 +46,12 @@ class LoginPage extends ConsumerWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (_) => _EmailSheet(
-        onSuccess: (username, isNewUser) {
+        onSuccess: (username, isNewUser) async {
           if (username.isNotEmpty) {
             ref.read(userNameProvider.notifier).state = username;
           }
           Navigator.of(context).pop();
+          await Future.delayed(const Duration(milliseconds: 150));
           onSignedIn(isNewUser);
         },
       ),
@@ -234,14 +235,14 @@ class _EmailSheetState extends State<_EmailSheet> {
       }
     } on FirebaseAuthException catch (e) {
       setState(() {
-        if (e.code == 'user-not-found') {
-          _error = 'Bu e-posta ile kayıtlı kullanıcı bulunamadı.';
-        } else if (e.code == 'wrong-password') {
-          _error = 'Hatalı şifre girdiniz.';
+        if (e.code == 'user-not-found' || e.code == 'wrong-password' || e.code == 'invalid-credential' || e.code == 'INVALID_LOGIN_CREDENTIALS') {
+          _error = 'E-posta veya şifre hatalı.';
         } else if (e.code == 'email-already-in-use') {
           _error = 'Bu e-posta adresi zaten kullanımda.';
         } else if (e.code == 'weak-password') {
-          _error = 'Şifre çok zayıf. Daha güçlü bir şifre seçin.';
+          _error = 'Şifre çok zayıf. En az 6 karakter seçin.';
+        } else if (e.code == 'network-request-failed') {
+          _error = 'İnternet bağlantınızı kontrol edin.';
         } else {
           _error = e.message ?? 'Giriş yapılamadı.';
         }

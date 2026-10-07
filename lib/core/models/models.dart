@@ -28,18 +28,22 @@ class AppUser {
   });
 
   factory AppUser.fromJson(Map<String, dynamic> j) => AppUser(
-        id: j['id'] as String,
-        name: j['name'] as String,
-        avatarUrl: j['avatar_url'] as String?,
-        batteryLevel: j['battery_level'] as int?,
+        id: (j['id'] ?? '') as String,
+        name: (j['name'] ?? '') as String,
+        avatarUrl: (j['avatarUrl'] ?? j['avatar_url']) as String?,
+        batteryLevel: (j['batteryLevel'] ?? j['battery_level']) as int?,
         weather: j['weather'] as String?,
         city: j['city'] as String?,
         lat: (j['lat'] as num?)?.toDouble(),
         lng: (j['lng'] as num?)?.toDouble(),
-        lastActive: j['last_active'] == null ? null : DateTime.parse(j['last_active']),
-        coupleId: j['couple_id'] as String?,
-        isAppOpen: j['is_app_open'] as bool?,
-        birthDate: j['birth_date'] as String?,
+        lastActive: (j['lastActive'] ?? j['last_active']) == null
+            ? null
+            : ((j['lastActive'] ?? j['last_active']) is DateTime
+                ? (j['lastActive'] ?? j['last_active']) as DateTime
+                : DateTime.tryParse((j['lastActive'] ?? j['last_active']).toString())),
+        coupleId: (j['coupleId'] ?? j['couple_id']) as String?,
+        isAppOpen: (j['isAppOpen'] ?? j['is_app_open']) as bool?,
+        birthDate: (j['birthDate'] ?? j['birth_date']) as String?,
       );
 
   Map<String, dynamic> toJson() => {

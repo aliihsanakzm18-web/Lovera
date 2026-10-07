@@ -203,15 +203,15 @@ class DeviceService {
 
       if (defaultTargetPlatform == TargetPlatform.android) {
         locationSettings = AndroidSettings(
-          accuracy: LocationAccuracy.bestForNavigation,
-          distanceFilter: 0, // 0 metre: Her mikroskobik GPS hareketinde anında tetikle
-          intervalDuration: const Duration(seconds: 1), // 1 sn periyot (Snap / Canlı Navigasyon modu)
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 10, // 10 metre: Gereksiz quota tüketimini ve titremeyi önler
+          intervalDuration: const Duration(seconds: 5),
         );
       } else if (defaultTargetPlatform == TargetPlatform.iOS) {
         locationSettings = AppleSettings(
-          accuracy: LocationAccuracy.bestForNavigation,
-          activityType: ActivityType.fitness,
-          distanceFilter: 0,
+          accuracy: LocationAccuracy.high,
+          activityType: ActivityType.other,
+          distanceFilter: 10,
           allowBackgroundLocationUpdates: true,
           pauseLocationUpdatesAutomatically: false,
           showBackgroundLocationIndicator: true,
@@ -219,7 +219,7 @@ class DeviceService {
       } else {
         locationSettings = const LocationSettings(
           accuracy: LocationAccuracy.high,
-          distanceFilter: 0,
+          distanceFilter: 25,
         );
       }
 
@@ -239,9 +239,9 @@ class DeviceService {
         syncStatusToFirebase();
       });
 
-      // Ayrıca hareket edilmese dahi şarj ve saati düzenli olarak 20 saniyede bir gönder
+      // Ayrıca düzenli olarak 90 saniyede bir gönder
       _periodicSyncTimer?.cancel();
-      _periodicSyncTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      _periodicSyncTimer = Timer.periodic(const Duration(seconds: 90), (_) {
         syncStatusToFirebase();
       });
 
@@ -253,10 +253,20 @@ class DeviceService {
     }
   }
 
-  /// Yeni GPS konumu alındığında anında (0 milisaniye gecikmeyle) Firebase'e aktarır
+  DateTime? _lastPosWriteTime;
+
+  /// Yeni GPS konumu alındığında akıllı throttling ile Firebase'e aktarır
   Future<void> _onNewPositionReceived(Position pos) async {
     try {
-      // 1. Koordinatları HİÇBİR AĞ SORGUSU BEKLEMEDEN ANINDA Firestore'a bas (Canlı Snap Akışı)
+      final now = DateTime.now();
+      if (_lastPosWriteTime != null && now.difference(_lastPosWriteTime!) < const Duration(seconds: 20)) {
+        if (_lastSyncedLat != null && _lastSyncedLng != null) {
+          final d = Geolocator.distanceBetween(_lastSyncedLat!, _lastSyncedLng!, pos.latitude, pos.longitude);
+          if (d < 25) return; // 20 saniye içinde 25 metreden az oynadıysa yazma (Kota koruması)
+        }
+      }
+      _lastPosWriteTime = now;
+
       await DatabaseService().updateStatus(
         lat: pos.latitude,
         lng: pos.longitude,
@@ -268,7 +278,7 @@ class DeviceService {
       _lastSyncedLat = pos.latitude;
       _lastSyncedLng = pos.longitude;
 
-      // 2. Arka planda sessizce şehir/hava durumunu güncelle (GPS hızını asla kesmez)
+      // Arka planda sessizce şehir/hava durumunu güncelle
       getCityForLocation(pos.latitude, pos.longitude);
       getWeatherForLocation(pos.latitude, pos.longitude);
     } catch (_) {}

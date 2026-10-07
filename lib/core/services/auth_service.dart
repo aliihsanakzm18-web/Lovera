@@ -57,14 +57,17 @@ class AuthService {
       await prefs.setString('saved_uid', cred.user!.uid);
       await cred.user!.updateDisplayName(username);
       // Firestore'da kullanıcı dokümanı oluştur
-      await _firestore.collection('users').doc(cred.user!.uid).set({
-        'id': cred.user!.uid,
-        'name': username,
-        'email': email,
-        'createdAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      try {
+        await _firestore.collection('users').doc(cred.user!.uid).set({
+          'id': cred.user!.uid,
+          'name': username,
+          'email': email,
+          'createdAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true)).timeout(const Duration(seconds: 4));
+      } catch (_) {}
 
-      await registerDeviceSession(cred.user!.uid);
+      // Cihaz oturumunu arka planda bağla (UI'ı bekletmez)
+      registerDeviceSession(cred.user!.uid);
     }
 
     return cred;
@@ -80,7 +83,8 @@ class AuthService {
       password: password,
     );
     if (cred.user != null) {
-      await registerDeviceSession(cred.user!.uid);
+      // Cihaz oturumunu arka planda bağla (Giriş işlemini bloke etmez)
+      registerDeviceSession(cred.user!.uid);
     }
     return cred;
   }
@@ -100,15 +104,17 @@ class AuthService {
       final cred = await _auth.signInWithCredential(credential);
 
       if (cred.user != null) {
-        await _firestore.collection('users').doc(cred.user!.uid).set({
-          'id': cred.user!.uid,
-          'name': cred.user!.displayName ?? googleUser.displayName ?? 'İsimsiz',
-          'email': cred.user!.email ?? googleUser.email,
-          'photoUrl': cred.user!.photoURL,
-          'lastLogin': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
+        try {
+          await _firestore.collection('users').doc(cred.user!.uid).set({
+            'id': cred.user!.uid,
+            'name': cred.user!.displayName ?? googleUser.displayName ?? 'İsimsiz',
+            'email': cred.user!.email ?? googleUser.email,
+            'photoUrl': cred.user!.photoURL,
+            'lastLogin': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true)).timeout(const Duration(seconds: 4));
+        } catch (_) {}
 
-        await registerDeviceSession(cred.user!.uid);
+        registerDeviceSession(cred.user!.uid);
       }
 
       return cred;
@@ -119,27 +125,9 @@ class AuthService {
 
   // Tam Kapsamlı ve Güvenli Çıkış Yap
   Future<void> signOut({bool clearRemoteSession = true}) async {
-    try {
-      final uid = _auth.currentUser?.uid;
-      if (uid != null && clearRemoteSession) {
-        final myDeviceId = await DeviceService().getOrCreateDeviceId();
-        final userDoc = await _firestore.collection('users').doc(uid).get();
-        if (userDoc.exists) {
-          final activeDeviceId = userDoc.data()?['currentDeviceId'] as String?;
-          // Sadece bu cihaz hala Firestore'daki oturum sahibi ise uzaktaki kaydı sil
-          if (activeDeviceId == null || activeDeviceId == myDeviceId) {
-            await _firestore.collection('users').doc(uid).update({
-              'isAppOpen': false,
-              'lastActive': FieldValue.serverTimestamp(),
-              'currentDeviceId': FieldValue.delete(),
-              'fcmToken': FieldValue.delete(),
-            });
-          }
-        }
-      }
-    } catch (_) {}
+    final uid = _auth.currentUser?.uid;
 
-    // 1. Cihaz takip ve sensörlerini tamamen durdur
+    // 1. Cihaz takip ve sensörlerini derhal durdur
     DeviceService().stopTracking();
 
     // 2. Android 7/24 Foreground Arka Plan Servisini durdur
@@ -150,10 +138,11 @@ class AuthService {
       }
     } catch (_) {}
 
-    // 3. FCM Token iptali ve yerel bildirim temizliği
-    try {
-      await NotificationService().clearFcmTokenOnSignOut();
-    } catch (_) {}
+    // 3. Uzak oturumu ve bildirim token'ını arka planda sessizce temizle (Asla UI'ı bloke etmez)
+    if (uid != null && clearRemoteSession) {
+      _clearRemoteSessionSafely(uid).catchError((_) {});
+    }
+    NotificationService().clearFcmTokenOnSignOut().catchError((_) {});
 
     // 4. SharedPreferences üzerindeki tüm kullanıcı kimlik verilerini temizle
     try {
@@ -171,6 +160,28 @@ class AuthService {
     } catch (_) {}
     try {
       await _auth.signOut();
+    } catch (_) {}
+  }
+
+  Future<void> _clearRemoteSessionSafely(String uid) async {
+    try {
+      final myDeviceId = await DeviceService().getOrCreateDeviceId();
+      final userDoc = await _firestore
+          .collection('users')
+          .doc(uid)
+          .get()
+          .timeout(const Duration(seconds: 2));
+      if (userDoc.exists) {
+        final activeDeviceId = userDoc.data()?['currentDeviceId'] as String?;
+        if (activeDeviceId == null || activeDeviceId == myDeviceId) {
+          await _firestore.collection('users').doc(uid).update({
+            'isAppOpen': false,
+            'lastActive': FieldValue.serverTimestamp(),
+            'currentDeviceId': FieldValue.delete(),
+            'fcmToken': FieldValue.delete(),
+          }).timeout(const Duration(seconds: 2));
+        }
+      }
     } catch (_) {}
   }
 
@@ -197,7 +208,7 @@ class AuthService {
 
     // 2. Firestore verilerini temizle
     try {
-      final userDoc = await _firestore.collection('users').doc(uid).get();
+      final userDoc = await _firestore.collection('users').doc(uid).get().timeout(const Duration(seconds: 4));
       if (userDoc.exists) {
         final data = userDoc.data();
         final coupleId = data?['coupleId'] as String?;
@@ -205,13 +216,13 @@ class AuthService {
 
         // Varsa davet kodunu sil
         if (inviteCode != null && inviteCode.isNotEmpty) {
-          await _firestore.collection('inviteCodes').doc(inviteCode).delete();
+          await _firestore.collection('inviteCodes').doc(inviteCode).delete().timeout(const Duration(seconds: 3));
         }
 
         // Varsa çift ilişkisini ayrıl/sil
         if (coupleId != null && coupleId.isNotEmpty) {
           try {
-            final coupleDoc = await _firestore.collection('couples').doc(coupleId).get();
+            final coupleDoc = await _firestore.collection('couples').doc(coupleId).get().timeout(const Duration(seconds: 4));
             if (coupleDoc.exists) {
               final users = List<String>.from(coupleDoc.data()?['users'] ?? []);
               final partnerUid = users.firstWhere((id) => id != uid, orElse: () => '');
@@ -220,17 +231,17 @@ class AuthService {
                 await _firestore.collection('users').doc(partnerUid).update({
                   'coupleId': FieldValue.delete(),
                   'partnerUid': FieldValue.delete(),
-                });
+                }).timeout(const Duration(seconds: 3));
               }
               // Couple dokümanını sil
-              await _firestore.collection('couples').doc(coupleId).delete();
+              await _firestore.collection('couples').doc(coupleId).delete().timeout(const Duration(seconds: 3));
             }
           } catch (_) {}
         }
       }
 
       // Kullanıcının kendi users dokümanını sil
-      await _firestore.collection('users').doc(uid).delete();
+      await _firestore.collection('users').doc(uid).delete().timeout(const Duration(seconds: 3));
     } catch (_) {}
 
     // 3. Cihaz takibini durdur & yerel verileri temizle

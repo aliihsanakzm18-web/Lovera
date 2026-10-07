@@ -35,9 +35,15 @@ class _ChatViewState extends ConsumerState<ChatView> {
     super.dispose();
   }
 
+  bool _isTyping = false;
+
   void _onTextChanged(String val, String? coupleId) {
     if (coupleId != null && coupleId.isNotEmpty) {
-      DatabaseService().setTypingStatus(coupleId, val.trim().isNotEmpty);
+      final isNowTyping = val.trim().isNotEmpty;
+      if (isNowTyping != _isTyping) {
+        _isTyping = isNowTyping;
+        DatabaseService().setTypingStatus(coupleId, isNowTyping);
+      }
     }
   }
 

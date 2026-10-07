@@ -73,10 +73,6 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
 
     if (confirm != true) return;
 
-    try {
-      await AuthService().signOut(clearRemoteSession: true);
-    } catch (_) {}
-
     ref.read(userNameProvider.notifier).state = '';
     ref.read(userAvatarProvider.notifier).state = null;
     ref.read(currentUserProvider.notifier).state = null;
@@ -85,6 +81,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     ref.read(coupleIdProvider.notifier).state = null;
     ref.read(startDateProvider.notifier).state = null;
     ref.read(milestonesProvider.notifier).state = [];
+
+    await AuthService().signOut(clearRemoteSession: true);
 
     if (context.mounted) {
       Navigator.of(context).pushAndRemoveUntil(

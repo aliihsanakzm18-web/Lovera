@@ -62,7 +62,10 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
         // State ve SharedPreferences güncelle
         ref.read(userAvatarProvider.notifier).state = base64Str;
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('avatar_path', base64Str);
+        final currentUid = DatabaseService().uid;
+        if (currentUid != null) {
+          await prefs.setString('avatar_$currentUid', base64Str);
+        }
 
         // Firestore'a kalıcı olarak kaydet (hem partner görsün hem yeniden girince korunsun)
         await DatabaseService().updateAvatar(base64Str);
@@ -422,6 +425,33 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
           ),
           const SizedBox(height: 36),
 
+          // Oturumu Kapat Alanı
+          Container(
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              borderRadius: BorderRadius.circular(AppTheme.radius),
+              border: Border.all(color: theme.dividerColor),
+              boxShadow: AppTheme.ambientShadow,
+            ),
+            child: ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.redAccent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.logout_rounded, color: Colors.redAccent, size: 22),
+              ),
+              title: const Text(
+                'Oturumu Kapat',
+                style: TextStyle(fontWeight: FontWeight.w600, color: Colors.redAccent),
+              ),
+              trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+              onTap: _confirmSignOut,
+            ),
+          ),
+          const SizedBox(height: 16),
+
           // Hesabı Sil Alanı
           Container(
             decoration: BoxDecoration(
@@ -455,6 +485,53 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
         ],
       ),
     );
+  }
+
+  // Oturumu Kapatma Akışı
+  Future<void> _confirmSignOut() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Oturumu Kapat'),
+        content: const Text('Hesabınızdan çıkış yapmak istediğinize emin misiniz?'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: LoveraColors.primary,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(100, 44),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Çıkış Yap'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    ref.read(userNameProvider.notifier).state = '';
+    ref.read(userAvatarProvider.notifier).state = null;
+    ref.read(currentUserProvider.notifier).state = null;
+    ref.read(partnerProvider.notifier).state = null;
+    ref.read(partnerUidProvider.notifier).state = null;
+    ref.read(coupleIdProvider.notifier).state = null;
+    ref.read(startDateProvider.notifier).state = null;
+    ref.read(milestonesProvider.notifier).state = [];
+
+    await AuthService().signOut(clearRemoteSession: true);
+
+    if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const OnboardingFlow()),
+        (route) => false,
+      );
+    }
   }
 
   // Hesabı Silme Akışı

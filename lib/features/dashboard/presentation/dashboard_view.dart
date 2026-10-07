@@ -165,8 +165,19 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
             DatabaseService().updateUserName(currentName);
           }
         }
-        if (data['avatarUrl'] != null) {
-          ref.read(userAvatarProvider.notifier).state = data['avatarUrl'];
+        if (data['avatarUrl'] != null && (data['avatarUrl'] as String).isNotEmpty) {
+          final av = data['avatarUrl'] as String;
+          ref.read(userAvatarProvider.notifier).state = av;
+          SharedPreferences.getInstance().then((p) => p.setString('avatar_${doc.id}', av));
+        } else {
+          SharedPreferences.getInstance().then((p) {
+            final cached = p.getString('avatar_${doc.id}');
+            if (cached != null && cached.isNotEmpty) {
+              ref.read(userAvatarProvider.notifier).state = cached;
+            } else {
+              ref.read(userAvatarProvider.notifier).state = null;
+            }
+          });
         }
         ref.read(currentUserProvider.notifier).state = AppUser(
           id: doc.id,

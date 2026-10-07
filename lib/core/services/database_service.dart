@@ -30,19 +30,23 @@ class DatabaseService {
   // Kullanıcı adı güncelle
   Future<void> updateUserName(String newName) async {
     if (uid == null) return;
-    await _db.collection('users').doc(uid).set({
-      'name': newName,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    try {
+      await _db.collection('users').doc(uid).set({
+        'name': newName,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true)).timeout(const Duration(seconds: 4));
+    } catch (_) {}
   }
 
   // Doğum tarihi güncelle ('YYYY-MM-DD')
   Future<void> updateBirthDate(String birthDateStr, {String? coupleId, String? userName}) async {
     if (uid == null) return;
-    await _db.collection('users').doc(uid).set({
-      'birthDate': birthDateStr,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    try {
+      await _db.collection('users').doc(uid).set({
+        'birthDate': birthDateStr,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true)).timeout(const Duration(seconds: 4));
+    } catch (_) {}
 
     // Eğer bağlı bir couple varsa, doğum gününü özel günlere otomatik senkronize et
     if (coupleId != null && coupleId.isNotEmpty) {
@@ -59,10 +63,12 @@ class DatabaseService {
   // Profil fotoğrafı güncelle
   Future<void> updateAvatar(String avatarPath) async {
     if (uid == null) return;
-    await _db.collection('users').doc(uid).set({
-      'avatarUrl': avatarPath,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    try {
+      await _db.collection('users').doc(uid).set({
+        'avatarUrl': avatarPath,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true)).timeout(const Duration(seconds: 4));
+    } catch (_) {}
   }
 
   // 2. DAVET KODU & EŞLEŞME YÖNETİMİ
@@ -525,7 +531,9 @@ class DatabaseService {
       data['city'] = city;
     }
     if (data.isNotEmpty) {
-      await _db.collection('users').doc(targetUid).set(data, SetOptions(merge: true));
+      try {
+        await _db.collection('users').doc(targetUid).set(data, SetOptions(merge: true)).timeout(const Duration(seconds: 4));
+      } catch (_) {}
     }
   }
 
@@ -538,10 +546,12 @@ class DatabaseService {
     }
     if (targetUid == null || targetUid.isEmpty) return;
 
-    await _db.collection('users').doc(targetUid).set({
-      'isAppOpen': isOpen,
-      'lastActive': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    try {
+      await _db.collection('users').doc(targetUid).set({
+        'isAppOpen': isOpen,
+        'lastActive': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true)).timeout(const Duration(seconds: 4));
+    } catch (_) {}
   }
 
   // 8. MESAJLAŞMA (CHAT) SİSTEMİ
@@ -565,34 +575,41 @@ class DatabaseService {
     String? replyToSender,
   }) async {
     if (uid == null) return;
-    await _db.collection('couples').doc(coupleId).collection('messages').add({
-      'senderId': uid,
-      'text': text,
-      'mediaBase64': mediaBase64,
-      'type': type,
-      'createdAt': FieldValue.serverTimestamp(),
-      'isRead': false,
-      'replyToText': replyToText,
-      'replyToSender': replyToSender,
-    });
+    try {
+      await _db.collection('couples').doc(coupleId).collection('messages').add({
+        'senderId': uid,
+        'text': text,
+        'mediaBase64': mediaBase64,
+        'type': type,
+        'createdAt': FieldValue.serverTimestamp(),
+        'isRead': false,
+        'replyToText': replyToText,
+        'replyToSender': replyToSender,
+      }).timeout(const Duration(seconds: 4));
+    } catch (_) {}
   }
 
   Future<void> deleteMessage(String coupleId, String messageId) async {
-    await _db
-        .collection('couples')
-        .doc(coupleId)
-        .collection('messages')
-        .doc(messageId)
-        .delete();
+    try {
+      await _db
+          .collection('couples')
+          .doc(coupleId)
+          .collection('messages')
+          .doc(messageId)
+          .delete()
+          .timeout(const Duration(seconds: 4));
+    } catch (_) {}
   }
 
   Future<void> setTypingStatus(String coupleId, bool isTyping) async {
     if (uid == null) return;
-    await _db.collection('couples').doc(coupleId).set({
-      'typingStatus': {
-        uid: isTyping,
-      }
-    }, SetOptions(merge: true));
+    try {
+      await _db.collection('couples').doc(coupleId).set({
+        'typingStatus': {
+          uid: isTyping,
+        }
+      }, SetOptions(merge: true)).timeout(const Duration(seconds: 3));
+    } catch (_) {}
   }
 
   Stream<bool> typingStatusStream(String coupleId, String partnerUid) {
