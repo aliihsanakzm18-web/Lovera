@@ -218,7 +218,7 @@ class _EmailSheetState extends State<_EmailSheet> {
     try {
       final auth = AuthService();
       if (_register) {
-        final cred = await auth.registerWithEmail(
+        await auth.registerWithEmail(
           email: _email.text.trim(),
           password: _password.text.trim(),
           username: _username.text.trim(),

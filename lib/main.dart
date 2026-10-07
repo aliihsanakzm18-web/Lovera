@@ -31,6 +31,8 @@ Future<void> main() async {
   final currentUid = FirebaseAuth.instance.currentUser?.uid;
   if (currentUid != null && currentUid.isNotEmpty) {
     await prefs.setString('saved_uid', currentUid);
+  } else {
+    await prefs.remove('saved_uid');
   }
 
   final onboarded = prefs.getBool('onboarded') ?? false;

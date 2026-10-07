@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/services/auth_service.dart';
 import '../../../core/state/app_state.dart';
@@ -55,12 +54,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     if (confirm != true) return;
 
     try {
-      await AuthService().signOut();
+      await AuthService().signOut(clearRemoteSession: true);
     } catch (_) {}
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('onboarded');
-    await prefs.remove('name');
 
     ref.read(userNameProvider.notifier).state = '';
     ref.read(partnerProvider.notifier).state = null;

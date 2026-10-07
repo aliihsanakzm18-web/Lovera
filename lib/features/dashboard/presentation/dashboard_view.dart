@@ -12,12 +12,14 @@ import '../../../core/services/database_service.dart';
 import '../../../core/services/device_service.dart';
 import '../../../core/services/notification_service.dart';
 import '../../../core/state/app_state.dart';
+import '../../../core/services/auth_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/presentation/pairing_view.dart';
 import '../../couple/presentation/couple_management_view.dart';
 import '../../map/presentation/live_map_view.dart';
 import '../../memories/presentation/memories_gallery_view.dart';
 import '../../milestones/presentation/milestones_view.dart';
+import '../../onboarding/presentation/onboarding_flow.dart';
 import '../../settings/presentation/settings_view.dart';
 
 class DashboardView extends ConsumerStatefulWidget {
@@ -36,6 +38,58 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
   int? _lastHeartTimestamp;
   int? _lastChargeTimestamp;
   AppLifecycleListener? _lifecycleListener;
+  bool _isKicked = false;
+
+  void _handleKickedByOtherDevice() async {
+    if (_isKicked) return;
+    _isKicked = true;
+
+    _userSub?.cancel();
+    _partnerSub?.cancel();
+    _coupleSub?.cancel();
+    _statusSyncTimer?.cancel();
+
+    // Başka bir cihaz oturum açtığı için o cihazın oturumunu bozmadan yerel çıkış yap
+    await AuthService().signOut(clearRemoteSession: false);
+
+    if (!mounted) return;
+
+    ref.read(userNameProvider.notifier).state = '';
+    ref.read(partnerProvider.notifier).state = null;
+    ref.read(currentUserProvider.notifier).state = null;
+    ref.read(startDateProvider.notifier).state = null;
+    ref.read(coupleIdProvider.notifier).state = null;
+    ref.read(milestonesProvider.notifier).state = [];
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.phone_android_rounded, color: Colors.orangeAccent),
+            SizedBox(width: 8),
+            Text('Oturum Kapatıldı'),
+          ],
+        ),
+        content: const Text(
+          'Hesabınıza başka bir cihazdan giriş yapıldı. Konum ve bildirim karışıklığını önlemek için bu cihazdaki oturumunuz kapatıldı.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const OnboardingFlow()),
+                (route) => false,
+              );
+            },
+            child: const Text('Tamam'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -83,10 +137,21 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // 1. Kendi profilimizi dinle
-      _userSub = DatabaseService().userStream()?.listen((doc) {
-        if (!doc.exists || doc.data() == null || !mounted) return;
-        SharedPreferences.getInstance().then((p) => p.setString('saved_uid', doc.id));
+      _userSub = DatabaseService().userStream()?.listen((doc) async {
+        if (!doc.exists || doc.data() == null || !mounted || _isKicked) return;
         final data = doc.data()!;
+
+        // Tek aktif cihaz oturumu kontrolü: Eğer hesaba başka bir cihaz bağlandıysa bu cihazı düşür!
+        final remoteDeviceId = data['currentDeviceId'] as String?;
+        if (remoteDeviceId != null && remoteDeviceId.isNotEmpty) {
+          final myDeviceId = await DeviceService().getOrCreateDeviceId();
+          if (remoteDeviceId != myDeviceId) {
+            _handleKickedByOtherDevice();
+            return;
+          }
+        }
+
+        SharedPreferences.getInstance().then((p) => p.setString('saved_uid', doc.id));
         if (data['name'] != null && data['name'].toString().isNotEmpty) {
           ref.read(userNameProvider.notifier).state = data['name'];
         } else {

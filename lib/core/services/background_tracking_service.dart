@@ -112,7 +112,33 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
       final prefs = await SharedPreferences.getInstance();
       await prefs.reload();
       final uid = prefs.getString('saved_uid') ?? FirebaseAuth.instance.currentUser?.uid;
-      if (uid == null || uid.isEmpty) return;
+      final myDeviceId = prefs.getString('device_session_id');
+
+      // Eğer kullanıcı oturum açmamışsa veya çıkış yapmışsa arka plan servisini derhal durdur!
+      if (uid == null || uid.isEmpty) {
+        debugPrint('[BG-SERVICE] Oturum kapalı, servis sonlandırılıyor.');
+        service.stopSelf();
+        return;
+      }
+
+      // Firestore'dan bu kullanıcının aktif cihazını sorgula
+      try {
+        final userDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+        if (!userDoc.exists) {
+          service.stopSelf();
+          return;
+        }
+
+        final activeDeviceId = userDoc.data()?['currentDeviceId'] as String?;
+        if (activeDeviceId != null && myDeviceId != null && activeDeviceId != myDeviceId) {
+          // Başka bir cihaz (örneğin kullanıcının yeni telefonu) bu hesaba girdi!
+          // Bu cihaz artık konum veya şarj güncellemesi yapamaz!
+          debugPrint('[BG-SERVICE] Başka cihaz ($activeDeviceId) aktif oldu. Bu cihaz ($myDeviceId) durduruluyor.');
+          await prefs.remove('saved_uid');
+          service.stopSelf();
+          return;
+        }
+      } catch (_) {}
 
       int? batteryLevel;
       try {
@@ -190,7 +216,6 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
   await performLiveSync();
 
   // 2. Anlık GPS Hareket Dinleyicisi (Snapchat / Zenly Tarzı):
-  // Cihaz 5 metre dahi hareket ettiğinde anında tetiklenir ve yeni konumu partnerin ekranına basar
   try {
     Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
@@ -199,6 +224,12 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
       ),
     ).listen(
       (newPosition) async {
+        final prefs = await SharedPreferences.getInstance();
+        final uid = prefs.getString('saved_uid');
+        if (uid == null || uid.isEmpty) {
+          service.stopSelf();
+          return;
+        }
         await performLiveSync(customPos: newPosition);
       },
       onError: (err) {
@@ -208,12 +239,25 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
   } catch (_) {}
 
   // 3. Şarj durumu her değiştiğinde anında güncelle (kablo takma/çıkarma)
-  battery.onBatteryStateChanged.listen((_) {
+  battery.onBatteryStateChanged.listen((_) async {
+    final prefs = await SharedPreferences.getInstance();
+    final uid = prefs.getString('saved_uid');
+    if (uid == null || uid.isEmpty) {
+      service.stopSelf();
+      return;
+    }
     performLiveSync();
   });
 
   // 4. Periyodik olarak 15 saniyede bir saati, şarjı ve konumu canlı tut
-  Timer.periodic(const Duration(seconds: 15), (_) async {
+  Timer.periodic(const Duration(seconds: 15), (timer) async {
+    final prefs = await SharedPreferences.getInstance();
+    final uid = prefs.getString('saved_uid');
+    if (uid == null || uid.isEmpty) {
+      timer.cancel();
+      service.stopSelf();
+      return;
+    }
     await performLiveSync();
   });
 }

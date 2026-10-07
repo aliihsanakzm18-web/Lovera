@@ -1,7 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'device_service.dart';
+import 'notification_service.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -10,6 +14,28 @@ class AuthService {
 
   User? get currentUser => _auth.currentUser;
   Stream<User?> get authStateChanges => _auth.authStateChanges();
+
+  /// Bu cihazın kimliğini ve FCM token'ını Firestore'a bağlayıp tek cihaz oturumunu aktif eder
+  Future<void> registerDeviceSession(String uid) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('saved_uid', uid);
+
+      final deviceId = await DeviceService().getOrCreateDeviceId();
+      final fcmToken = await NotificationService().getFcmToken();
+
+      final Map<String, dynamic> updateData = {
+        'currentDeviceId': deviceId,
+        'isAppOpen': true,
+        'lastActive': FieldValue.serverTimestamp(),
+      };
+      if (fcmToken != null && fcmToken.isNotEmpty) {
+        updateData['fcmToken'] = fcmToken;
+      }
+
+      await _firestore.collection('users').doc(uid).set(updateData, SetOptions(merge: true));
+    } catch (_) {}
+  }
 
   // E-posta & Şifre ile Kayıt Ol
   Future<UserCredential> registerWithEmail({
@@ -33,6 +59,8 @@ class AuthService {
         'email': email,
         'createdAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+
+      await registerDeviceSession(cred.user!.uid);
     }
 
     return cred;
@@ -48,8 +76,7 @@ class AuthService {
       password: password,
     );
     if (cred.user != null) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('saved_uid', cred.user!.uid);
+      await registerDeviceSession(cred.user!.uid);
     }
     return cred;
   }
@@ -76,6 +103,8 @@ class AuthService {
           'photoUrl': cred.user!.photoURL,
           'lastLogin': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
+
+        await registerDeviceSession(cred.user!.uid);
       }
 
       return cred;
@@ -84,9 +113,60 @@ class AuthService {
     }
   }
 
-  // Çıkış Yap
-  Future<void> signOut() async {
-    await _googleSignIn.signOut();
-    await _auth.signOut();
+  // Tam Kapsamlı ve Güvenli Çıkış Yap
+  Future<void> signOut({bool clearRemoteSession = true}) async {
+    try {
+      final uid = _auth.currentUser?.uid;
+      if (uid != null && clearRemoteSession) {
+        final myDeviceId = await DeviceService().getOrCreateDeviceId();
+        final userDoc = await _firestore.collection('users').doc(uid).get();
+        if (userDoc.exists) {
+          final activeDeviceId = userDoc.data()?['currentDeviceId'] as String?;
+          // Sadece bu cihaz hala Firestore'daki oturum sahibi ise uzaktaki kaydı sil
+          if (activeDeviceId == null || activeDeviceId == myDeviceId) {
+            await _firestore.collection('users').doc(uid).update({
+              'isAppOpen': false,
+              'lastActive': FieldValue.serverTimestamp(),
+              'currentDeviceId': FieldValue.delete(),
+              'fcmToken': FieldValue.delete(),
+            });
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 1. Cihaz takip ve sensörlerini tamamen durdur
+    DeviceService().stopTracking();
+
+    // 2. Android 7/24 Foreground Arka Plan Servisini durdur
+    try {
+      final bgService = FlutterBackgroundService();
+      if (await bgService.isRunning()) {
+        bgService.invoke('stopService');
+      }
+    } catch (_) {}
+
+    // 3. FCM Token iptali ve yerel bildirim temizliği
+    try {
+      await NotificationService().clearFcmTokenOnSignOut();
+    } catch (_) {}
+
+    // 4. SharedPreferences üzerindeki tüm kullanıcı kimlik verilerini temizle
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('saved_uid');
+      await prefs.remove('saved_city');
+      await prefs.remove('name');
+      await prefs.remove('onboarded');
+    } catch (_) {}
+
+    // 5. Firebase & Google Auth oturumlarını kapat
+    try {
+      await _googleSignIn.signOut();
+    } catch (_) {}
+    try {
+      await _auth.signOut();
+    } catch (_) {}
   }
 }
+

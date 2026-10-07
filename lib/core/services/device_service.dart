@@ -1,15 +1,29 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'database_service.dart';
 
 class DeviceService {
   static final DeviceService _instance = DeviceService._internal();
   factory DeviceService() => _instance;
   DeviceService._internal();
+
+  /// Bu cihaz kurulumuna özel benzersiz oturum / donanım kimliği
+  Future<String> getOrCreateDeviceId() async {
+    final prefs = await SharedPreferences.getInstance();
+    String? id = prefs.getString('device_session_id');
+    if (id == null || id.isEmpty) {
+      final rand = Random().nextInt(999999);
+      id = 'dev_${DateTime.now().millisecondsSinceEpoch}_$rand';
+      await prefs.setString('device_session_id', id);
+    }
+    return id;
+  }
 
   final Battery _battery = Battery();
   StreamSubscription<Position>? _positionStreamSub;
@@ -334,6 +348,14 @@ class DeviceService {
     _positionStreamSub?.cancel();
     _batteryStateSub?.cancel();
     _periodicSyncTimer?.cancel();
+    _positionStreamSub = null;
+    _batteryStateSub = null;
+    _periodicSyncTimer = null;
     _isBackgroundTrackingActive = false;
+    _lastSyncedBattery = null;
+    _lastSyncedLat = null;
+    _lastSyncedLng = null;
+    _lastSyncedCity = null;
+    _lastSyncedWeather = null;
   }
 }

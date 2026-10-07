@@ -19,57 +19,72 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     );
   } catch (_) {}
 
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.reload();
+  final uid = prefs.getString('saved_uid');
+  final myDeviceId = prefs.getString('device_session_id');
+
+  // 0. Oturum kapalıysa hiçbir işlem yapma ve bildirim basma
+  if (uid == null || uid.isEmpty) {
+    return;
+  }
+
+  // 0.1 Eğer hesap başka bir telefona taşındıysa bu cihazda sessiz kal
+  try {
+    final userDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+    final activeDeviceId = userDoc.data()?['currentDeviceId'] as String?;
+    if (activeDeviceId != null && myDeviceId != null && activeDeviceId != myDeviceId) {
+      debugPrint('[FCM-BG] Hesap başka cihazda aktif ($activeDeviceId != $myDeviceId), mesaj yoksayıldı.');
+      return;
+    }
+  } catch (_) {}
+
   // 1. Eğer partner kapalıyken bizden canlı şarj/konum talep ettiyse (ping_request):
   // Cihaz arka planda uyanır, pil ve GPS konumunu okuyup doğrudan Firestore'a günceller!
   if (message.data['type'] == 'ping_request') {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.reload();
-      final uid = prefs.getString('saved_uid') ?? FirebaseAuth.instance.currentUser?.uid;
-      if (uid != null && uid.isNotEmpty) {
-        int? batteryLevel;
-        try {
-          batteryLevel = await Battery().batteryLevel;
-        } catch (_) {}
+      int? batteryLevel;
+      try {
+        batteryLevel = await Battery().batteryLevel;
+      } catch (_) {}
 
-        Position? pos;
-        try {
-          pos = await Geolocator.getCurrentPosition(
-            desiredAccuracy: LocationAccuracy.high,
-            timeLimit: const Duration(seconds: 5),
-          );
-        } catch (_) {
-          try {
-            pos = await Geolocator.getLastKnownPosition();
-          } catch (_) {}
-        }
-
-        String? city;
-        String? weather;
-        if (pos != null) {
-          city = await DeviceService().getCityForLocation(pos.latitude, pos.longitude);
-          weather = await DeviceService().getWeatherForLocation(pos.latitude, pos.longitude);
-        }
-        city ??= prefs.getString('saved_city');
-        if (city != null && city.isNotEmpty) {
-          prefs.setString('saved_city', city);
-        }
-
-        final Map<String, dynamic> updateData = {};
-        if (batteryLevel != null) updateData['batteryLevel'] = batteryLevel;
-        if (pos != null) {
-          updateData['lat'] = pos.latitude;
-          updateData['lng'] = pos.longitude;
-        }
-        if (weather != null && weather.isNotEmpty) updateData['weather'] = weather;
-        if (city != null && city.isNotEmpty) updateData['city'] = city;
-
-        await FirebaseFirestore.instance.collection('users').doc(uid).set(
-          updateData,
-          SetOptions(merge: true),
+      Position? pos;
+      try {
+        pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 5),
         );
-        debugPrint('[BG-PING-SUCCESS] Kapalı cihaz uyandı: Pil $batteryLevel, Konum ($pos) kaydedildi!');
+      } catch (_) {
+        try {
+          pos = await Geolocator.getLastKnownPosition();
+        } catch (_) {}
       }
+
+      String? city;
+      String? weather;
+      if (pos != null) {
+        city = await DeviceService().getCityForLocation(pos.latitude, pos.longitude);
+        weather = await DeviceService().getWeatherForLocation(pos.latitude, pos.longitude);
+      }
+      city ??= prefs.getString('saved_city');
+      if (city != null && city.isNotEmpty) {
+        prefs.setString('saved_city', city);
+      }
+
+      final Map<String, dynamic> updateData = {};
+      if (batteryLevel != null) updateData['batteryLevel'] = batteryLevel;
+      if (pos != null) {
+        updateData['lat'] = pos.latitude;
+        updateData['lng'] = pos.longitude;
+      }
+      if (weather != null && weather.isNotEmpty) updateData['weather'] = weather;
+      if (city != null && city.isNotEmpty) updateData['city'] = city;
+
+      await FirebaseFirestore.instance.collection('users').doc(uid).set(
+        updateData,
+        SetOptions(merge: true),
+      );
+      debugPrint('[BG-PING-SUCCESS] Kapalı cihaz uyandı: Pil $batteryLevel, Konum ($pos) kaydedildi!');
     } catch (e) {
       debugPrint('[BG-PING-ERROR] $e');
     }
@@ -139,7 +154,20 @@ class NotificationService {
       });
 
       // Ön plandayken gelen gerçek kullanıcı bildirimlerini yerel bildirim olarak düşür
-      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+        final prefs = await SharedPreferences.getInstance();
+        final uid = prefs.getString('saved_uid') ?? FirebaseAuth.instance.currentUser?.uid;
+        final myDeviceId = prefs.getString('device_session_id');
+        if (uid == null || uid.isEmpty) return;
+
+        try {
+          final userDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+          final activeDeviceId = userDoc.data()?['currentDeviceId'] as String?;
+          if (activeDeviceId != null && myDeviceId != null && activeDeviceId != myDeviceId) {
+            return;
+          }
+        } catch (_) {}
+
         // Sessiz sistem mesajları (arka plan şarj/konum eşitleme) için ASLA bildirim gösterme!
         if (message.data['type'] == 'ping_request') {
           DeviceService().syncStatusToFirebase();
@@ -169,6 +197,27 @@ class NotificationService {
     _ready = true;
   }
 
+  /// Aktif FCM tokenını döner
+  Future<String?> getFcmToken() async {
+    try {
+      return await _fcm.getToken();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Oturum kapatıldığında FCM token'ını iptal eder ve tüm bildirimleri temizler
+  Future<void> clearFcmTokenOnSignOut() async {
+    try {
+      await _fcm.deleteToken();
+      await _localPlugin.cancelAll();
+      _ready = false;
+      debugPrint('[FCM] Token silindi ve yerel bildirimler temizlendi.');
+    } catch (e) {
+      debugPrint('[FCM] clearFcmTokenOnSignOut error: $e');
+    }
+  }
+
   /// Cihazın tokenını Firestore profilimize yazar
   Future<void> updateFcmTokenInFirestore() async {
     try {
@@ -187,11 +236,13 @@ class NotificationService {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       debugPrint('[FCM] Firestore kullanıcısına token kaydediliyor: $uid');
       if (uid != null) {
+        final deviceId = await DeviceService().getOrCreateDeviceId();
         await FirebaseFirestore.instance.collection('users').doc(uid).set({
           'fcmToken': token,
+          'currentDeviceId': deviceId,
           'fcmUpdatedAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
-        debugPrint('[FCM] Token Firestore’a başarıyla kaydedildi!');
+        debugPrint('[FCM] Token ve Cihaz ID ($deviceId) Firestore’a başarıyla kaydedildi!');
       }
     } catch (e) {
       debugPrint('[FCM] Token kaydetme hatası: $e');
