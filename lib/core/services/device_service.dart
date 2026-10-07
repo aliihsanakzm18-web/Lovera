@@ -189,15 +189,15 @@ class DeviceService {
 
       if (defaultTargetPlatform == TargetPlatform.android) {
         locationSettings = AndroidSettings(
-          accuracy: LocationAccuracy.high,
-          distanceFilter: 3, // 3 metre hareket ettiğinde anında tetikler (Snap gibi akıcı)
-          intervalDuration: const Duration(seconds: 4), // 4 sn periyot
+          accuracy: LocationAccuracy.bestForNavigation,
+          distanceFilter: 0, // 0 metre: Her mikroskobik GPS hareketinde anında tetikle
+          intervalDuration: const Duration(seconds: 1), // 1 sn periyot (Snap / Canlı Navigasyon modu)
         );
       } else if (defaultTargetPlatform == TargetPlatform.iOS) {
         locationSettings = AppleSettings(
-          accuracy: LocationAccuracy.high,
+          accuracy: LocationAccuracy.bestForNavigation,
           activityType: ActivityType.fitness,
-          distanceFilter: 3,
+          distanceFilter: 0,
           allowBackgroundLocationUpdates: true,
           pauseLocationUpdatesAutomatically: false,
           showBackgroundLocationIndicator: true,
@@ -205,7 +205,7 @@ class DeviceService {
       } else {
         locationSettings = const LocationSettings(
           accuracy: LocationAccuracy.high,
-          distanceFilter: 3,
+          distanceFilter: 0,
         );
       }
 
@@ -239,26 +239,24 @@ class DeviceService {
     }
   }
 
-  /// Yeni GPS konumu alındığında çalışır
+  /// Yeni GPS konumu alındığında anında (0 milisaniye gecikmeyle) Firebase'e aktarır
   Future<void> _onNewPositionReceived(Position pos) async {
     try {
-      final battery = await getBatteryLevel();
-      final city = await getCityForLocation(pos.latitude, pos.longitude);
-      final weather = await getWeatherForLocation(pos.latitude, pos.longitude);
-
+      // 1. Koordinatları HİÇBİR AĞ SORGUSU BEKLEMEDEN ANINDA Firestore'a bas (Canlı Snap Akışı)
       await DatabaseService().updateStatus(
         lat: pos.latitude,
         lng: pos.longitude,
-        batteryLevel: battery,
-        weather: weather,
-        city: city,
+        weather: _lastWeather,
+        city: _lastCity,
+        updateLastActive: true,
       );
 
       _lastSyncedLat = pos.latitude;
       _lastSyncedLng = pos.longitude;
-      if (battery != null) _lastSyncedBattery = battery;
-      if (city != null) _lastSyncedCity = city;
-      if (weather != null) _lastSyncedWeather = weather;
+
+      // 2. Arka planda sessizce şehir/hava durumunu güncelle (GPS hızını asla kesmez)
+      getCityForLocation(pos.latitude, pos.longitude);
+      getWeatherForLocation(pos.latitude, pos.longitude);
     } catch (_) {}
   }
 

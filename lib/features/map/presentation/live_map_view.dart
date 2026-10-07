@@ -84,12 +84,13 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
 
     final from = _animatedMyPos!;
     _targetMyPos = newTarget;
+    _myAnimController?.stop();
     _myAnimController?.dispose();
     _myAnimController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
+      duration: const Duration(milliseconds: 650),
     );
-    final anim = CurvedAnimation(parent: _myAnimController!, curve: Curves.easeOutCubic);
+    final anim = CurvedAnimation(parent: _myAnimController!, curve: Curves.linear);
     anim.addListener(() {
       if (!mounted) return;
       final t = anim.value;
@@ -116,12 +117,13 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
 
     final from = _animatedPartnerPos!;
     _targetPartnerPos = newTarget;
+    _partnerAnimController?.stop();
     _partnerAnimController?.dispose();
     _partnerAnimController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1400),
+      duration: const Duration(milliseconds: 650),
     );
-    final anim = CurvedAnimation(parent: _partnerAnimController!, curve: Curves.easeOutCubic);
+    final anim = CurvedAnimation(parent: _partnerAnimController!, curve: Curves.linear);
     anim.addListener(() {
       if (!mounted) return;
       final t = anim.value;
