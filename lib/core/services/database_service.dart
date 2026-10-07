@@ -543,4 +543,64 @@ class DatabaseService {
       'lastActive': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
+
+  // 8. MESAJLAŞMA (CHAT) SİSTEMİ
+  Stream<List<ChatMessage>> messagesStream(String coupleId) {
+    return _db
+        .collection('couples')
+        .doc(coupleId)
+        .collection('messages')
+        .orderBy('createdAt', descending: true)
+        .limit(100)
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) => ChatMessage.fromJson(doc.data(), doc.id)).toList());
+  }
+
+  Future<void> sendMessage({
+    required String coupleId,
+    required String text,
+    String? mediaBase64,
+    String type = 'text',
+    String? replyToText,
+    String? replyToSender,
+  }) async {
+    if (uid == null) return;
+    await _db.collection('couples').doc(coupleId).collection('messages').add({
+      'senderId': uid,
+      'text': text,
+      'mediaBase64': mediaBase64,
+      'type': type,
+      'createdAt': FieldValue.serverTimestamp(),
+      'isRead': false,
+      'replyToText': replyToText,
+      'replyToSender': replyToSender,
+    });
+  }
+
+  Future<void> deleteMessage(String coupleId, String messageId) async {
+    await _db
+        .collection('couples')
+        .doc(coupleId)
+        .collection('messages')
+        .doc(messageId)
+        .delete();
+  }
+
+  Future<void> setTypingStatus(String coupleId, bool isTyping) async {
+    if (uid == null) return;
+    await _db.collection('couples').doc(coupleId).set({
+      'typingStatus': {
+        uid: isTyping,
+      }
+    }, SetOptions(merge: true));
+  }
+
+  Stream<bool> typingStatusStream(String coupleId, String partnerUid) {
+    return _db.collection('couples').doc(coupleId).snapshots().map((snap) {
+      if (!snap.exists || snap.data() == null) return false;
+      final typingMap = snap.data()!['typingStatus'] as Map<String, dynamic>?;
+      if (typingMap == null) return false;
+      return typingMap[partnerUid] == true;
+    });
+  }
 }

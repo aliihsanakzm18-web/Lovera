@@ -184,3 +184,65 @@ class Memory {
         'created_at': createdAt.toIso8601String(),
       };
 }
+
+class ChatMessage {
+  final String id;
+  final String senderId;
+  final String text;
+  final String? mediaBase64;
+  final String? type; // 'text', 'image', 'heart'
+  final DateTime createdAt;
+  final bool isRead;
+  final String? replyToText;
+  final String? replyToSender;
+
+  const ChatMessage({
+    required this.id,
+    required this.senderId,
+    required this.text,
+    this.mediaBase64,
+    this.type = 'text',
+    required this.createdAt,
+    this.isRead = false,
+    this.replyToText,
+    this.replyToSender,
+  });
+
+  factory ChatMessage.fromJson(Map<String, dynamic> json, String docId) {
+    DateTime time;
+    if (json['createdAt'] != null) {
+      if (json['createdAt'] is DateTime) {
+        time = json['createdAt'] as DateTime;
+      } else if (json['createdAt'] is String) {
+        time = DateTime.tryParse(json['createdAt'] as String) ?? DateTime.now();
+      } else {
+        time = (json['createdAt'] as dynamic).toDate?.call() ?? DateTime.now();
+      }
+    } else {
+      time = DateTime.now();
+    }
+
+    return ChatMessage(
+      id: docId,
+      senderId: json['senderId'] as String? ?? '',
+      text: json['text'] as String? ?? '',
+      mediaBase64: json['mediaBase64'] as String?,
+      type: json['type'] as String? ?? 'text',
+      createdAt: time,
+      isRead: json['isRead'] as bool? ?? false,
+      replyToText: json['replyToText'] as String?,
+      replyToSender: json['replyToSender'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'senderId': senderId,
+        'text': text,
+        'mediaBase64': mediaBase64,
+        'type': type,
+        'createdAt': createdAt.toIso8601String(),
+        'isRead': isRead,
+        'replyToText': replyToText,
+        'replyToSender': replyToSender,
+      };
+}

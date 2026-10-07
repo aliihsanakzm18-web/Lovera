@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../auth/presentation/login_page.dart';
 import '../../auth/presentation/pairing_view.dart';
-import '../../dashboard/presentation/dashboard_view.dart';
+import '../../dashboard/presentation/main_navigation_shell.dart';
 import 'permissions_page.dart';
 import 'welcome_page.dart';
 
@@ -128,7 +128,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 500),
-        pageBuilder: (_, __, ___) => const DashboardView(),
+        pageBuilder: (_, __, ___) => const MainNavigationShell(),
         transitionsBuilder: (_, anim, __, child) => SlideTransition(
           position: Tween(begin: const Offset(1, 0), end: Offset.zero)
               .chain(CurveTween(curve: Curves.easeInOutCubic))

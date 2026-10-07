@@ -16,7 +16,8 @@ import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
 
 class LiveMapView extends ConsumerStatefulWidget {
-  const LiveMapView({super.key});
+  const LiveMapView({super.key, this.onBackToHome});
+  final VoidCallback? onBackToHome;
 
   @override
   ConsumerState<LiveMapView> createState() => _LiveMapViewState();
@@ -425,7 +426,13 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                     iconSize: 18,
                     tooltip: 'Geri',
                     isDark: isDark,
-                    onTap: () => Navigator.of(context).maybePop(),
+                    onTap: () {
+                      if (widget.onBackToHome != null) {
+                        widget.onBackToHome!();
+                      } else {
+                        Navigator.of(context).maybePop();
+                      }
+                    },
                   ),
                   if (myLatLng != null && partnerLatLng != null)
                     _GlassButton(

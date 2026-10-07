@@ -9,7 +9,7 @@ import 'core/services/background_tracking_service.dart';
 import 'core/services/notification_service.dart';
 import 'core/state/app_state.dart';
 import 'core/theme/app_theme.dart';
-import 'features/dashboard/presentation/dashboard_view.dart';
+import 'features/dashboard/presentation/main_navigation_shell.dart';
 import 'features/onboarding/presentation/onboarding_flow.dart';
 
 import 'firebase_options.dart';
@@ -65,7 +65,7 @@ class LoveraApp extends ConsumerWidget {
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: themeMode,
-      home: onboarded ? const DashboardView() : const OnboardingFlow(),
+      home: onboarded ? const MainNavigationShell() : const OnboardingFlow(),
     );
   }
 }

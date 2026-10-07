@@ -25,7 +25,9 @@ import '../../onboarding/presentation/onboarding_flow.dart';
 import '../../settings/presentation/settings_view.dart';
 
 class DashboardView extends ConsumerStatefulWidget {
-  const DashboardView({super.key});
+  const DashboardView({super.key, this.onOpenMap, this.onOpenChat});
+  final VoidCallback? onOpenMap;
+  final VoidCallback? onOpenChat;
 
   @override
   ConsumerState<DashboardView> createState() => _DashboardViewState();
@@ -898,7 +900,13 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                         title: 'Canlı Harita',
                         subtitle: partner == null ? 'Eşleşme bekleniyor' : 'Konumu gör',
                         color: LoveraColors.accentViolet,
-                        onTap: () => _push(const LiveMapView()),
+                        onTap: () {
+                          if (widget.onOpenMap != null) {
+                            widget.onOpenMap!();
+                          } else {
+                            _push(const LiveMapView());
+                          }
+                        },
                       ),
                     ),
                     const SizedBox(width: 12),
