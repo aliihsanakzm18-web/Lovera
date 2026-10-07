@@ -70,7 +70,11 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     String? birthDate;
 
     try {
-      final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get()
+          .timeout(const Duration(seconds: 4));
       if (doc.exists) {
         final data = doc.data()!;
         name = data['name'] as String?;
@@ -78,6 +82,9 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         birthDate = data['birthDate'] as String?;
       }
     } catch (_) {}
+
+    final prefs = await SharedPreferences.getInstance();
+    name ??= prefs.getString('name');
 
     final bool needsWelcome = isNewUser || name == null || name.trim().isEmpty || birthDate == null;
     final bool needsPairing = coupleId == null || coupleId.isEmpty;

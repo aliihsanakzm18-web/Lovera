@@ -249,8 +249,8 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
     performLiveSync();
   });
 
-  // 4. Periyodik olarak 15 saniyede bir saati, şarjı ve konumu canlı tut
-  Timer.periodic(const Duration(seconds: 15), (timer) async {
+  // 4. Periyodik olarak 60 saniyede bir saati, şarjı ve konumu canlı tut
+  Timer.periodic(const Duration(seconds: 60), (timer) async {
     final prefs = await SharedPreferences.getInstance();
     final uid = prefs.getString('saved_uid');
     if (uid == null || uid.isEmpty) {

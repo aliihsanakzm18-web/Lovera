@@ -33,7 +33,11 @@ class AuthService {
         updateData['fcmToken'] = fcmToken;
       }
 
-      await _firestore.collection('users').doc(uid).set(updateData, SetOptions(merge: true));
+      await _firestore
+          .collection('users')
+          .doc(uid)
+          .set(updateData, SetOptions(merge: true))
+          .timeout(const Duration(seconds: 4));
     } catch (_) {}
   }
 
