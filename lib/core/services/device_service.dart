@@ -190,14 +190,14 @@ class DeviceService {
       if (defaultTargetPlatform == TargetPlatform.android) {
         locationSettings = AndroidSettings(
           accuracy: LocationAccuracy.high,
-          distanceFilter: 15, // 15 metre hareket ettiğinde anında tetikler
-          intervalDuration: const Duration(seconds: 15), // 15 sn periyot
+          distanceFilter: 3, // 3 metre hareket ettiğinde anında tetikler (Snap gibi akıcı)
+          intervalDuration: const Duration(seconds: 4), // 4 sn periyot
         );
       } else if (defaultTargetPlatform == TargetPlatform.iOS) {
         locationSettings = AppleSettings(
           accuracy: LocationAccuracy.high,
           activityType: ActivityType.fitness,
-          distanceFilter: 15,
+          distanceFilter: 3,
           allowBackgroundLocationUpdates: true,
           pauseLocationUpdatesAutomatically: false,
           showBackgroundLocationIndicator: true,
@@ -205,7 +205,7 @@ class DeviceService {
       } else {
         locationSettings = const LocationSettings(
           accuracy: LocationAccuracy.high,
-          distanceFilter: 15,
+          distanceFilter: 3,
         );
       }
 

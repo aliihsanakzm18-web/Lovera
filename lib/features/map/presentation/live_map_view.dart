@@ -31,6 +31,14 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
   LatLng? _lastRouteEnd;
   Timer? _mapSyncTimer;
 
+  // 60 FPS Pürüzsüz Snap Konum İnterpolasyonu (Kayarak İlerleme)
+  AnimationController? _myAnimController;
+  AnimationController? _partnerAnimController;
+  LatLng? _animatedMyPos;
+  LatLng? _animatedPartnerPos;
+  LatLng? _targetMyPos;
+  LatLng? _targetPartnerPos;
+
   @override
   void initState() {
     super.initState();
@@ -63,11 +71,77 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     }
   }
 
+  void _smoothAnimateMyPos(LatLng newTarget) {
+    if (_animatedMyPos == null) {
+      _animatedMyPos = newTarget;
+      _targetMyPos = newTarget;
+      return;
+    }
+    if (_targetMyPos?.latitude == newTarget.latitude &&
+        _targetMyPos?.longitude == newTarget.longitude) {
+      return;
+    }
+
+    final from = _animatedMyPos!;
+    _targetMyPos = newTarget;
+    _myAnimController?.dispose();
+    _myAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+    final anim = CurvedAnimation(parent: _myAnimController!, curve: Curves.easeOutCubic);
+    anim.addListener(() {
+      if (!mounted) return;
+      final t = anim.value;
+      setState(() {
+        _animatedMyPos = LatLng(
+          from.latitude + (newTarget.latitude - from.latitude) * t,
+          from.longitude + (newTarget.longitude - from.longitude) * t,
+        );
+      });
+    });
+    _myAnimController!.forward();
+  }
+
+  void _smoothAnimatePartnerPos(LatLng newTarget) {
+    if (_animatedPartnerPos == null) {
+      _animatedPartnerPos = newTarget;
+      _targetPartnerPos = newTarget;
+      return;
+    }
+    if (_targetPartnerPos?.latitude == newTarget.latitude &&
+        _targetPartnerPos?.longitude == newTarget.longitude) {
+      return;
+    }
+
+    final from = _animatedPartnerPos!;
+    _targetPartnerPos = newTarget;
+    _partnerAnimController?.dispose();
+    _partnerAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    );
+    final anim = CurvedAnimation(parent: _partnerAnimController!, curve: Curves.easeOutCubic);
+    anim.addListener(() {
+      if (!mounted) return;
+      final t = anim.value;
+      setState(() {
+        _animatedPartnerPos = LatLng(
+          from.latitude + (newTarget.latitude - from.latitude) * t,
+          from.longitude + (newTarget.longitude - from.longitude) * t,
+        );
+      });
+    });
+    _partnerAnimController!.forward();
+  }
+
   @override
   void dispose() {
     _mapSyncTimer?.cancel();
     _flightController?.stop();
     _flightController?.dispose();
+    _myAnimController?.dispose();
+    _partnerAnimController?.dispose();
     _mapController.dispose();
     super.dispose();
   }
@@ -189,6 +263,17 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
         ? LatLng(partner!.lat!, partner.lng!)
         : null;
 
+    // Konum güncellendiğinde kademe kademe atlamak yerine 60 FPS süzülerek kayması için tetikle
+    if (myLatLng != null) {
+      _smoothAnimateMyPos(myLatLng);
+    }
+    if (partnerLatLng != null) {
+      _smoothAnimatePartnerPos(partnerLatLng);
+    }
+
+    final effectiveMyPos = _animatedMyPos ?? myLatLng;
+    final effectivePartnerPos = _animatedPartnerPos ?? partnerLatLng;
+
     // Yol mesafesi sorgusunu UI döngüsünden bağımsız post-frame olarak tetikle
     if (myLatLng != null && partnerLatLng != null) {
       if (_lastRouteStart?.latitude != myLatLng.latitude ||
@@ -203,20 +288,20 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
       }
     }
 
-    final double? straightDist = (myLatLng != null && partnerLatLng != null)
+    final double? straightDist = (effectiveMyPos != null && effectivePartnerPos != null)
         ? Geolocator.distanceBetween(
-            myLatLng.latitude,
-            myLatLng.longitude,
-            partnerLatLng.latitude,
-            partnerLatLng.longitude,
+            effectiveMyPos.latitude,
+            effectiveMyPos.longitude,
+            effectivePartnerPos.latitude,
+            effectivePartnerPos.longitude,
           )
         : null;
 
     final double? displayDistance = _roadDistanceMeters ??
         (straightDist != null ? straightDist * 1.25 : null);
 
-    final initialCenter = myLatLng ?? partnerLatLng ?? const LatLng(39.0, 35.0);
-    final initialZoom = (myLatLng != null || partnerLatLng != null) ? 14.5 : 6.0;
+    final initialCenter = effectiveMyPos ?? effectivePartnerPos ?? const LatLng(39.0, 35.0);
+    final initialZoom = (effectiveMyPos != null || effectivePartnerPos != null) ? 14.5 : 6.0;
 
     final mapBgColor = isDark ? const Color(0xFF141620) : const Color(0xFFE8EEF3);
 
@@ -249,12 +334,12 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                 tileBuilder: isDark ? _snapMapDarkTileBuilder : null,
               ),
 
-              // Snap Map Canlı Avatar Pinleri
+              // Snap Map Canlı Avatar Pinleri (60 FPS Pürüzsüz Kayan Markerlar)
               MarkerLayer(
                 markers: [
-                  if (myLatLng != null)
+                  if (effectiveMyPos != null)
                     Marker(
-                      point: myLatLng,
+                      point: effectiveMyPos,
                       width: 140,
                       height: 115,
                       alignment: Alignment.topCenter,
@@ -267,12 +352,12 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                         isMe: true,
                         isOnline: true,
                         isDark: isDark,
-                        onTap: () => _animatedFlightMove(myLatLng, 16.0),
+                        onTap: () => _animatedFlightMove(effectiveMyPos, 16.0),
                       ),
                     ),
-                  if (partnerLatLng != null)
+                  if (effectivePartnerPos != null)
                     Marker(
-                      point: partnerLatLng,
+                      point: effectivePartnerPos,
                       width: 140,
                       height: 115,
                       alignment: Alignment.topCenter,
@@ -295,7 +380,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                             partner?.lastActive != null &&
                             DateTime.now().difference(partner!.lastActive!).inMinutes < 2),
                         isDark: isDark,
-                        onTap: () => _animatedFlightMove(partnerLatLng, 16.0),
+                        onTap: () => _animatedFlightMove(effectivePartnerPos, 16.0),
                       ),
                     ),
                 ],
