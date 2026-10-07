@@ -160,9 +160,7 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
       final isNight = now.hour >= 20 || now.hour < 6;
       weather ??= (isNight ? '$period · Yıldızlı 20°' : '$period · Açık 22°');
 
-      final Map<String, dynamic> updateData = {
-        'lastActive': FieldValue.serverTimestamp(),
-      };
+      final Map<String, dynamic> updateData = {};
       if (batteryLevel != null) {
         updateData['batteryLevel'] = batteryLevel;
       }

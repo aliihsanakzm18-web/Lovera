@@ -9,6 +9,7 @@ class AppUser {
   final String? city;
   final DateTime? lastActive;
   final String? coupleId;
+  final bool? isAppOpen;
 
   const AppUser({
     required this.id,
@@ -21,6 +22,7 @@ class AppUser {
     this.lng,
     this.lastActive,
     this.coupleId,
+    this.isAppOpen,
   });
 
   factory AppUser.fromJson(Map<String, dynamic> j) => AppUser(
@@ -34,6 +36,7 @@ class AppUser {
         lng: (j['lng'] as num?)?.toDouble(),
         lastActive: j['last_active'] == null ? null : DateTime.parse(j['last_active']),
         coupleId: j['couple_id'] as String?,
+        isAppOpen: j['is_app_open'] as bool?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -47,6 +50,7 @@ class AppUser {
         'lng': lng,
         'last_active': lastActive?.toIso8601String(),
         'couple_id': coupleId,
+        'is_app_open': isAppOpen,
       };
 }
 

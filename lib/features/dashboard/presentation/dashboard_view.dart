@@ -48,6 +48,9 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     DeviceService().startContinuousLocationTracking();
     NotificationService().updateFcmTokenInFirestore();
 
+    // İlk açılışta uygulamada olduğumuzu bildir
+    DatabaseService().setAppPresence(true);
+
     // Periyodik olarak partnerin durumunu talep et ve kendi durumumuzu tazele
     _statusSyncTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       final pUid = ref.read(partnerUidProvider);
@@ -57,12 +60,24 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
       DeviceService().syncStatusToFirebase();
     });
 
-    // Uygulama alta atıldığında veya kapatılmak üzereyken son durumu (özellikle şarjı) hemen Firestore'a bas
+    // Uygulama alta atıldığında veya kapatılmak üzereyken durumu güncelle
     _lifecycleListener = AppLifecycleListener(
-      onPause: () => DeviceService().syncStatusToFirebase(),
-      onInactive: () => DeviceService().syncStatusToFirebase(),
-      onHide: () => DeviceService().syncStatusToFirebase(),
-      onResume: () => DeviceService().syncStatusToFirebase(),
+      onPause: () {
+        DatabaseService().setAppPresence(false);
+        DeviceService().syncStatusToFirebase();
+      },
+      onInactive: () {
+        DatabaseService().setAppPresence(false);
+        DeviceService().syncStatusToFirebase();
+      },
+      onHide: () {
+        DatabaseService().setAppPresence(false);
+        DeviceService().syncStatusToFirebase();
+      },
+      onResume: () {
+        DatabaseService().setAppPresence(true);
+        DeviceService().syncStatusToFirebase();
+      },
     );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -96,6 +111,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
               ? (data['lastActive'] as dynamic).toDate?.call() ?? DateTime.now()
               : DateTime.now(),
           coupleId: data['coupleId'],
+          isAppOpen: data['isAppOpen'] as bool?,
         );
         if (data['coupleId'] != null) {
           final cId = data['coupleId'] as String;
@@ -682,6 +698,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
             ? (data['lastActive'] as dynamic).toDate?.call() ?? DateTime.now()
             : DateTime.now(),
         coupleId: data['coupleId'],
+        isAppOpen: data['isAppOpen'] as bool?,
       );
       ref.read(partnerProvider.notifier).state = partnerUser;
       
@@ -1101,7 +1118,10 @@ class _PartnerCard extends StatelessWidget {
   String _lastSeen(AppUser p) {
     if (p.lastActive == null) return '-';
     final d = DateTime.now().difference(p.lastActive!);
-    if (d.inMinutes < 1) return 'Şimdi aktif';
+    if (p.isAppOpen == true && d.inMinutes < 2) {
+      return 'Şimdi aktif';
+    }
+    if (d.inMinutes < 1) return '1 dk önce aktifti';
     if (d.inMinutes < 60) return '${d.inMinutes} dk önce aktifti';
     if (d.inHours < 24) return '${d.inHours} sa önce aktifti';
     return '${d.inDays} gün önce aktifti';

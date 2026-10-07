@@ -422,6 +422,7 @@ class DatabaseService {
     int? batteryLevel,
     String? weather,
     String? city,
+    bool updateLastActive = false,
   }) async {
     String? targetUid = uid;
     if (targetUid == null) {
@@ -433,9 +434,10 @@ class DatabaseService {
     }
     if (targetUid == null || targetUid.isEmpty) return;
 
-    final Map<String, dynamic> data = {
-      'lastActive': FieldValue.serverTimestamp(),
-    };
+    final Map<String, dynamic> data = {};
+    if (updateLastActive) {
+      data['lastActive'] = FieldValue.serverTimestamp();
+    }
     if (lat != null && lng != null) {
       data['lat'] = lat;
       data['lng'] = lng;
@@ -449,6 +451,23 @@ class DatabaseService {
     if (city != null && city.isNotEmpty) {
       data['city'] = city;
     }
-    await _db.collection('users').doc(targetUid).set(data, SetOptions(merge: true));
+    if (data.isNotEmpty) {
+      await _db.collection('users').doc(targetUid).set(data, SetOptions(merge: true));
+    }
+  }
+
+  // 7. UYGULAMA AÇIK / KAPALI AKTİFLİK DURUMU (PRESENCE)
+  Future<void> setAppPresence(bool isOpen) async {
+    String? targetUid = uid;
+    if (targetUid == null) {
+      final prefs = await SharedPreferences.getInstance();
+      targetUid = prefs.getString('saved_uid');
+    }
+    if (targetUid == null || targetUid.isEmpty) return;
+
+    await _db.collection('users').doc(targetUid).set({
+      'isAppOpen': isOpen,
+      'lastActive': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 }

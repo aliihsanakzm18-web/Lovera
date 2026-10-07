@@ -52,9 +52,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         }
         city ??= prefs.getString('saved_city') ?? 'İstanbul';
 
-        final Map<String, dynamic> updateData = {
-          'lastActive': FieldValue.serverTimestamp(),
-        };
+        final Map<String, dynamic> updateData = {};
         if (batteryLevel != null) updateData['batteryLevel'] = batteryLevel;
         if (pos != null) {
           updateData['lat'] = pos.latitude;
