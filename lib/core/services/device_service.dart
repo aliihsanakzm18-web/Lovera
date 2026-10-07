@@ -17,6 +17,22 @@ class DeviceService {
   Timer? _periodicSyncTimer;
   bool _isBackgroundTrackingActive = false;
 
+  // Bellek İçi Akıllı Önbellek (Flicker & Yarış Durumlarını Önler)
+  String? _lastCity;
+  double? _lastCityLat;
+  double? _lastCityLng;
+
+  String? _lastWeather;
+  DateTime? _lastWeatherTime;
+  double? _lastWeatherLat;
+  double? _lastWeatherLng;
+
+  int? _lastSyncedBattery;
+  double? _lastSyncedLat;
+  double? _lastSyncedLng;
+  String? _lastSyncedCity;
+  String? _lastSyncedWeather;
+
   /// Cihazın gerçek pil seviyesini alır (0-100)
   Future<int?> getBatteryLevel() async {
     try {
@@ -29,6 +45,14 @@ class DeviceService {
 
   /// Koordinatlardan şehir / ilçe adını bulur
   Future<String?> getCityForLocation(double lat, double lng) async {
+    // Eğer önceki konumla mesafe 2 km'den azsa ve kayıtlı şehir varsa önbellekten dön
+    if (_lastCity != null && _lastCityLat != null && _lastCityLng != null) {
+      final dist = Geolocator.distanceBetween(_lastCityLat!, _lastCityLng!, lat, lng);
+      if (dist < 2000) {
+        return _lastCity;
+      }
+    }
+
     // 1. OpenStreetMap Nominatim
     try {
       final osmUrl = Uri.parse(
@@ -43,13 +67,17 @@ class DeviceService {
         if (addr != null) {
           final city = addr['province'] ?? addr['city'] ?? addr['state'] ?? addr['town'];
           if (city != null && city.toString().trim().isNotEmpty) {
-            return city.toString().replaceAll(' İli', '').trim();
+            final cleanedCity = city.toString().replaceAll(' İli', '').trim();
+            _lastCity = cleanedCity;
+            _lastCityLat = lat;
+            _lastCityLng = lng;
+            return cleanedCity;
           }
         }
       }
     } catch (_) {}
 
-    // 2. Fallback
+    // 2. Fallback (BigDataCloud)
     try {
       final url = Uri.parse(
         'https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=$lat&longitude=$lng&localityLanguage=tr',
@@ -59,11 +87,17 @@ class DeviceService {
         final data = jsonDecode(res.body);
         final city = data['city'] ?? data['principalSubdivision'] ?? data['locality'];
         if (city != null && city.toString().trim().isNotEmpty) {
-          return city.toString().trim();
+          final cleanedCity = city.toString().trim();
+          _lastCity = cleanedCity;
+          _lastCityLat = lat;
+          _lastCityLng = lng;
+          return cleanedCity;
         }
       }
     } catch (_) {}
-    return null;
+
+    // Servis geçici olarak cevap veremediyse eski şehri koru
+    return _lastCity;
   }
 
   /// Günün vaktini belirler: Sabah, Öğlen, İkindi, Akşam, Gece
@@ -76,8 +110,21 @@ class DeviceService {
     return 'Gece';
   }
 
-  /// Cihazın konumuna göre anlık hava durumunu çeker (Open-Meteo ücretsiz API)
+  /// Cihazın konumuna göre anlık hava durumunu çeker (Open-Meteo ücretsiz API - 20 dk önbellekli)
   Future<String?> getWeatherForLocation(double lat, double lng) async {
+    final now = DateTime.now();
+    // 20 dakika içinde ve 5 km mesafe değişmemişse API'yi yormadan önbellekten ver
+    if (_lastWeather != null &&
+        _lastWeatherTime != null &&
+        now.difference(_lastWeatherTime!) < const Duration(minutes: 20) &&
+        _lastWeatherLat != null &&
+        _lastWeatherLng != null) {
+      final dist = Geolocator.distanceBetween(_lastWeatherLat!, _lastWeatherLng!, lat, lng);
+      if (dist < 5000) {
+        return _lastWeather;
+      }
+    }
+
     try {
       final url = Uri.parse(
         'https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lng&current=temperature_2m,weather_code,precipitation,is_day&timezone=auto',
@@ -91,19 +138,24 @@ class DeviceService {
           final temp = (tempVal as num).round();
           final code = (current['weather_code'] ?? current['weathercode']) as int? ?? 0;
           final precip = (current['precipitation'] as num?)?.toDouble() ?? 0.0;
-          final now = DateTime.now();
           final isNightByHour = now.hour >= 20 || now.hour < 6;
           final isDayApi = (current['is_day'] as int? ?? 1) == 1;
           final isDay = isNightByHour ? false : isDayApi;
           final period = getTimeOfDayPeriod(now);
           final desc = _mapWeatherCode(code, precip: precip, isDay: isDay);
-          return '$period · $desc $temp°';
+          final weatherStr = '$period · $desc $temp°';
+
+          _lastWeather = weatherStr;
+          _lastWeatherTime = now;
+          _lastWeatherLat = lat;
+          _lastWeatherLng = lng;
+          return weatherStr;
         }
       }
     } catch (_) {
-      // Şebeke yoksa veya gecikirse varsayılan
+      // Şebeke yoksa veya API sınırladıysa eski hava durumunu koru
     }
-    return null;
+    return _lastWeather;
   }
 
   String _mapWeatherCode(int code, {required double precip, required bool isDay}) {
@@ -191,8 +243,8 @@ class DeviceService {
   Future<void> _onNewPositionReceived(Position pos) async {
     try {
       final battery = await getBatteryLevel();
-      final weather = await getWeatherForLocation(pos.latitude, pos.longitude);
       final city = await getCityForLocation(pos.latitude, pos.longitude);
+      final weather = await getWeatherForLocation(pos.latitude, pos.longitude);
 
       await DatabaseService().updateStatus(
         lat: pos.latitude,
@@ -201,6 +253,12 @@ class DeviceService {
         weather: weather,
         city: city,
       );
+
+      _lastSyncedLat = pos.latitude;
+      _lastSyncedLng = pos.longitude;
+      if (battery != null) _lastSyncedBattery = battery;
+      if (city != null) _lastSyncedCity = city;
+      if (weather != null) _lastSyncedWeather = weather;
     } catch (_) {}
   }
 
@@ -235,19 +293,25 @@ class DeviceService {
           if (pos != null) {
             lat = pos.latitude;
             lng = pos.longitude;
-            weather = await getWeatherForLocation(lat, lng);
             city = await getCityForLocation(lat, lng);
+            weather = await getWeatherForLocation(lat, lng);
           }
         }
       } catch (_) {}
 
-      // Fallback hava durumu, şehir ve vakit
-      final now = DateTime.now();
-      final period = getTimeOfDayPeriod(now);
-      final isNight = now.hour >= 20 || now.hour < 6 || period == 'Gece' || period == 'Akşam';
-      weather ??= (isNight ? '$period · Yıldızlı 20°' : '$period · Açık 22°');
-      if (city == null || city.isEmpty) {
-        city = 'İstanbul';
+      // Eğer konum alınamadıysa önbellekteki son bilinen değerleri koru, ASLA İstanbul veya sabit değer uydurma!
+      city ??= _lastCity;
+      weather ??= _lastWeather;
+
+      // Değerlerde hiçbir değişiklik yoksa gereksiz Firestore yazımı yapma (Flicker & Yarış önleme)
+      final bool hasBatteryChange = battery != null && battery != _lastSyncedBattery;
+      final bool hasLocationChange = (lat != null && lng != null) &&
+          (lat != _lastSyncedLat || lng != _lastSyncedLng);
+      final bool hasCityChange = city != null && city != _lastSyncedCity;
+      final bool hasWeatherChange = weather != null && weather != _lastSyncedWeather;
+
+      if (!hasBatteryChange && !hasLocationChange && !hasCityChange && !hasWeatherChange && _lastSyncedBattery != null) {
+        return;
       }
 
       await DatabaseService().updateStatus(
@@ -257,6 +321,14 @@ class DeviceService {
         weather: weather,
         city: city,
       );
+
+      if (battery != null) _lastSyncedBattery = battery;
+      if (lat != null && lng != null) {
+        _lastSyncedLat = lat;
+        _lastSyncedLng = lng;
+      }
+      if (city != null) _lastSyncedCity = city;
+      if (weather != null) _lastSyncedWeather = weather;
     } catch (_) {}
   }
 

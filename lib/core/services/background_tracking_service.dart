@@ -149,16 +149,9 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
       }
 
       city ??= prefs.getString('saved_city');
-      if (city == null || city.isEmpty) {
-        city = 'İstanbul';
-      } else {
+      if (city != null && city.isNotEmpty) {
         prefs.setString('saved_city', city);
       }
-
-      final now = DateTime.now();
-      final period = DeviceService().getTimeOfDayPeriod(now);
-      final isNight = now.hour >= 20 || now.hour < 6;
-      weather ??= (isNight ? '$period · Yıldızlı 20°' : '$period · Açık 22°');
 
       final Map<String, dynamic> updateData = {};
       if (batteryLevel != null) {
@@ -168,10 +161,10 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
         updateData['lat'] = lat;
         updateData['lng'] = lng;
       }
-      if (weather.isNotEmpty) {
+      if (weather != null && weather.isNotEmpty) {
         updateData['weather'] = weather;
       }
-      if (city.isNotEmpty) {
+      if (city != null && city.isNotEmpty) {
         updateData['city'] = city;
       }
 

@@ -50,7 +50,10 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
           city = await DeviceService().getCityForLocation(pos.latitude, pos.longitude);
           weather = await DeviceService().getWeatherForLocation(pos.latitude, pos.longitude);
         }
-        city ??= prefs.getString('saved_city') ?? 'İstanbul';
+        city ??= prefs.getString('saved_city');
+        if (city != null && city.isNotEmpty) {
+          prefs.setString('saved_city', city);
+        }
 
         final Map<String, dynamic> updateData = {};
         if (batteryLevel != null) updateData['batteryLevel'] = batteryLevel;
@@ -58,8 +61,8 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
           updateData['lat'] = pos.latitude;
           updateData['lng'] = pos.longitude;
         }
-        if (weather != null) updateData['weather'] = weather;
-        if (city.isNotEmpty) updateData['city'] = city;
+        if (weather != null && weather.isNotEmpty) updateData['weather'] = weather;
+        if (city != null && city.isNotEmpty) updateData['city'] = city;
 
         await FirebaseFirestore.instance.collection('users').doc(uid).set(
           updateData,

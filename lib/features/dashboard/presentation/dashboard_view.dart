@@ -680,10 +680,6 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
         if (isNight) {
           cleanWeather = cleanWeather.replaceAll('Güneşli', 'Açık');
         }
-      } else {
-        final now = DateTime.now();
-        final isNight = now.hour >= 20 || now.hour < 6;
-        cleanWeather = isNight ? 'Gece · Açık 20°' : 'Öğlen · Açık 22°';
       }
 
       final partnerUser = AppUser(
@@ -1311,10 +1307,9 @@ class _PartnerCard extends StatelessWidget {
                       ? Icons.nights_stay_rounded
                       : Icons.wb_sunny_rounded,
                   label: p.city != null && p.city!.isNotEmpty ? p.city! : 'Hava Durumu',
-                  value: p.weather ??
-                      (DateTime.now().hour >= 20 || DateTime.now().hour < 6
-                          ? 'Gece · Açık 20°'
-                          : 'Öğlen · Açık 22°'),
+                  value: (p.weather != null && p.weather!.isNotEmpty)
+                      ? p.weather!
+                      : 'Hava durumu alınıyor...',
                   color: LoveraColors.accentGold,
                   onTap: onWeatherTap,
                 ),
