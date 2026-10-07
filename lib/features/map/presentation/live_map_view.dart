@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart' hide Path;
 
 import '../../../core/services/device_service.dart';
+import '../../../core/services/notification_service.dart';
 import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
 
@@ -27,6 +29,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
   bool _calculatingRoad = false;
   LatLng? _lastRouteStart;
   LatLng? _lastRouteEnd;
+  Timer? _mapSyncTimer;
 
   @override
   void initState() {
@@ -35,6 +38,18 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     WidgetsBinding.instance.addPostFrameCallback((_) {
       DeviceService().syncStatusToFirebase();
       _initInitialRoute();
+      final partnerUid = ref.read(partnerUidProvider);
+      if (partnerUid != null && partnerUid.isNotEmpty) {
+        NotificationService().requestPartnerStatusSync(partnerUid);
+      }
+    });
+
+    // Harita açıkken partnerin kapalı cihazını 12 saniyede bir sessiz uyandır ve konumunu tazelet
+    _mapSyncTimer = Timer.periodic(const Duration(seconds: 12), (_) {
+      final partnerUid = ref.read(partnerUidProvider);
+      if (partnerUid != null && partnerUid.isNotEmpty) {
+        NotificationService().requestPartnerStatusSync(partnerUid);
+      }
     });
   }
 
@@ -50,6 +65,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
 
   @override
   void dispose() {
+    _mapSyncTimer?.cancel();
     _flightController?.stop();
     _flightController?.dispose();
     _mapController.dispose();
@@ -404,7 +420,9 @@ class _SnapAvatarMarker extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: Column(
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           // Üst Snap Bilgi Hapı: İsim + Pil Durumu
@@ -535,16 +553,24 @@ class _SnapAvatarMarker extends StatelessWidget {
             painter: _TrianglePainter(color: borderColor),
           ),
 
-          // Zemin 3D Gölgesi (Snapchat Bitmoji zemin hissi)
-          Container(
-            width: 18,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.22),
-              borderRadius: BorderRadius.circular(10),
+          // Zemin gölgesi: yerleşimi etkilemez, iğne ucu tam koordinatta kalır
+          SizedBox(
+            height: 0,
+            child: OverflowBox(
+              maxHeight: 4,
+              alignment: Alignment.topCenter,
+              child: Container(
+                width: 18,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.22),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
             ),
           ),
         ],
+      ),
       ),
     );
   }

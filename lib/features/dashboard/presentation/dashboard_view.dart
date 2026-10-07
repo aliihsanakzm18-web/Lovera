@@ -5,10 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/models/models.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/device_service.dart';
+import '../../../core/services/notification_service.dart';
 import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/presentation/pairing_view.dart';
@@ -32,18 +34,42 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
   StreamSubscription? _coupleSub;
   Timer? _statusSyncTimer;
   int? _lastHeartTimestamp;
+  int? _lastChargeTimestamp;
+  AppLifecycleListener? _lifecycleListener;
 
   @override
   void initState() {
     super.initState();
+    final startupTime = DateTime.now().millisecondsSinceEpoch;
+    _lastHeartTimestamp = startupTime;
+    _lastChargeTimestamp = startupTime;
 
     // Snap Map Modeli: Canlı konum, şarj, şehir ve hava durumu arka planda da kesintisiz çalışsın
     DeviceService().startContinuousLocationTracking();
+    NotificationService().updateFcmTokenInFirestore();
+
+    // Periyodik olarak partnerin durumunu talep et ve kendi durumumuzu tazele
+    _statusSyncTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      final pUid = ref.read(partnerUidProvider);
+      if (pUid != null && pUid.isNotEmpty) {
+        NotificationService().requestPartnerStatusSync(pUid);
+      }
+      DeviceService().syncStatusToFirebase();
+    });
+
+    // Uygulama alta atıldığında veya kapatılmak üzereyken son durumu (özellikle şarjı) hemen Firestore'a bas
+    _lifecycleListener = AppLifecycleListener(
+      onPause: () => DeviceService().syncStatusToFirebase(),
+      onInactive: () => DeviceService().syncStatusToFirebase(),
+      onHide: () => DeviceService().syncStatusToFirebase(),
+      onResume: () => DeviceService().syncStatusToFirebase(),
+    );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // 1. Kendi profilimizi dinle
       _userSub = DatabaseService().userStream()?.listen((doc) {
         if (!doc.exists || doc.data() == null || !mounted) return;
+        SharedPreferences.getInstance().then((p) => p.setString('saved_uid', doc.id));
         final data = doc.data()!;
         if (data['name'] != null && data['name'].toString().isNotEmpty) {
           ref.read(userNameProvider.notifier).state = data['name'];
@@ -115,7 +141,20 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
           final ts = ping['timestamp'] as int?;
           if (ts != null && (_lastHeartTimestamp == null || ts > _lastHeartTimestamp!)) {
             _lastHeartTimestamp = ts;
+            DatabaseService().clearHeartPing();
             _receiveHeartPulse();
+          }
+        }
+
+        // Bize partnerden şarjını doldur hatırlatması geldi mi?
+        if (data['chargePing'] != null) {
+          final ping = Map<String, dynamic>.from(data['chargePing']);
+          final ts = ping['timestamp'] as int?;
+          if (ts != null && (_lastChargeTimestamp == null || ts > _lastChargeTimestamp!)) {
+            _lastChargeTimestamp = ts;
+            DatabaseService().clearChargePing();
+            final fromName = ping['fromName'] ?? 'Partnerin';
+            _receiveChargeReminder(fromName.toString());
           }
         }
 
@@ -124,6 +163,8 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
         if (partnerUid != null && partnerUid != ref.read(partnerUidProvider)) {
           ref.read(partnerUidProvider.notifier).state = partnerUid;
           _listenToPartner(partnerUid);
+          // Partnerin telefonu kapalıysa bile arka planda hemen şarj ve konumunu güncellemesi için sessiz uyandır
+          NotificationService().requestPartnerStatusSync(partnerUid);
         }
       });
     });
@@ -254,6 +295,361 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     });
   }
 
+  void _receiveChargeReminder(String fromName) {
+    HapticFeedback.mediumImpact();
+    NotificationService().show(
+      id: 101,
+      title: '🔋 Şarj Hatırlatması!',
+      body: '$fromName şarjını doldurmanı hatırlatıyor 💕',
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.battery_charging_full_rounded, color: Colors.white),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '$fromName şarjını doldurmanı hatırlatıyor! 💕🔋',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFF10B981),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
+
+  /// Batarya kartına basıldığında açılan alt menü (BottomSheet)
+  void _openBatteryActionsSheet(AppUser partner) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final level = partner.batteryLevel ?? 0;
+    final batteryColor = _getBatteryColor(level);
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: theme.colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Batarya Durumu Büyük Rozeti
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: batteryColor.withValues(alpha: 0.14),
+                  border: Border.all(color: batteryColor.withValues(alpha: 0.35), width: 2),
+                ),
+                child: Center(
+                  child: Icon(
+                    _getBatteryIcon(level),
+                    size: 38,
+                    color: batteryColor,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                '${partner.name}\'in Şarj Durumu',
+                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '%$level · ${_getBatteryStatusText(level)}',
+                style: TextStyle(
+                  color: batteryColor,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Partnerinizin cihaz şarj seviyesi arka planda otomatik olarak güncellenir.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 24),
+              // "Şarjını Doldur" Hatırlatma Butonu
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: batteryColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 0,
+                  ),
+                  icon: const Icon(Icons.bolt_rounded, size: 22),
+                  label: const Text(
+                    'Şarjını Doldur Hatırlatması Gönder ⚡',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                  ),
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    HapticFeedback.mediumImpact();
+                    final partnerUid = ref.read(partnerUidProvider);
+                    final myName = ref.read(userNameProvider);
+                    final senderName = myName.isEmpty ? 'Partnerin' : myName;
+                    await DatabaseService().sendChargeReminder(
+                      partnerUid,
+                      fromName: senderName,
+                    );
+                    if (partnerUid != null && partnerUid.isNotEmpty) {
+                      NotificationService().sendPushToPartner(
+                        partnerUid: partnerUid,
+                        title: '🔋 Şarj Hatırlatması!',
+                        body: '$senderName şarjını doldurmanı hatırlatıyor 💕',
+                      );
+                    }
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          '${partner.name}\'in telefonuna "Şarjını Doldur" hatırlatması gönderildi! 🔋⚡',
+                        ),
+                        backgroundColor: batteryColor,
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 10),
+              // İptal Butonu
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Kapat'),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Hava durumu kartına basıldığında açılan alt menü (BottomSheet)
+  void _openWeatherActionsSheet(AppUser partner) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final weatherText = partner.weather ?? 'Açık';
+    final cityText = partner.city ?? 'İstanbul';
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: theme.colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: LoveraColors.accentGold.withValues(alpha: 0.14),
+                  border: Border.all(color: LoveraColors.accentGold.withValues(alpha: 0.35), width: 2),
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.wb_sunny_rounded,
+                    size: 38,
+                    color: LoveraColors.accentGold,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                '${partner.name}\'in Hava Durumu',
+                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '$cityText · $weatherText',
+                style: const TextStyle(
+                  color: LoveraColors.accentGold,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Partnerine hava durumuna özel tatlı bir ilgi ve bakım hatırlatması gönder:',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 20),
+              // Hatırlatma Butonu 1: Hava Soğuk, Sıkı Giyin
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    side: BorderSide(color: LoveraColors.primary.withValues(alpha: 0.5)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  icon: const Text('🧣', style: TextStyle(fontSize: 20)),
+                  label: const Text(
+                    'Hava Soğuk, Sıkı Giyin Bitirtanem ❄️',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                  ),
+                  onPressed: () => _sendCareNotification(
+                    partner: partner,
+                    title: '🧣 Hava Soğuk, Sıkı Giyin!',
+                    body: '${ref.read(userNameProvider).isEmpty ? 'Partnerin' : ref.read(userNameProvider)}: "Hava soğuk aşkım, sakın üşütme sıkı giyin 💕"',
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              // Hatırlatma Butonu 2: Yanına Şemsiye Al
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    side: BorderSide(color: LoveraColors.accentViolet.withValues(alpha: 0.5)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  icon: const Text('☂️', style: TextStyle(fontSize: 20)),
+                  label: const Text(
+                    'Yanına Şemsiye Al Aşkım 🌧️',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                  ),
+                  onPressed: () => _sendCareNotification(
+                    partner: partner,
+                    title: '☂️ Yanına Şemsiye Al!',
+                    body: '${ref.read(userNameProvider).isEmpty ? 'Partnerin' : ref.read(userNameProvider)}: "Aşkım dışarısı yağışlı olabilir, yanına şemsiye almayı unutma 🌧️"',
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              // Hatırlatma Butonu 3: Bol Su İç & Güneşten Korun
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    side: BorderSide(color: LoveraColors.secondary.withValues(alpha: 0.5)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  icon: const Text('☀️', style: TextStyle(fontSize: 20)),
+                  label: const Text(
+                    'Güneş Çarpmasın, Bol Su İç 💧',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                  ),
+                  onPressed: () => _sendCareNotification(
+                    partner: partner,
+                    title: '💧 Bol Su İçmeyi Unutma!',
+                    body: '${ref.read(userNameProvider).isEmpty ? 'Partnerin' : ref.read(userNameProvider)}: "Bugün bol bol su iç aşkım, kendine çok iyi bak ☀️"',
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              // Kapat Butonu
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Kapat'),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _sendCareNotification({
+    required AppUser partner,
+    required String title,
+    required String body,
+  }) async {
+    Navigator.pop(context);
+    HapticFeedback.mediumImpact();
+    final partnerUid = ref.read(partnerUidProvider);
+    if (partnerUid != null && partnerUid.isNotEmpty) {
+      await NotificationService().sendPushToPartner(
+        partnerUid: partnerUid,
+        title: title,
+        body: body,
+      );
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${partner.name}\'in telefonuna bildirim gönderildi! 💕'),
+        backgroundColor: LoveraColors.primary,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+    );
+  }
+
+  static Color _getBatteryColor(int? level) {
+    if (level == null) return LoveraColors.secondary;
+    if (level >= 80) return const Color(0xFF10B981); // Tam dolu: Canlı Zümrüt Yeşili
+    if (level >= 50) return const Color(0xFF34D399); // Orta-iyi: Açık Yeşil
+    if (level >= 30) return const Color(0xFFFBBF24); // Orta: Amber / Sarı
+    if (level >= 15) return const Color(0xFFF97316); // Düşük: Turuncu
+    return const Color(0xFFEF4444); // Kritik: Kırmızı
+  }
+
+  static IconData _getBatteryIcon(int? level) {
+    if (level == null) return Icons.battery_unknown_rounded;
+    if (level >= 95) return Icons.battery_full_rounded;
+    if (level >= 85) return Icons.battery_6_bar_rounded;
+    if (level >= 70) return Icons.battery_5_bar_rounded;
+    if (level >= 50) return Icons.battery_4_bar_rounded;
+    if (level >= 30) return Icons.battery_3_bar_rounded;
+    if (level >= 20) return Icons.battery_2_bar_rounded;
+    if (level >= 10) return Icons.battery_1_bar_rounded;
+    return Icons.battery_alert_rounded;
+  }
+
+  static String _getBatteryStatusText(int? level) {
+    if (level == null) return 'Bilinmiyor';
+    if (level >= 90) return 'Dopdolu';
+    if (level >= 50) return 'Yeterli Seviyede';
+    if (level >= 25) return 'Azalıyor';
+    if (level >= 15) return 'Düşük Pil';
+    return 'Kritik Seviyede!';
+  }
+
   void _listenToPartner(String partnerUid) {
     _partnerSub?.cancel();
     _partnerSub = DatabaseService().partnerStream(partnerUid).listen((doc) {
@@ -277,7 +673,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
         id: doc.id,
         name: data['name'] ?? 'Partnerin',
         avatarUrl: data['avatarUrl'],
-        batteryLevel: data['batteryLevel'] ?? 88,
+        batteryLevel: data['batteryLevel'] as int?,
         weather: cleanWeather,
         city: data['city'],
         lat: (data['lat'] as num?)?.toDouble(),
@@ -299,6 +695,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
 
   @override
   void dispose() {
+    _lifecycleListener?.dispose();
     _statusSyncTimer?.cancel();
     _userSub?.cancel();
     _partnerSub?.cancel();
@@ -310,7 +707,15 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
   Future<void> _sendThought() async {
     HapticFeedback.mediumImpact();
     final partnerUid = ref.read(partnerUidProvider);
+    final myName = ref.read(userNameProvider);
     await DatabaseService().sendHeart(partnerUid);
+    if (partnerUid != null && partnerUid.isNotEmpty) {
+      NotificationService().sendPushToPartner(
+        partnerUid: partnerUid,
+        title: '🥺 Seni Çok Özledim!',
+        body: '${myName.isEmpty ? 'Partnerin' : myName} şu an seni çok özlediğini hissettirdi 💕',
+      );
+    }
     setState(() => _showHeart = true);
     await Future<void>.delayed(const Duration(milliseconds: 1400));
     if (mounted) setState(() => _showHeart = false);
@@ -374,7 +779,12 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                   onPick: () {}, // Ana ekrandan değiştirilemez, Eş Yönetim Paneli'nden onaylı değiştirilir
                 ).animate().fadeIn(duration: 500.ms).slideY(begin: 0.08),
                 const SizedBox(height: 14),
-                _PartnerCard(partner: partner, onPair: () => _push(const PairingView()))
+                _PartnerCard(
+                  partner: partner,
+                  onPair: () => _push(const PairingView()),
+                  onBatteryTap: partner != null ? () => _openBatteryActionsSheet(partner) : null,
+                  onWeatherTap: partner != null ? () => _openWeatherActionsSheet(partner) : null,
+                )
                     .animate(delay: 120.ms)
                     .fadeIn(duration: 500.ms)
                     .slideY(begin: 0.08),
@@ -677,9 +1087,16 @@ class _HeroCounterState extends State<_HeroCounter> {
 }
 
 class _PartnerCard extends StatelessWidget {
-  const _PartnerCard({required this.partner, required this.onPair});
+  const _PartnerCard({
+    required this.partner,
+    required this.onPair,
+    this.onBatteryTap,
+    this.onWeatherTap,
+  });
   final AppUser? partner;
   final VoidCallback onPair;
+  final VoidCallback? onBatteryTap;
+  final VoidCallback? onWeatherTap;
 
   String _lastSeen(AppUser p) {
     if (p.lastActive == null) return '-';
@@ -688,6 +1105,27 @@ class _PartnerCard extends StatelessWidget {
     if (d.inMinutes < 60) return '${d.inMinutes} dk önce aktifti';
     if (d.inHours < 24) return '${d.inHours} sa önce aktifti';
     return '${d.inDays} gün önce aktifti';
+  }
+
+  Color _batteryColor(int? level) {
+    if (level == null) return LoveraColors.secondary;
+    if (level >= 80) return const Color(0xFF10B981); // Yeşil
+    if (level >= 50) return const Color(0xFF34D399); // Açık yeşil
+    if (level >= 30) return const Color(0xFFFBBF24); // Sarı / Amber
+    if (level >= 15) return const Color(0xFFF97316); // Turuncu
+    return const Color(0xFFEF4444); // Kırmızı
+  }
+
+  IconData _batteryIcon(int? level) {
+    if (level == null) return Icons.battery_unknown_rounded;
+    if (level >= 95) return Icons.battery_full_rounded;
+    if (level >= 85) return Icons.battery_6_bar_rounded;
+    if (level >= 70) return Icons.battery_5_bar_rounded;
+    if (level >= 50) return Icons.battery_4_bar_rounded;
+    if (level >= 30) return Icons.battery_3_bar_rounded;
+    if (level >= 20) return Icons.battery_2_bar_rounded;
+    if (level >= 10) return Icons.battery_1_bar_rounded;
+    return Icons.battery_alert_rounded;
   }
 
   @override
@@ -722,6 +1160,9 @@ class _PartnerCard extends StatelessWidget {
         ),
       );
     }
+
+    final batColor = _batteryColor(p.batteryLevel);
+    final batIcon = _batteryIcon(p.batteryLevel);
 
     return _BentoCard(
       child: Column(
@@ -787,12 +1228,11 @@ class _PartnerCard extends StatelessWidget {
             children: [
               Expanded(
                 child: _Stat(
-                  icon: p.batteryLevel != null && p.batteryLevel! <= 20
-                      ? Icons.battery_alert_rounded
-                      : Icons.battery_5_bar_rounded,
+                  icon: batIcon,
                   label: 'Batarya',
                   value: p.batteryLevel == null ? '-' : '%${p.batteryLevel}',
-                  color: LoveraColors.secondary,
+                  color: batColor,
+                  onTap: onBatteryTap,
                 ),
               ),
               const SizedBox(width: 12),
@@ -810,6 +1250,7 @@ class _PartnerCard extends StatelessWidget {
                           ? 'Gece · Açık 20°'
                           : 'Öğlen · Açık 22°'),
                   color: LoveraColors.accentGold,
+                  onTap: onWeatherTap,
                 ),
               ),
             ],
@@ -821,35 +1262,47 @@ class _PartnerCard extends StatelessWidget {
 }
 
 class _Stat extends StatelessWidget {
-  const _Stat({required this.icon, required this.label, required this.value, required this.color});
+  const _Stat({required this.icon, required this.label, required this.value, required this.color, this.onTap});
   final IconData icon;
   final String label;
   final String value;
   final Color color;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: isDark ? LoveraColors.darkSurfaceAlt : color.withValues(alpha: 0.12),
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: isDark ? color.withValues(alpha: 0.25) : Colors.transparent,
-          width: 1,
+        onTap: onTap,
+        child: Ink(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: isDark ? LoveraColors.darkSurfaceAlt : color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: isDark ? color.withValues(alpha: 0.25) : Colors.transparent,
+              width: 1,
+            ),
+          ),
+          child: SizedBox(
+            width: double.infinity,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(icon, color: color, size: 22),
+                const SizedBox(height: 8),
+                Text(label, style: theme.textTheme.bodySmall?.copyWith(color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted)),
+                Text(value, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+              ],
+            ),
+          ),
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: color, size: 22),
-          const SizedBox(height: 8),
-          Text(label, style: theme.textTheme.bodySmall?.copyWith(color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted)),
-          Text(value, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-        ],
       ),
     );
   }
@@ -891,7 +1344,7 @@ class _ThinkingButton extends StatelessWidget {
                     .animate(onPlay: (c) => c.repeat(reverse: true))
                     .scale(end: const Offset(1.25, 1.25), duration: 800.ms),
                 const SizedBox(width: 12),
-                Text('Seni Düşünüyorum',
+                Text('Özledim 💕',
                     style: Theme.of(context)
                         .textTheme
                         .titleMedium

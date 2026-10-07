@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/models.dart';
 
@@ -302,6 +303,32 @@ class DatabaseService {
     }, SetOptions(merge: true));
   }
 
+  Future<void> clearHeartPing() async {
+    if (uid == null) return;
+    await _db.collection('users').doc(uid).update({
+      'heartPing': FieldValue.delete(),
+    }).catchError((_) {});
+  }
+
+  /// "Şarjını doldur" hatırlatması gönder
+  Future<void> sendChargeReminder(String? partnerUid, {String? fromName}) async {
+    if (uid == null || partnerUid == null) return;
+    await _db.collection('users').doc(partnerUid).set({
+      'chargePing': {
+        'fromUid': uid,
+        'fromName': fromName ?? '',
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      }
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> clearChargePing() async {
+    if (uid == null) return;
+    await _db.collection('users').doc(uid).update({
+      'chargePing': FieldValue.delete(),
+    }).catchError((_) {});
+  }
+
   // 5. ÖZEL GÜNLER (MILESTONES) CRUD
   Stream<List<Milestone>> milestonesStream({String? coupleId}) {
     // Eğer çift varsa ortak havuzdan, yoksa kişisel alandan çek
@@ -396,7 +423,16 @@ class DatabaseService {
     String? weather,
     String? city,
   }) async {
-    if (uid == null) return;
+    String? targetUid = uid;
+    if (targetUid == null) {
+      final prefs = await SharedPreferences.getInstance();
+      targetUid = prefs.getString('saved_uid');
+    } else {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('saved_uid', targetUid);
+    }
+    if (targetUid == null || targetUid.isEmpty) return;
+
     final Map<String, dynamic> data = {
       'lastActive': FieldValue.serverTimestamp(),
     };
@@ -407,12 +443,12 @@ class DatabaseService {
     if (batteryLevel != null) {
       data['batteryLevel'] = batteryLevel;
     }
-    if (weather != null) {
+    if (weather != null && weather.isNotEmpty) {
       data['weather'] = weather;
     }
-    if (city != null) {
+    if (city != null && city.isNotEmpty) {
       data['city'] = city;
     }
-    await _db.collection('users').doc(uid).set(data, SetOptions(merge: true));
+    await _db.collection('users').doc(targetUid).set(data, SetOptions(merge: true));
   }
 }

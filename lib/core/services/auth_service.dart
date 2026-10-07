@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -22,6 +23,8 @@ class AuthService {
     );
 
     if (cred.user != null) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('saved_uid', cred.user!.uid);
       await cred.user!.updateDisplayName(username);
       // Firestore'da kullanıcı dokümanı oluştur
       await _firestore.collection('users').doc(cred.user!.uid).set({
@@ -40,10 +43,15 @@ class AuthService {
     required String email,
     required String password,
   }) async {
-    return await _auth.signInWithEmailAndPassword(
+    final cred = await _auth.signInWithEmailAndPassword(
       email: email,
       password: password,
     );
+    if (cred.user != null) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('saved_uid', cred.user!.uid);
+    }
+    return cred;
   }
 
   // Google ile Giriş Yap

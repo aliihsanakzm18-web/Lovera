@@ -13,6 +13,7 @@ class DeviceService {
 
   final Battery _battery = Battery();
   StreamSubscription<Position>? _positionStreamSub;
+  StreamSubscription<BatteryState>? _batteryStateSub;
   Timer? _periodicSyncTimer;
   bool _isBackgroundTrackingActive = false;
 
@@ -28,11 +29,32 @@ class DeviceService {
 
   /// Koordinatlardan şehir / ilçe adını bulur
   Future<String?> getCityForLocation(double lat, double lng) async {
+    // 1. OpenStreetMap Nominatim
+    try {
+      final osmUrl = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&zoom=10&accept-language=tr',
+      );
+      final res = await http.get(osmUrl, headers: {
+        'User-Agent': 'LoveraCoupleApp/1.0 (contact@lovera.app)',
+      }).timeout(const Duration(seconds: 4));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final addr = data['address'];
+        if (addr != null) {
+          final city = addr['province'] ?? addr['city'] ?? addr['state'] ?? addr['town'];
+          if (city != null && city.toString().trim().isNotEmpty) {
+            return city.toString().replaceAll(' İli', '').trim();
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 2. Fallback
     try {
       final url = Uri.parse(
         'https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=$lat&longitude=$lng&localityLanguage=tr',
       );
-      final res = await http.get(url).timeout(const Duration(seconds: 4));
+      final res = await http.get(url).timeout(const Duration(seconds: 3));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         final city = data['city'] ?? data['principalSubdivision'] ?? data['locality'];
@@ -58,21 +80,23 @@ class DeviceService {
   Future<String?> getWeatherForLocation(double lat, double lng) async {
     try {
       final url = Uri.parse(
-        'https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lng&current_weather=true',
+        'https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lng&current=temperature_2m,weather_code,precipitation,is_day&timezone=auto',
       );
       final res = await http.get(url).timeout(const Duration(seconds: 4));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
-        final current = data['current_weather'];
+        final current = data['current'] ?? data['current_weather'];
         if (current != null) {
-          final temp = (current['temperature'] as num).round();
-          final code = current['weathercode'] as int? ?? 0;
+          final tempVal = current['temperature_2m'] ?? current['temperature'];
+          final temp = (tempVal as num).round();
+          final code = (current['weather_code'] ?? current['weathercode']) as int? ?? 0;
+          final precip = (current['precipitation'] as num?)?.toDouble() ?? 0.0;
           final now = DateTime.now();
           final isNightByHour = now.hour >= 20 || now.hour < 6;
           final isDayApi = (current['is_day'] as int? ?? 1) == 1;
           final isDay = isNightByHour ? false : isDayApi;
           final period = getTimeOfDayPeriod(now);
-          final desc = _mapWeatherCode(code, isDay: isDay);
+          final desc = _mapWeatherCode(code, precip: precip, isDay: isDay);
           return '$period · $desc $temp°';
         }
       }
@@ -82,13 +106,18 @@ class DeviceService {
     return null;
   }
 
-  String _mapWeatherCode(int code, {required bool isDay}) {
+  String _mapWeatherCode(int code, {required double precip, required bool isDay}) {
+    // Hafif nem/çisenti (0.1 - 0.4 mm) durumunda gökyüzü açıksa doğrudan Sağanak deme!
+    if (code >= 80 && code <= 82 && precip < 0.5) {
+      return isDay ? 'Parçalı Bulutlu' : 'Açık';
+    }
     if (code == 0) return isDay ? 'Güneşli' : 'Açık';
     if (code >= 1 && code <= 3) return isDay ? 'Parçalı Bulutlu' : 'Bulutlu';
     if (code >= 45 && code <= 48) return 'Sisli';
-    if (code >= 51 && code <= 67) return 'Yağmurlu';
+    if (code >= 51 && code <= 55) return 'Çisenti';
+    if (code >= 56 && code <= 67) return 'Yağmurlu';
     if (code >= 71 && code <= 77) return 'Karlı';
-    if (code >= 80 && code <= 82) return 'Sağanak Yağışlı';
+    if (code >= 80 && code <= 82) return precip > 1.5 ? 'Sağanak Yağışlı' : 'Hafif Yağmurlu';
     if (code >= 95) return 'Gök Gürültülü';
     return isDay ? 'Açık' : 'Yıldızlı';
   }
@@ -110,13 +139,7 @@ class DeviceService {
         locationSettings = AndroidSettings(
           accuracy: LocationAccuracy.high,
           distanceFilter: 15, // 15 metre hareket ettiğinde anında tetikler
-          intervalDuration: const Duration(seconds: 15), // Arka planda 15 sn periyot
-          foregroundNotificationConfig: const ForegroundNotificationConfig(
-            notificationTitle: 'Lovera · Canlı Bağlantı Aktif',
-            notificationText: 'Partnerinle canlı konum, şarj ve hava durumu eşitleniyor 💕',
-            enableWakeLock: true,
-            setOngoing: true,
-          ),
+          intervalDuration: const Duration(seconds: 15), // 15 sn periyot
         );
       } else if (defaultTargetPlatform == TargetPlatform.iOS) {
         locationSettings = AppleSettings(
@@ -144,9 +167,15 @@ class DeviceService {
         },
       );
 
-      // Ayrıca hareket edilmese dahi şarj ve saati düzenli olarak 30 saniyede bir gönder
+      // Pil durumu (şarja takma, çıkarma) değiştiğinde hemen Firebase'e aktar
+      await _batteryStateSub?.cancel();
+      _batteryStateSub = _battery.onBatteryStateChanged.listen((_) {
+        syncStatusToFirebase();
+      });
+
+      // Ayrıca hareket edilmese dahi şarj ve saati düzenli olarak 20 saniyede bir gönder
       _periodicSyncTimer?.cancel();
-      _periodicSyncTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _periodicSyncTimer = Timer.periodic(const Duration(seconds: 20), (_) {
         syncStatusToFirebase();
       });
 
@@ -193,12 +222,15 @@ class DeviceService {
         if (permission == LocationPermission.always || permission == LocationPermission.whileInUse) {
           Position? pos;
           try {
-            pos = await Geolocator.getLastKnownPosition();
-            pos ??= await Geolocator.getCurrentPosition(
-              desiredAccuracy: LocationAccuracy.medium,
-              timeLimit: const Duration(seconds: 4),
+            pos = await Geolocator.getCurrentPosition(
+              desiredAccuracy: LocationAccuracy.high,
+              timeLimit: const Duration(seconds: 5),
             );
-          } catch (_) {}
+          } catch (_) {
+            try {
+              pos = await Geolocator.getLastKnownPosition();
+            } catch (_) {}
+          }
 
           if (pos != null) {
             lat = pos.latitude;
@@ -230,6 +262,7 @@ class DeviceService {
 
   void stopTracking() {
     _positionStreamSub?.cancel();
+    _batteryStateSub?.cancel();
     _periodicSyncTimer?.cancel();
     _isBackgroundTrackingActive = false;
   }
