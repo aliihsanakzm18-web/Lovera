@@ -19,6 +19,7 @@ class WelcomePage extends ConsumerStatefulWidget {
 class _WelcomePageState extends ConsumerState<WelcomePage> {
   late final TextEditingController _name =
       TextEditingController(text: ref.read(userNameProvider));
+  DateTime? _selectedBirthDate;
 
   @override
   void dispose() {
@@ -26,10 +27,26 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
     super.dispose();
   }
 
+  Future<void> _pickBirthDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedBirthDate ?? DateTime(2000, 1, 1),
+      firstDate: DateTime(1940),
+      lastDate: now,
+      helpText: 'Doğum Tarihinizi Seçin',
+      cancelText: 'Vazgeç',
+      confirmText: 'Seç',
+    );
+    if (picked != null && mounted) {
+      setState(() => _selectedBirthDate = picked);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final valid = _name.text.trim().isNotEmpty;
+    final valid = _name.text.trim().isNotEmpty && _selectedBirthDate != null;
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -89,14 +106,54 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                   prefixIcon: Icon(Icons.person_outline_rounded),
                 ),
               ).animate(delay: 220.ms).fadeIn(),
+              const SizedBox(height: 14),
+              InkWell(
+                onTap: _pickBirthDate,
+                borderRadius: BorderRadius.circular(AppTheme.radius),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface,
+                    borderRadius: BorderRadius.circular(AppTheme.radius),
+                    border: Border.all(color: theme.dividerColor),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.cake_rounded, color: LoveraColors.primary),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _selectedBirthDate == null
+                              ? 'Doğum Tarihini Seç'
+                              : '${_selectedBirthDate!.day}.${_selectedBirthDate!.month}.${_selectedBirthDate!.year}',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: _selectedBirthDate != null ? FontWeight.w600 : FontWeight.normal,
+                            color: _selectedBirthDate != null
+                                ? theme.colorScheme.onSurface
+                                : LoveraColors.textMuted,
+                          ),
+                        ),
+                      ),
+                      const Icon(Icons.calendar_month_rounded, size: 20, color: LoveraColors.textMuted),
+                    ],
+                  ),
+                ),
+              ).animate(delay: 280.ms).fadeIn(),
               const SizedBox(height: 36),
               FilledButton(
                 onPressed: valid
                     ? () async {
                         final n = _name.text.trim();
                         ref.read(userNameProvider.notifier).state = n;
-                        (await SharedPreferences.getInstance()).setString('name', n);
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.setString('name', n);
                         await DatabaseService().updateUserName(n);
+
+                        final bDate = _selectedBirthDate!;
+                        final bStr = '${bDate.year.toString().padLeft(4, '0')}-${bDate.month.toString().padLeft(2, '0')}-${bDate.day.toString().padLeft(2, '0')}';
+                        await DatabaseService().updateBirthDate(bStr, userName: n);
+
                         widget.onNext();
                       }
                     : null,

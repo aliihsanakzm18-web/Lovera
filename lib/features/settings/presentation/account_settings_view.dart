@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/models/models.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/state/app_state.dart';
@@ -101,6 +102,67 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
         ],
       ),
     );
+  }
+
+  // Doğum tarihi belirleme / değiştirme diyaloğu
+  Future<void> _editBirthDateDialog(String? currentBirthDate) async {
+    DateTime initial = DateTime(2000, 1, 1);
+    if (currentBirthDate != null && currentBirthDate.isNotEmpty) {
+      final parsed = DateTime.tryParse(currentBirthDate);
+      if (parsed != null) initial = parsed;
+    }
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(1940),
+      lastDate: DateTime.now(),
+      helpText: 'Doğum Tarihinizi Seçin',
+      cancelText: 'Vazgeç',
+      confirmText: 'Kaydet',
+    );
+
+    if (picked != null && mounted) {
+      final bStr = '${picked.year.toString().padLeft(4, '0')}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+      final coupleId = ref.read(coupleIdProvider);
+      final userName = ref.read(userNameProvider);
+
+      await DatabaseService().updateBirthDate(
+        bStr,
+        coupleId: coupleId,
+        userName: userName,
+      );
+
+      // CurrentUser provider güncelle
+      final cur = ref.read(currentUserProvider);
+      if (cur != null) {
+        ref.read(currentUserProvider.notifier).state = AppUser(
+          id: cur.id,
+          name: cur.name,
+          avatarUrl: cur.avatarUrl,
+          batteryLevel: cur.batteryLevel,
+          weather: cur.weather,
+          city: cur.city,
+          lat: cur.lat,
+          lng: cur.lng,
+          lastActive: cur.lastActive,
+          coupleId: cur.coupleId,
+          isAppOpen: cur.isAppOpen,
+          birthDate: bStr,
+        );
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Doğum tarihiniz başarıyla güncellendi! 🎉'),
+            backgroundColor: LoveraColors.secondary,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          ),
+        );
+      }
+    }
   }
 
   // Şifre değiştirme diyaloğu
@@ -207,6 +269,7 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
     final theme = Theme.of(context);
     final userName = ref.watch(userNameProvider);
     final avatarPath = ref.watch(userAvatarProvider);
+    final currentUser = ref.watch(currentUserProvider);
     final email = AuthService().currentUser?.email ?? 'Giriş yapılmadı';
 
     return Scaffold(
@@ -279,6 +342,25 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
                   subtitle: Text(userName.isNotEmpty ? userName : 'Belirtilmedi', style: const TextStyle(color: LoveraColors.textMuted)),
                   trailing: const Icon(Icons.edit_outlined, size: 20, color: LoveraColors.secondary),
                   onTap: () => _editNameDialog(userName),
+                ),
+                Divider(height: 1, indent: 56, color: theme.dividerColor),
+                ListTile(
+                  leading: Icon(Icons.cake_rounded, color: theme.colorScheme.onSurface),
+                  title: const Text('Doğum Tarihi', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Text(
+                    currentUser?.birthDate != null && currentUser!.birthDate!.isNotEmpty
+                        ? () {
+                            final parts = currentUser.birthDate!.split('-');
+                            if (parts.length == 3) {
+                              return '${parts[2]}.${parts[1]}.${parts[0]}';
+                            }
+                            return currentUser.birthDate!;
+                          }()
+                        : 'Belirtilmedi',
+                    style: const TextStyle(color: LoveraColors.textMuted),
+                  ),
+                  trailing: const Icon(Icons.edit_calendar_rounded, size: 20, color: LoveraColors.primary),
+                  onTap: () => _editBirthDateDialog(currentUser?.birthDate),
                 ),
                 Divider(height: 1, indent: 56, color: theme.dividerColor),
                 ListTile(

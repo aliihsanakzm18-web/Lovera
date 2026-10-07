@@ -36,6 +36,26 @@ class DatabaseService {
     }, SetOptions(merge: true));
   }
 
+  // Doğum tarihi güncelle ('YYYY-MM-DD')
+  Future<void> updateBirthDate(String birthDateStr, {String? coupleId, String? userName}) async {
+    if (uid == null) return;
+    await _db.collection('users').doc(uid).set({
+      'birthDate': birthDateStr,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    // Eğer bağlı bir couple varsa, doğum gününü özel günlere otomatik senkronize et
+    if (coupleId != null && coupleId.isNotEmpty) {
+      final name = userName ?? _auth.currentUser?.displayName ?? 'Doğum Günü';
+      await syncBirthdayMilestone(
+        targetUserId: uid!,
+        userName: name,
+        birthDateStr: birthDateStr,
+        coupleId: coupleId,
+      );
+    }
+  }
+
   // Profil fotoğrafı güncelle
   Future<void> updateAvatar(String avatarPath) async {
     if (uid == null) return;
@@ -175,6 +195,33 @@ class DatabaseService {
     }, SetOptions(merge: true));
 
     await batch.commit();
+
+    // Otomatik Özel Günler: Yıldönümü ve her iki tarafın doğum günlerini ekle
+    await syncDefaultAnniversary(relationshipStartDate, coupleId: coupleId);
+
+    try {
+      final user1Doc = await _db.collection('users').doc(requesterUid).get();
+      final user2Doc = await _db.collection('users').doc(uid).get();
+
+      if (user1Doc.exists && user1Doc.data()?['birthDate'] != null) {
+        await syncBirthdayMilestone(
+          targetUserId: requesterUid,
+          userName: user1Doc.data()?['name'] ?? 'Partner',
+          birthDateStr: user1Doc.data()!['birthDate'],
+          coupleId: coupleId,
+        );
+      }
+
+      if (user2Doc.exists && user2Doc.data()?['birthDate'] != null) {
+        await syncBirthdayMilestone(
+          targetUserId: uid!,
+          userName: user2Doc.data()?['name'] ?? 'Ben',
+          birthDateStr: user2Doc.data()!['birthDate'],
+          coupleId: coupleId,
+        );
+      }
+    } catch (_) {}
+
     return coupleId;
   }
 
@@ -412,6 +459,32 @@ class DatabaseService {
           'createdAt': FieldValue.serverTimestamp(),
         });
       }
+    } catch (_) {}
+  }
+
+  /// Doğum gününü çiftin özel günlerine otomatik ekler/günceller
+  Future<void> syncBirthdayMilestone({
+    required String targetUserId,
+    required String userName,
+    required String birthDateStr,
+    required String coupleId,
+  }) async {
+    try {
+      final bDate = DateTime.tryParse(birthDateStr);
+      if (bDate == null) return;
+
+      final collection = _db.collection('couples').doc(coupleId).collection('milestones');
+      final docId = 'birthday_$targetUserId';
+
+      final displayName = userName.isNotEmpty ? userName : 'Partner';
+      await collection.doc(docId).set({
+        'title': '$displayName Doğum Günü 🎂',
+        'date': bDate.toIso8601String(),
+        'type': 'birthday',
+        'isDefault': true,
+        'userId': targetUserId,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
     } catch (_) {}
   }
 

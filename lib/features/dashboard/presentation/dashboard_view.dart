@@ -178,9 +178,18 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
               : DateTime.now(),
           coupleId: data['coupleId'],
           isAppOpen: data['isAppOpen'] as bool?,
+          birthDate: data['birthDate'] as String?,
         );
         if (data['coupleId'] != null) {
           final cId = data['coupleId'] as String;
+          if (data['birthDate'] != null) {
+            DatabaseService().syncBirthdayMilestone(
+              targetUserId: doc.id,
+              userName: data['name'] ?? ref.read(userNameProvider),
+              birthDateStr: data['birthDate'],
+              coupleId: cId,
+            );
+          }
           if (cId != ref.read(coupleIdProvider)) {
             ref.read(coupleIdProvider.notifier).state = cId;
             _listenToCouple(cId);
@@ -761,8 +770,19 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
             : DateTime.now(),
         coupleId: data['coupleId'],
         isAppOpen: data['isAppOpen'] as bool?,
+        birthDate: data['birthDate'] as String?,
       );
       ref.read(partnerProvider.notifier).state = partnerUser;
+
+      final coupleId = ref.read(coupleIdProvider) ?? data['coupleId'] as String?;
+      if (coupleId != null && data['birthDate'] != null) {
+        DatabaseService().syncBirthdayMilestone(
+          targetUserId: doc.id,
+          userName: data['name'] ?? 'Partner',
+          birthDateStr: data['birthDate'],
+          coupleId: coupleId,
+        );
+      }
       
       // Eğer partner ilişki tarihini güncellemişse bize de yansısın
       if (data['relationshipStartDate'] != null) {

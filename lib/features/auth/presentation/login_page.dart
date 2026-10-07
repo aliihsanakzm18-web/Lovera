@@ -11,7 +11,7 @@ final authServiceProvider = Provider<AuthService>((ref) => AuthService());
 
 class LoginPage extends ConsumerWidget {
   const LoginPage({super.key, required this.onSignedIn});
-  final VoidCallback onSignedIn;
+  final ValueChanged<bool> onSignedIn;
 
   Future<void> _handleGoogleSignIn(BuildContext context, WidgetRef ref) async {
     try {
@@ -22,7 +22,8 @@ class LoginPage extends ConsumerWidget {
         if (name.isNotEmpty) {
           ref.read(userNameProvider.notifier).state = name;
         }
-        onSignedIn();
+        final isNew = cred.additionalUserInfo?.isNewUser ?? false;
+        onSignedIn(isNew);
       }
     } catch (e) {
       if (context.mounted) {
@@ -45,12 +46,12 @@ class LoginPage extends ConsumerWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (_) => _EmailSheet(
-        onSuccess: (username) {
+        onSuccess: (username, isNewUser) {
           if (username.isNotEmpty) {
             ref.read(userNameProvider.notifier).state = username;
           }
           Navigator.of(context).pop();
-          onSignedIn();
+          onSignedIn(isNewUser);
         },
       ),
     );
@@ -183,7 +184,7 @@ class _AuthButton extends StatelessWidget {
 /// E-posta ile giriş / kayıt formu.
 class _EmailSheet extends StatefulWidget {
   const _EmailSheet({required this.onSuccess});
-  final void Function(String username) onSuccess;
+  final void Function(String username, bool isNewUser) onSuccess;
 
   @override
   State<_EmailSheet> createState() => _EmailSheetState();
@@ -223,13 +224,13 @@ class _EmailSheetState extends State<_EmailSheet> {
           password: _password.text.trim(),
           username: _username.text.trim(),
         );
-        widget.onSuccess(_username.text.trim());
+        widget.onSuccess(_username.text.trim(), true);
       } else {
         final cred = await auth.signInWithEmail(
           email: _email.text.trim(),
           password: _password.text.trim(),
         );
-        widget.onSuccess(cred.user?.displayName ?? '');
+        widget.onSuccess(cred.user?.displayName ?? '', false);
       }
     } on FirebaseAuthException catch (e) {
       setState(() {
