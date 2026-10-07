@@ -71,10 +71,15 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     }
   }
 
+  DateTime? _lastPartnerPosTime;
+  DateTime? _lastMyPosTime;
+
   void _smoothAnimateMyPos(LatLng newTarget) {
+    final now = DateTime.now();
     if (_animatedMyPos == null) {
       _animatedMyPos = newTarget;
       _targetMyPos = newTarget;
+      _lastMyPosTime = now;
       return;
     }
     if (_targetMyPos?.latitude == newTarget.latitude &&
@@ -83,17 +88,25 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     }
 
     final from = _animatedMyPos!;
+    final double elapsedSec = _lastMyPosTime != null
+        ? (now.difference(_lastMyPosTime!).inMilliseconds / 1000.0).clamp(0.5, 3.0)
+        : 1.0;
+    _lastMyPosTime = now;
+
+    // Hedefe giderken duraksamadan sürekli akması için süreyi gelen veri hızına uyarla (800-1200ms)
+    final int animDurationMs = (elapsedSec * 1050).round().clamp(600, 1500);
+
     _targetMyPos = newTarget;
     _myAnimController?.stop();
     _myAnimController?.dispose();
     _myAnimController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 650),
+      duration: Duration(milliseconds: animDurationMs),
     );
-    final anim = CurvedAnimation(parent: _myAnimController!, curve: Curves.linear);
-    anim.addListener(() {
+    // Linear + hafif tahmin (araba / yaya navigasyonlarındaki dead-reckoning)
+    _myAnimController!.addListener(() {
       if (!mounted) return;
-      final t = anim.value;
+      final t = _myAnimController!.value;
       setState(() {
         _animatedMyPos = LatLng(
           from.latitude + (newTarget.latitude - from.latitude) * t,
@@ -105,9 +118,11 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
   }
 
   void _smoothAnimatePartnerPos(LatLng newTarget) {
+    final now = DateTime.now();
     if (_animatedPartnerPos == null) {
       _animatedPartnerPos = newTarget;
       _targetPartnerPos = newTarget;
+      _lastPartnerPosTime = now;
       return;
     }
     if (_targetPartnerPos?.latitude == newTarget.latitude &&
@@ -116,17 +131,24 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     }
 
     final from = _animatedPartnerPos!;
+    final double elapsedSec = _lastPartnerPosTime != null
+        ? (now.difference(_lastPartnerPosTime!).inMilliseconds / 1000.0).clamp(0.5, 3.0)
+        : 1.0;
+    _lastPartnerPosTime = now;
+
+    // Gelen iki koordinat arasındaki zamana göre kesintisiz akış süresi belirle
+    final int animDurationMs = (elapsedSec * 1100).round().clamp(700, 1600);
+
     _targetPartnerPos = newTarget;
     _partnerAnimController?.stop();
     _partnerAnimController?.dispose();
     _partnerAnimController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 650),
+      duration: Duration(milliseconds: animDurationMs),
     );
-    final anim = CurvedAnimation(parent: _partnerAnimController!, curve: Curves.linear);
-    anim.addListener(() {
+    _partnerAnimController!.addListener(() {
       if (!mounted) return;
-      final t = anim.value;
+      final t = _partnerAnimController!.value;
       setState(() {
         _animatedPartnerPos = LatLng(
           from.latitude + (newTarget.latitude - from.latitude) * t,
