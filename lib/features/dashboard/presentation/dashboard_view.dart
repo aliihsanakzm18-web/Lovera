@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -1281,8 +1283,13 @@ class _PartnerCard extends StatelessWidget {
               CircleAvatar(
                 radius: 28,
                 backgroundColor: LoveraColors.secondary.withValues(alpha: 0.3),
-                backgroundImage:
-                    p.avatarUrl != null ? CachedNetworkImageProvider(p.avatarUrl!) : null,
+                backgroundImage: p.avatarUrl != null
+                    ? (p.avatarUrl!.startsWith('data:image')
+                        ? MemoryImage(base64Decode(p.avatarUrl!.split(',').last)) as ImageProvider
+                        : (p.avatarUrl!.startsWith('http')
+                            ? CachedNetworkImageProvider(p.avatarUrl!)
+                            : FileImage(File(p.avatarUrl!)) as ImageProvider))
+                    : null,
                 child: p.avatarUrl == null
                     ? Text(p.name.isEmpty ? '?' : p.name[0],
                         style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700))

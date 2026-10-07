@@ -32,10 +32,26 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     _ready = true;
   }
 
-  void _next() => _page.nextPage(
-        duration: const Duration(milliseconds: 450),
-        curve: Curves.easeInOutCubic,
-      );
+  Future<void> _next() async {
+    // Eğer sıradaki adım PermissionsPage ise ve tüm izinler zaten verilmişse doğrudan _finish() çağır
+    final nextPageIndex = (_page.page?.round() ?? 0) + 1;
+    if (nextPageIndex < _steps.length && _steps[nextPageIndex] is PermissionsPage) {
+      final locWhenInUse = await Permission.locationWhenInUse.isGranted;
+      final locAlways = await Permission.locationAlways.isGranted;
+      final notif = await Permission.notification.isGranted;
+      final cam = await Permission.camera.isGranted;
+      final hasMissing = !(locWhenInUse || locAlways) || !notif || !cam;
+      if (!hasMissing) {
+        await _finish();
+        return;
+      }
+    }
+
+    _page.nextPage(
+      duration: const Duration(milliseconds: 450),
+      curve: Curves.easeInOutCubic,
+    );
+  }
 
   void _back() => _page.previousPage(
         duration: const Duration(milliseconds: 450),

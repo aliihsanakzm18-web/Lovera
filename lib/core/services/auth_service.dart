@@ -158,6 +158,7 @@ class AuthService {
       await prefs.remove('saved_city');
       await prefs.remove('name');
       await prefs.remove('onboarded');
+      await prefs.remove('avatar_path');
     } catch (_) {}
 
     // 5. Firebase & Google Auth oturumlarını kapat
@@ -167,6 +168,85 @@ class AuthService {
     try {
       await _auth.signOut();
     } catch (_) {}
+  }
+
+  /// Hesabı tamamen sil: Şifre doğrulaması -> Veritabanı ve ilişki temizliği -> Auth kullanıcısı silme
+  Future<void> deleteAccount(String password) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw Exception('Oturum açmış kullanıcı bulunamadı.');
+    }
+
+    final email = user.email;
+    if (email == null || email.isEmpty) {
+      throw Exception('Kullanıcı e-posta adresi bulunamadı.');
+    }
+
+    final uid = user.uid;
+
+    // 1. Şifre ile yeniden kimlik doğrula (Firebase reauthenticate)
+    final credential = EmailAuthProvider.credential(
+      email: email,
+      password: password,
+    );
+    await user.reauthenticateWithCredential(credential);
+
+    // 2. Firestore verilerini temizle
+    try {
+      final userDoc = await _firestore.collection('users').doc(uid).get();
+      if (userDoc.exists) {
+        final data = userDoc.data();
+        final coupleId = data?['coupleId'] as String?;
+        final inviteCode = data?['inviteCode'] as String?;
+
+        // Varsa davet kodunu sil
+        if (inviteCode != null && inviteCode.isNotEmpty) {
+          await _firestore.collection('inviteCodes').doc(inviteCode).delete();
+        }
+
+        // Varsa çift ilişkisini ayrıl/sil
+        if (coupleId != null && coupleId.isNotEmpty) {
+          try {
+            final coupleDoc = await _firestore.collection('couples').doc(coupleId).get();
+            if (coupleDoc.exists) {
+              final users = List<String>.from(coupleDoc.data()?['users'] ?? []);
+              final partnerUid = users.firstWhere((id) => id != uid, orElse: () => '');
+              if (partnerUid.isNotEmpty) {
+                // Partneri haberdar et ve partnerin coupleId'sini temizle
+                await _firestore.collection('users').doc(partnerUid).update({
+                  'coupleId': FieldValue.delete(),
+                  'partnerUid': FieldValue.delete(),
+                });
+              }
+              // Couple dokümanını sil
+              await _firestore.collection('couples').doc(coupleId).delete();
+            }
+          } catch (_) {}
+        }
+      }
+
+      // Kullanıcının kendi users dokümanını sil
+      await _firestore.collection('users').doc(uid).delete();
+    } catch (_) {}
+
+    // 3. Cihaz takibini durdur & yerel verileri temizle
+    DeviceService().stopTracking();
+    try {
+      final bgService = FlutterBackgroundService();
+      if (await bgService.isRunning()) {
+        bgService.invoke('stopService');
+      }
+    } catch (_) {}
+    try {
+      await NotificationService().clearFcmTokenOnSignOut();
+    } catch (_) {}
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+    } catch (_) {}
+
+    // 4. Firebase Authentication'dan kullanıcıyı kalıcı olarak sil
+    await user.delete();
   }
 }
 

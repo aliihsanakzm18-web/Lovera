@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -681,11 +682,32 @@ class _SnapAvatarMarker extends StatelessWidget {
                   ),
                   child: ClipOval(
                     child: avatarUrl != null && avatarUrl!.isNotEmpty
-                        ? Image.network(
-                            avatarUrl!,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => _buildFallbackIcon(),
-                          )
+                        ? () {
+                            if (avatarUrl!.startsWith('data:image')) {
+                              try {
+                                final base64String = avatarUrl!.split(',').last;
+                                return Image.memory(
+                                  base64Decode(base64String),
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => _buildFallbackIcon(),
+                                );
+                              } catch (_) {
+                                return _buildFallbackIcon();
+                              }
+                            } else if (avatarUrl!.startsWith('http')) {
+                              return Image.network(
+                                avatarUrl!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => _buildFallbackIcon(),
+                              );
+                            } else {
+                              return Image.file(
+                                File(avatarUrl!),
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => _buildFallbackIcon(),
+                              );
+                            }
+                          }()
                         : _buildFallbackIcon(),
                   ),
                 ),

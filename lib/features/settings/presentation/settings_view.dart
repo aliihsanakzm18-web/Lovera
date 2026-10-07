@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -17,6 +18,25 @@ class SettingsView extends ConsumerStatefulWidget {
 }
 
 class _SettingsViewState extends ConsumerState<SettingsView> {
+  ImageProvider? _getAvatarProvider(String? path) {
+    if (path == null || path.isEmpty) return null;
+    if (path.startsWith('data:image')) {
+      try {
+        final base64String = path.split(',').last;
+        return MemoryImage(base64Decode(base64String));
+      } catch (_) {
+        return null;
+      }
+    } else if (path.startsWith('http')) {
+      return NetworkImage(path);
+    } else {
+      final f = File(path);
+      if (f.existsSync()) {
+        return FileImage(f);
+      }
+      return null;
+    }
+  }
   // Bildirim ayarları durumları
   bool _notifHeart = true;
   bool _notifMilestones = true;
@@ -58,7 +78,11 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     } catch (_) {}
 
     ref.read(userNameProvider.notifier).state = '';
+    ref.read(userAvatarProvider.notifier).state = null;
+    ref.read(currentUserProvider.notifier).state = null;
     ref.read(partnerProvider.notifier).state = null;
+    ref.read(partnerUidProvider.notifier).state = null;
+    ref.read(coupleIdProvider.notifier).state = null;
     ref.read(startDateProvider.notifier).state = null;
     ref.read(milestonesProvider.notifier).state = [];
 
@@ -395,8 +419,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                     CircleAvatar(
                       radius: 32,
                       backgroundColor: LoveraColors.primarySoft.withValues(alpha: 0.18),
-                      backgroundImage: avatarPath != null ? FileImage(File(avatarPath)) : null,
-                      child: avatarPath == null
+                      backgroundImage: _getAvatarProvider(avatarPath),
+                      child: _getAvatarProvider(avatarPath) == null
                           ? Text(
                               userName.isNotEmpty ? userName[0].toUpperCase() : '?',
                               style: theme.textTheme.headlineSmall?.copyWith(

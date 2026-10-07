@@ -48,12 +48,22 @@ class _PermissionsPageState extends State<PermissionsPage> with WidgetsBindingOb
     final cam = await Permission.camera.isGranted;
 
     if (mounted) {
+      final locOk = locAlways || locWhenInUse;
       setState(() {
-        _granted[Permission.locationAlways] = locAlways || locWhenInUse;
+        _granted[Permission.locationAlways] = locOk;
         _granted[Permission.notification] = notif;
         _granted[Permission.camera] = cam;
         _checking = false;
       });
+
+      // Eğer tüm izinler verilmişse kullanıcıyı boş ekranda bekletmeden doğrudan devam et
+      if (locOk && notif && cam) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            widget.onFinish();
+          }
+        });
+      }
     }
   }
 

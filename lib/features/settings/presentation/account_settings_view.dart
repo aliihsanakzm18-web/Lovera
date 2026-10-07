@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -11,6 +12,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../onboarding/presentation/onboarding_flow.dart';
 
 class AccountSettingsView extends ConsumerStatefulWidget {
   const AccountSettingsView({super.key});
@@ -21,30 +23,69 @@ class AccountSettingsView extends ConsumerStatefulWidget {
 
 class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
   final _picker = ImagePicker();
+  bool _isDeleting = false;
+
+  ImageProvider? _getAvatarProvider(String? path) {
+    if (path == null || path.isEmpty) return null;
+    if (path.startsWith('data:image')) {
+      try {
+        final base64String = path.split(',').last;
+        return MemoryImage(base64Decode(base64String));
+      } catch (_) {
+        return null;
+      }
+    } else if (path.startsWith('http')) {
+      return NetworkImage(path);
+    } else {
+      final f = File(path);
+      if (f.existsSync()) {
+        return FileImage(f);
+      }
+      return null;
+    }
+  }
 
   // Profil fotoğrafı seçme
   Future<void> _pickImage() async {
     final picked = await _picker.pickImage(
       source: ImageSource.gallery,
-      maxWidth: 600,
-      maxHeight: 600,
-      imageQuality: 85,
+      maxWidth: 240,
+      maxHeight: 240,
+      imageQuality: 60,
     );
 
     if (picked != null) {
-      ref.read(userAvatarProvider.notifier).state = picked.path;
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('avatar_path', picked.path);
+      try {
+        final bytes = await picked.readAsBytes();
+        final base64Str = 'data:image/jpeg;base64,${base64Encode(bytes)}';
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Profil fotoğrafınız güncellendi!'),
-            backgroundColor: LoveraColors.secondary,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          ),
-        );
+        // State ve SharedPreferences güncelle
+        ref.read(userAvatarProvider.notifier).state = base64Str;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('avatar_path', base64Str);
+
+        // Firestore'a kalıcı olarak kaydet (hem partner görsün hem yeniden girince korunsun)
+        await DatabaseService().updateAvatar(base64Str);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Profil fotoğrafınız güncellendi!'),
+              backgroundColor: LoveraColors.secondary,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Fotoğraf yüklenemedi: $e'),
+              backgroundColor: LoveraColors.primary,
+            ),
+          );
+        }
       }
     }
   }
@@ -287,8 +328,8 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
                 CircleAvatar(
                   radius: 54,
                   backgroundColor: LoveraColors.primarySoft.withValues(alpha: 0.2),
-                  backgroundImage: avatarPath != null ? FileImage(File(avatarPath)) : null,
-                  child: avatarPath == null
+                  backgroundImage: _getAvatarProvider(avatarPath),
+                  child: _getAvatarProvider(avatarPath) == null
                       ? Text(
                           userName.isNotEmpty ? userName[0].toUpperCase() : '?',
                           style: theme.textTheme.displaySmall?.copyWith(
@@ -379,8 +420,190 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
               ],
             ),
           ),
+          const SizedBox(height: 36),
+
+          // Hesabı Sil Alanı
+          Container(
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              borderRadius: BorderRadius.circular(AppTheme.radius),
+              border: Border.all(color: Colors.redAccent.withValues(alpha: 0.3)),
+              boxShadow: AppTheme.ambientShadow,
+            ),
+            child: ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.redAccent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.delete_forever_rounded, color: Colors.redAccent, size: 22),
+              ),
+              title: const Text(
+                'Hesabı Sil',
+                style: TextStyle(fontWeight: FontWeight.w700, color: Colors.redAccent),
+              ),
+              subtitle: const Text(
+                'Hesabınızı ve tüm verilerinizi kalıcı olarak silin',
+                style: TextStyle(fontSize: 12, color: LoveraColors.textMuted),
+              ),
+              trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.redAccent),
+              onTap: _isDeleting ? null : _confirmDeleteAccount,
+            ),
+          ),
+          const SizedBox(height: 24),
         ],
       ),
     );
+  }
+
+  // Hesabı Silme Akışı
+  Future<void> _confirmDeleteAccount() async {
+    // 1. Emin misiniz uyarısı
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 28),
+            SizedBox(width: 10),
+            Text('Hesabı Sil', style: TextStyle(fontWeight: FontWeight.w800)),
+          ],
+        ),
+        content: const Text(
+          'Emin misiniz? Hesabınız, fotoğraflarınız, özel günleriniz ve partner eşleşmeniz geri alınamaz şekilde kalıcı olarak silinecektir.',
+          style: TextStyle(height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Eminim, Sil'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    // 2. Şifre Doğrulama Diyaloğu
+    final passwordController = TextEditingController();
+    bool obscure = true;
+
+    final shouldProceed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+          title: const Text('Güvenlik Doğrulaması', style: TextStyle(fontWeight: FontWeight.w800)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Hesabınızı silmek için lütfen mevcut hesap şifrenizi girin:',
+                style: TextStyle(fontSize: 13, color: LoveraColors.textMuted),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: passwordController,
+                obscureText: obscure,
+                decoration: InputDecoration(
+                  hintText: 'Şifreniz',
+                  prefixIcon: const Icon(Icons.lock_outline_rounded),
+                  suffixIcon: IconButton(
+                    icon: Icon(obscure ? Icons.visibility_off : Icons.visibility),
+                    onPressed: () => setDialogState(() => obscure = !obscure),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Vazgeç'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+              onPressed: () {
+                if (passwordController.text.trim().isEmpty) return;
+                Navigator.pop(ctx, true);
+              },
+              child: const Text('Hesabı Kalıcı Olarak Sil'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (shouldProceed != true || !mounted) return;
+
+    final password = passwordController.text.trim();
+    if (password.isEmpty) return;
+
+    setState(() => _isDeleting = true);
+
+    try {
+      // AuthService ile hesabı sil
+      await AuthService().deleteAccount(password);
+
+      // Riverpod durumlarını sıfırla
+      ref.read(userNameProvider.notifier).state = '';
+      ref.read(userAvatarProvider.notifier).state = null;
+      ref.read(currentUserProvider.notifier).state = null;
+      ref.read(partnerProvider.notifier).state = null;
+      ref.read(partnerUidProvider.notifier).state = null;
+      ref.read(coupleIdProvider.notifier).state = null;
+      ref.read(startDateProvider.notifier).state = null;
+      ref.read(milestonesProvider.notifier).state = [];
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Hesabınız ve tüm verileriniz başarıyla silindi.'),
+          backgroundColor: LoveraColors.secondary,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+      );
+
+      // Giriş / Onboarding sayfasına yönlendir
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const OnboardingFlow()),
+        (route) => false,
+      );
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _isDeleting = false);
+      String msg = 'Hesap silinemedi: ${e.message}';
+      if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+        msg = 'Girdiğiniz şifre hatalı. Lütfen tekrar deneyin.';
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isDeleting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Hata oluştu: $e'),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 }
