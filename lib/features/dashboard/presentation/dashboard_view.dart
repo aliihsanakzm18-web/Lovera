@@ -51,8 +51,9 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     // İlk açılışta uygulamada olduğumuzu bildir
     DatabaseService().setAppPresence(true);
 
-    // Periyodik olarak partnerin durumunu talep et ve kendi durumumuzu tazele
+    // Periyodik olarak hem uygulamada olduğumuzu bildir hem de partnerin durumunu tazele
     _statusSyncTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      DatabaseService().setAppPresence(true);
       final pUid = ref.read(partnerUidProvider);
       if (pUid != null && pUid.isNotEmpty) {
         NotificationService().requestPartnerStatusSync(pUid);
@@ -1115,12 +1116,19 @@ class _PartnerCard extends StatelessWidget {
   final VoidCallback? onBatteryTap;
   final VoidCallback? onWeatherTap;
 
+  bool _isOnline(AppUser p) {
+    if (p.isAppOpen != true) return false;
+    if (p.lastActive == null) return false;
+    final d = DateTime.now().difference(p.lastActive!);
+    return d.inMinutes < 2;
+  }
+
   String _lastSeen(AppUser p) {
     if (p.lastActive == null) return '-';
-    final d = DateTime.now().difference(p.lastActive!);
-    if (p.isAppOpen == true && d.inMinutes < 2) {
+    if (_isOnline(p)) {
       return 'Şimdi aktif';
     }
+    final d = DateTime.now().difference(p.lastActive!);
     if (d.inMinutes < 1) return '1 dk önce aktifti';
     if (d.inMinutes < 60) return '${d.inMinutes} dk önce aktifti';
     if (d.inHours < 24) return '${d.inHours} sa önce aktifti';
@@ -1235,9 +1243,47 @@ class _PartnerCard extends StatelessWidget {
                         ],
                       ],
                     ),
-                    const SizedBox(height: 2),
-                    Text(_lastSeen(p),
-                        style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted)),
+                    const SizedBox(height: 3),
+                    Builder(
+                      builder: (_) {
+                        final online = _isOnline(p);
+                        if (online) {
+                          return Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 7,
+                                height: 7,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF10B981),
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFF10B981).withValues(alpha: 0.6),
+                                      blurRadius: 6,
+                                      spreadRadius: 1.5,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 5),
+                              const Text(
+                                'Şimdi aktif',
+                                style: TextStyle(
+                                  color: Color(0xFF10B981),
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          );
+                        }
+                        return Text(
+                          _lastSeen(p),
+                          style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted),
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),

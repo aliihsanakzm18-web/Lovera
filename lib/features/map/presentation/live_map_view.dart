@@ -265,6 +265,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                         borderColor: const Color(0xFF388AF6), // Okyanus Mavisi Rozet
                         glowColor: const Color(0xFF388AF6).withValues(alpha: 0.35),
                         isMe: true,
+                        isOnline: true,
                         isDark: isDark,
                         onTap: () => _animatedFlightMove(myLatLng, 16.0),
                       ),
@@ -279,9 +280,20 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                         name: partner?.name ?? 'Partner',
                         avatarUrl: partner?.avatarUrl,
                         batteryLevel: partner?.batteryLevel,
-                        borderColor: LoveraColors.primary, // Asil Leylak Rozet
-                        glowColor: LoveraColors.primary.withValues(alpha: 0.35),
+                        borderColor: (partner?.isAppOpen == true &&
+                                partner?.lastActive != null &&
+                                DateTime.now().difference(partner!.lastActive!).inMinutes < 2)
+                            ? const Color(0xFF10B981)
+                            : LoveraColors.primary,
+                        glowColor: (partner?.isAppOpen == true &&
+                                partner?.lastActive != null &&
+                                DateTime.now().difference(partner!.lastActive!).inMinutes < 2)
+                            ? const Color(0xFF10B981).withValues(alpha: 0.5)
+                            : LoveraColors.primary.withValues(alpha: 0.35),
                         isMe: false,
+                        isOnline: (partner?.isAppOpen == true &&
+                            partner?.lastActive != null &&
+                            DateTime.now().difference(partner!.lastActive!).inMinutes < 2),
                         isDark: isDark,
                         onTap: () => _animatedFlightMove(partnerLatLng, 16.0),
                       ),
@@ -403,6 +415,7 @@ class _SnapAvatarMarker extends StatelessWidget {
     required this.borderColor,
     required this.glowColor,
     required this.isMe,
+    this.isOnline = false,
     required this.isDark,
     required this.onTap,
   });
@@ -413,6 +426,7 @@ class _SnapAvatarMarker extends StatelessWidget {
   final Color borderColor;
   final Color glowColor;
   final bool isMe;
+  final bool isOnline;
   final bool isDark;
   final VoidCallback onTap;
 
@@ -423,154 +437,205 @@ class _SnapAvatarMarker extends StatelessWidget {
       child: Align(
         alignment: Alignment.bottomCenter,
         child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Üst Snap Bilgi Hapı: İsim + Pil Durumu
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF22252E) : Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: isDark ? Colors.white.withValues(alpha: 0.12) : borderColor.withValues(alpha: 0.25),
-                width: 1.2,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.14),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Üst Snap Bilgi Hapı: İsim + Canlı Durum + Pil Durumu
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E212B) : Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isOnline
+                      ? const Color(0xFF10B981)
+                      : (isDark ? Colors.white.withValues(alpha: 0.15) : borderColor.withValues(alpha: 0.3)),
+                  width: isOnline ? 1.8 : 1.2,
                 ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Canlı Yeşil / Leylak Göstergesi
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: isMe ? const Color(0xFF388AF6) : const Color(0xFF10B981),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 75),
-                  child: Text(
-                    name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: isDark ? Colors.white : const Color(0xFF1E2022),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                if (batteryLevel != null) ...[
-                  const SizedBox(width: 4),
-                  Text(
-                    '%$batteryLevel',
-                    style: TextStyle(
-                      color: isDark ? const Color(0xFFA0A6B2) : const Color(0xFF6B7280),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                    ),
+                boxShadow: [
+                  BoxShadow(
+                    color: isOnline
+                        ? const Color(0xFF10B981).withValues(alpha: 0.4)
+                        : Colors.black.withValues(alpha: isDark ? 0.35 : 0.14),
+                    blurRadius: isOnline ? 10 : 8,
+                    offset: const Offset(0, 3),
                   ),
                 ],
-              ],
-            ),
-          ),
-          const SizedBox(height: 3),
-
-          // Yuvarlak Avatar & Hologram / Snap Halo Gölgesi
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              // Parlama halkası
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: glowColor,
-                      blurRadius: 14,
-                      spreadRadius: 2,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Parlayan Canlılık / Aktiflik Noktası
+                  Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: isOnline
+                          ? const Color(0xFF10B981)
+                          : (isMe ? const Color(0xFF388AF6) : const Color(0xFF94A3B8)),
+                      shape: BoxShape.circle,
+                      boxShadow: isOnline
+                          ? [
+                              BoxShadow(
+                                color: const Color(0xFF10B981).withValues(alpha: 0.8),
+                                blurRadius: 6,
+                                spreadRadius: 1.5,
+                              ),
+                            ]
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 80),
+                    child: Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: isDark ? Colors.white : const Color(0xFF1E2022),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  if (batteryLevel != null) ...[
+                    const SizedBox(width: 5),
+                    Text(
+                      '%$batteryLevel',
+                      style: TextStyle(
+                        color: isDark ? const Color(0xFFA0A6B2) : const Color(0xFF6B7280),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ],
-                ),
+                ],
               ),
-              // Ana Avatar Dairesi
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF22252E) : Colors.white,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: borderColor, width: 3),
-                ),
-                child: ClipOval(
-                  child: avatarUrl != null && avatarUrl!.isNotEmpty
-                      ? Image.network(
-                          avatarUrl!,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => _buildFallbackIcon(),
-                        )
-                      : _buildFallbackIcon(),
-                ),
-              ),
-              // Alt köşe minik rozet (Kalp veya Ben simgesi)
-              Positioned(
-                bottom: 0,
-                right: 0,
-                child: Container(
-                  width: 16,
-                  height: 16,
+            ),
+            const SizedBox(height: 4),
+
+            // Yuvarlak Avatar & Hologram / Snapchat Tarzı Canlı Halka & Radarlar
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                // 1. Canlı radar dalgası (Snapchat Canlı Konum Efekti)
+                if (isOnline)
+                  Container(
+                    width: 66,
+                    height: 66,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.4),
+                        width: 2,
+                      ),
+                    ),
+                  )
+                      .animate(onPlay: (controller) => controller.repeat())
+                      .scale(
+                        begin: const Offset(0.75, 0.75),
+                        end: const Offset(1.28, 1.28),
+                        duration: 1600.ms,
+                        curve: Curves.easeOut,
+                      )
+                      .fadeOut(duration: 1600.ms, curve: Curves.easeOut),
+
+                // 2. Snapchat Parlama Halkası (Canlıysa zümrüt yeşili neon, değilse marka rengi)
+                Container(
+                  width: 54,
+                  height: 54,
                   decoration: BoxDecoration(
-                    color: borderColor,
                     shape: BoxShape.circle,
-                    border: Border.all(color: isDark ? const Color(0xFF22252E) : Colors.white, width: 1.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: isOnline
+                            ? const Color(0xFF10B981).withValues(alpha: 0.65)
+                            : glowColor,
+                        blurRadius: isOnline ? 18 : 14,
+                        spreadRadius: isOnline ? 3 : 2,
+                      ),
+                    ],
                   ),
-                  child: Center(
-                    child: Icon(
-                      isMe ? Icons.near_me_rounded : Icons.favorite_rounded,
-                      color: Colors.white,
-                      size: 9,
+                ),
+
+                // 3. Ana Avatar Dairesi
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF22252E) : Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isOnline ? const Color(0xFF10B981) : borderColor,
+                      width: 3,
+                    ),
+                  ),
+                  child: ClipOval(
+                    child: avatarUrl != null && avatarUrl!.isNotEmpty
+                        ? Image.network(
+                            avatarUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => _buildFallbackIcon(),
+                          )
+                        : _buildFallbackIcon(),
+                  ),
+                ),
+
+                // 4. Alt köşe minik rozet (Kalp veya Ben simgesi)
+                Positioned(
+                  bottom: 0,
+                  right: 0,
+                  child: Container(
+                    width: 17,
+                    height: 17,
+                    decoration: BoxDecoration(
+                      color: isOnline ? const Color(0xFF10B981) : borderColor,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: isDark ? const Color(0xFF22252E) : Colors.white,
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Center(
+                      child: Icon(
+                        isMe ? Icons.near_me_rounded : Icons.favorite_rounded,
+                        color: Colors.white,
+                        size: 9.5,
+                      ),
                     ),
                   ),
                 ),
+              ],
+            ),
+
+            // Pin İğnesi Ucu
+            CustomPaint(
+              size: const Size(10, 5),
+              painter: _TrianglePainter(
+                color: isOnline ? const Color(0xFF10B981) : borderColor,
               ),
-            ],
-          ),
+            ),
 
-          // Pin İğnesi Ucu
-          CustomPaint(
-            size: const Size(10, 5),
-            painter: _TrianglePainter(color: borderColor),
-          ),
-
-          // Zemin gölgesi: yerleşimi etkilemez, iğne ucu tam koordinatta kalır
-          SizedBox(
-            height: 0,
-            child: OverflowBox(
-              maxHeight: 4,
-              alignment: Alignment.topCenter,
-              child: Container(
-                width: 18,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.22),
-                  borderRadius: BorderRadius.circular(10),
+            // Zemin gölgesi: yerleşimi etkilemez, iğne ucu tam koordinatta kalır
+            SizedBox(
+              height: 0,
+              child: OverflowBox(
+                maxHeight: 4,
+                alignment: Alignment.topCenter,
+                child: Container(
+                  width: 20,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isOnline
+                        ? const Color(0xFF10B981).withValues(alpha: 0.3)
+                        : Colors.black.withValues(alpha: 0.22),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
       ),
     );
   }
