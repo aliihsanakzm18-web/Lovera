@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -292,129 +293,162 @@ class _ChatViewState extends ConsumerState<ChatView> {
     final coupleId = ref.watch(coupleIdProvider);
     final myUid = DatabaseService().uid;
 
-    final isPartnerOnline = partner != null &&
-        partner.isAppOpen == true &&
-        (partner.lastActive == null ||
-            DateTime.now().toUtc().difference(partner.lastActive!.toUtc()).abs().inMinutes < 2);
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      behavior: HitTestBehavior.opaque,
+      child: Scaffold(
+        backgroundColor: isDark ? const Color(0xFF0F1015) : const Color(0xFFF7F8FA),
+        appBar: AppBar(
+          backgroundColor: isDark ? const Color(0xFF161822) : Colors.white,
+          elevation: 0.5,
+          titleSpacing: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+            onPressed: () {
+              FocusScope.of(context).unfocus();
+              if (widget.onBackToHome != null) {
+                widget.onBackToHome!();
+              } else {
+                Navigator.of(context).maybePop();
+              }
+            },
+          ),
+          title: partnerUid != null && partnerUid.isNotEmpty
+              ? StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                  stream: DatabaseService().partnerStream(partnerUid),
+                  builder: (context, snapshot) {
+                    final pData = snapshot.data?.data();
+                    final pName = pData?['name'] as String? ?? partner?.name ?? 'Partneriniz';
+                    final pAvatar = pData?['avatarUrl'] as String? ?? partner?.avatarUrl;
+                    final pIsOpen = pData?['isAppOpen'] as bool? ?? partner?.isAppOpen ?? false;
+                    
+                    DateTime? pLastActive;
+                    final rawLast = pData?['lastActive'] ?? partner?.lastActive;
+                    if (rawLast is DateTime) {
+                      pLastActive = rawLast;
+                    } else if (rawLast is String) {
+                      pLastActive = DateTime.tryParse(rawLast);
+                    } else if (rawLast != null) {
+                      try {
+                        pLastActive = (rawLast as dynamic).toDate?.call();
+                      } catch (_) {}
+                    }
 
-    return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0F1015) : const Color(0xFFF7F8FA),
-      appBar: AppBar(
-        backgroundColor: isDark ? const Color(0xFF161822) : Colors.white,
-        elevation: 0.5,
-        titleSpacing: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-          onPressed: widget.onBackToHome ?? () => Navigator.of(context).maybePop(),
-        ),
-        title: Row(
-          children: [
-            Stack(
-              children: [
-                CircleAvatar(
-                  radius: 20,
-                  backgroundColor: LoveraColors.primarySoft.withValues(alpha: 0.2),
-                  backgroundImage: _getAvatarProvider(partner?.avatarUrl),
-                  child: _getAvatarProvider(partner?.avatarUrl) == null
-                      ? Text(
-                          partner?.name.isNotEmpty == true ? partner!.name[0].toUpperCase() : '?',
-                          style: const TextStyle(fontWeight: FontWeight.w800, color: LoveraColors.primary),
-                        )
-                      : null,
-                ),
-                if (isPartnerOnline)
-                  Positioned(
-                    right: 0,
-                    bottom: 0,
-                    child: Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF10B981),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: isDark ? const Color(0xFF161822) : Colors.white,
-                          width: 2,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    partner?.name ?? 'Partneriniz',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  if (coupleId != null && partnerUid != null)
-                    StreamBuilder<bool>(
-                      stream: DatabaseService().typingStatusStream(coupleId, partnerUid),
-                      builder: (context, snap) {
-                        final isTyping = snap.data == true;
-                        if (isTyping) {
-                          return const Text(
-                            'yazıyor...',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: LoveraColors.primary,
-                              fontWeight: FontWeight.w600,
+                    final isLiveOnline = pIsOpen &&
+                        (pLastActive == null ||
+                            DateTime.now().toUtc().difference(pLastActive.toUtc()).abs().inMinutes < 2);
+
+                    return Row(
+                      children: [
+                        Stack(
+                          children: [
+                            CircleAvatar(
+                              radius: 20,
+                              backgroundColor: LoveraColors.primarySoft.withValues(alpha: 0.2),
+                              backgroundImage: _getAvatarProvider(pAvatar),
+                              child: _getAvatarProvider(pAvatar) == null
+                                  ? Text(
+                                      pName.isNotEmpty ? pName[0].toUpperCase() : '?',
+                                      style: const TextStyle(fontWeight: FontWeight.w800, color: LoveraColors.primary),
+                                    )
+                                  : null,
                             ),
-                          );
-                        }
-                        String statusSubtitle;
-                        if (isPartnerOnline) {
-                          statusSubtitle = 'Çevrimiçi';
-                        } else if (partner?.lastActive != null) {
-                          final diff = DateTime.now().toUtc().difference(partner!.lastActive!.toUtc()).abs();
-                          if (diff.inMinutes < 1) {
-                            statusSubtitle = '1 dk önce aktifti';
-                          } else if (diff.inMinutes < 60) {
-                            statusSubtitle = '${diff.inMinutes} dk önce aktifti';
-                          } else if (diff.inHours < 24) {
-                            statusSubtitle = '${diff.inHours} sa önce aktifti';
-                          } else {
-                            statusSubtitle = '${diff.inDays} gün önce aktifti';
-                          }
-                        } else {
-                          statusSubtitle = 'Çevrimdışı';
-                        }
+                            if (isLiveOnline)
+                              Positioned(
+                                right: 0,
+                                bottom: 0,
+                                child: Container(
+                                  width: 12,
+                                  height: 12,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF10B981),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: isDark ? const Color(0xFF161822) : Colors.white,
+                                      width: 2,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                pName,
+                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              if (coupleId != null)
+                                StreamBuilder<bool>(
+                                  stream: DatabaseService().typingStatusStream(coupleId, partnerUid),
+                                  builder: (context, snap) {
+                                    final isTyping = snap.data == true;
+                                    if (isTyping) {
+                                      return const Text(
+                                        'yazıyor...',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: LoveraColors.primary,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      );
+                                    }
+                                    String statusSubtitle;
+                                    if (isLiveOnline) {
+                                      statusSubtitle = 'Çevrimiçi';
+                                    } else if (pLastActive != null) {
+                                      final diff = DateTime.now().toUtc().difference(pLastActive.toUtc()).abs();
+                                      if (diff.inMinutes < 1) {
+                                        statusSubtitle = '1 dk önce aktifti';
+                                      } else if (diff.inMinutes < 60) {
+                                        statusSubtitle = '${diff.inMinutes} dk önce aktifti';
+                                      } else if (diff.inHours < 24) {
+                                        statusSubtitle = '${diff.inHours} sa önce aktifti';
+                                      } else {
+                                        statusSubtitle = '${diff.inDays} gün önce aktifti';
+                                      }
+                                    } else {
+                                      statusSubtitle = 'Çevrimdışı';
+                                    }
 
-                        return Text(
-                          statusSubtitle,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isPartnerOnline ? const Color(0xFF10B981) : LoveraColors.textMuted,
-                            fontWeight: FontWeight.w500,
+                                    return Text(
+                                      statusSubtitle,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: isLiveOnline ? const Color(0xFF10B981) : LoveraColors.textMuted,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    );
+                                  },
+                                )
+                              else
+                                const Text(
+                                  'Eşleşme bekleniyor',
+                                  style: TextStyle(fontSize: 12, color: LoveraColors.textMuted),
+                                ),
+                            ],
                           ),
-                        );
-                      },
-                    )
-                  else
-                    const Text(
-                      'Eşleşme bekleniyor',
-                      style: TextStyle(fontSize: 12, color: LoveraColors.textMuted),
-                    ),
-                ],
-              ),
+                        ),
+                      ],
+                    );
+                  },
+                )
+              : const Text('Partner bekleniyor', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.favorite_rounded, color: LoveraColors.primary),
+              tooltip: 'Aşk Kalbi Gönder',
+              onPressed: _sendQuickHeart,
             ),
+            const SizedBox(width: 4),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.favorite_rounded, color: LoveraColors.primary),
-            tooltip: 'Aşk Kalbi Gönder',
-            onPressed: _sendQuickHeart,
-          ),
-          const SizedBox(width: 4),
-        ],
-      ),
-      body: SafeArea(
+        body: SafeArea(
         child: Column(
           children: [
             // Mesaj Listesi
@@ -495,6 +529,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                         return ListView.builder(
                           controller: _scrollController,
                           reverse: true,
+                          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                           itemCount: messages.length,
                           itemBuilder: (context, index) {
@@ -711,6 +746,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
           ],
         ),
       ),
+    ),
     );
   }
 }

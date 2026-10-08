@@ -25,6 +25,14 @@ final startDateProvider = StateProvider<DateTime?>((ref) => null);
 /// Kullanıcının eklediği özel günler.
 final milestonesProvider = StateProvider<List<Milestone>>((ref) => []);
 
+/// Aktif sayfa indeksi (0: Harita, 1: Ana Sayfa, 2: Sohbet, 3: Oyunlar)
+final activeNavigationIndexProvider = StateProvider<int>((ref) => 1);
+
+/// Kullanıcı şu an sohbet sayfasında mı?
+final isChatActiveProvider = Provider<bool>((ref) {
+  return ref.watch(activeNavigationIndexProvider) == 2;
+});
+
 /// Giriş yapmış kullanıcının anlık bilgileri (konum, pil, şehir vb.)
 final currentUserProvider = StateProvider<AppUser?>((ref) => null);
 

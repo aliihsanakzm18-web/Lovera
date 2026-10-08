@@ -19,6 +19,7 @@ import '../../map/presentation/live_map_view.dart';
 /// Sadece [Ana Sayfa (1), Mesajlar (2), Oyun (3)] için sabit, temaya özgü şık ikonlar barındırır.
 import 'dart:async';
 import '../../../core/services/database_service.dart';
+import '../../../core/services/notification_service.dart';
 import '../../../core/state/app_state.dart';
 
 class MainNavigationShell extends ConsumerStatefulWidget {
@@ -55,9 +56,20 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
       onDetach: () => DatabaseService().setAppPresence(false),
     );
 
+    // Bildirim servisini bağla:
+    // 1) Kullanıcı sohbetteyken bildirimleri sessize al
+    // 2) Bildirime tıklandığında doğrudan Sohbet (Sayfa 2) sayfasına uçur
+    NotificationService().isChatScreenActive = () => _currentIndex == 2;
+    NotificationService().onNotificationTap = () {
+      if (mounted) {
+        _goToPage(2);
+      }
+    };
+
     // Cihaz internete bağlı ve uygulama açık olduğu anda partnerin attığı mesajları
     // "İletildi (Çift gri tik)" olarak işaretle!
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(activeNavigationIndexProvider.notifier).state = _currentIndex;
       void setupDeliveryListener(String? coupleId) {
         _deliverySub?.cancel();
         final myUid = DatabaseService().uid;
@@ -86,6 +98,8 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
 
   @override
   void dispose() {
+    NotificationService().isChatScreenActive = null;
+    NotificationService().onNotificationTap = null;
     _deliverySub?.cancel();
     _heartbeatTimer?.cancel();
     _lifecycleListener?.dispose();
@@ -95,8 +109,10 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
 
   void _goToPage(int index) {
     if (index == _currentIndex) return;
+    FocusManager.instance.primaryFocus?.unfocus();
     HapticFeedback.selectionClick();
     setState(() => _currentIndex = index);
+    ref.read(activeNavigationIndexProvider.notifier).state = index;
     _pageController.animateToPage(
       index,
       duration: const Duration(milliseconds: 380),
@@ -115,7 +131,9 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
         controller: _pageController,
         physics: const BouncingScrollPhysics(),
         onPageChanged: (idx) {
+          FocusManager.instance.primaryFocus?.unfocus();
           setState(() => _currentIndex = idx);
+          ref.read(activeNavigationIndexProvider.notifier).state = idx;
         },
         children: [
           // Sayfa 0: Canlı Harita

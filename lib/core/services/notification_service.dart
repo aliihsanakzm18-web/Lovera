@@ -135,6 +135,12 @@ class NotificationService {
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
   bool _ready = false;
 
+  /// Kullanıcı şu an sohbet ekranında mı kontrolü (sohbetteyken bildirim sesi/penceresi basmamak için)
+  bool Function()? isChatScreenActive;
+
+  /// Bildirime tıklandığında sohbet ekranına yönlendirme callback'i
+  void Function()? onNotificationTap;
+
   Future<void> init() async {
     if (_ready) return;
 
@@ -144,10 +150,31 @@ class NotificationService {
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
         iOS: DarwinInitializationSettings(),
       );
-      await _localPlugin.initialize(settings);
+      await _localPlugin.initialize(
+        settings,
+        onDidReceiveNotificationResponse: (NotificationResponse response) {
+          debugPrint('[NOTIFICATION-TAP] Yerel bildirime tıklandı: ${response.payload}');
+          onNotificationTap?.call();
+        },
+      );
       await _localPlugin
           .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
           ?.requestNotificationsPermission();
+    } catch (_) {}
+
+    // Bildirime tıklanarak uygulama kapalıyken veya arka plandayken açıldıysa:
+    try {
+      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+        debugPrint('[FCM-OPEN] Bildirime tıklanarak açıldı: ${message.data}');
+        onNotificationTap?.call();
+      });
+
+      _fcm.getInitialMessage().then((RemoteMessage? message) {
+        if (message != null) {
+          debugPrint('[FCM-INITIAL] Uygulama bildirimle başlatıldı: ${message.data}');
+          onNotificationTap?.call();
+        }
+      });
     } catch (_) {}
 
     // 2. FCM İzinleri (iOS & Android 13+)
@@ -190,6 +217,13 @@ class NotificationService {
         // Sessiz sistem mesajları (arka plan şarj/konum eşitleme) için ASLA bildirim gösterme!
         if (message.data['type'] == 'ping_request') {
           DeviceService().syncStatusToFirebase();
+          return;
+        }
+
+        // Eğer kullanıcı şu an zaten sohbet ekranındaysa sohbet bildirimini gösterme (Zaten görüyor!)
+        final isChatActive = isChatScreenActive?.call() ?? false;
+        if (isChatActive && message.data['type'] == 'chat_message') {
+          debugPrint('[NOTIFICATION-MUTE] Kullanıcı sohbette olduğu için bildirim sesi/penceresi bastırıldı.');
           return;
         }
 
