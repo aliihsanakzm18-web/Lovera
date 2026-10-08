@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/models/models.dart';
@@ -38,6 +39,8 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
   StreamSubscription? _userSub;
   StreamSubscription? _partnerSub;
   StreamSubscription? _coupleSub;
+  StreamSubscription? _savedPlacesSub;
+  List<SavedPlace> _savedPlaces = [];
   Timer? _statusSyncTimer;
   int? _lastHeartTimestamp;
   int? _lastChargeTimestamp;
@@ -191,9 +194,13 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
           coupleId: data['coupleId'],
           isAppOpen: data['isAppOpen'] as bool?,
           birthDate: data['birthDate'] as String?,
+          speed: (data['speed'] as num?)?.toDouble(),
+          currentPlaceTitle: data['currentPlaceTitle'] as String?,
+          currentPlaceEmoji: data['currentPlaceEmoji'] as String?,
         );
         if (data['coupleId'] != null) {
           final cId = data['coupleId'] as String;
+          SharedPreferences.getInstance().then((p) => p.setString('saved_couple_id', cId));
           if (data['birthDate'] != null) {
             DatabaseService().syncBirthdayMilestone(
               targetUserId: doc.id,
@@ -291,9 +298,20 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     });
   }
 
+  void _listenToSavedPlaces(String coupleId) {
+    _savedPlacesSub?.cancel();
+    _savedPlacesSub = DatabaseService().savedPlacesStream(coupleId).listen((places) {
+      if (!mounted) return;
+      setState(() {
+        _savedPlaces = places;
+      });
+    });
+  }
+
   void _listenToCouple(String coupleId) {
     _coupleSub?.cancel();
     _listenToMilestones(coupleId);
+    _listenToSavedPlaces(coupleId);
     _coupleSub = DatabaseService().coupleStream(coupleId)?.listen((doc) {
       if (!doc.exists || doc.data() == null || !mounted) return;
       final cData = doc.data()!;
@@ -799,6 +817,9 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
         coupleId: data['coupleId'],
         isAppOpen: data['isAppOpen'] as bool?,
         birthDate: data['birthDate'] as String?,
+        speed: (data['speed'] as num?)?.toDouble(),
+        currentPlaceTitle: data['currentPlaceTitle'] as String?,
+        currentPlaceEmoji: data['currentPlaceEmoji'] as String?,
       );
       ref.read(partnerProvider.notifier).state = partnerUser;
 
@@ -827,6 +848,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     _userSub?.cancel();
     _partnerSub?.cancel();
     _coupleSub?.cancel();
+    _savedPlacesSub?.cancel();
     _milestonesSub?.cancel();
     super.dispose();
   }
@@ -908,6 +930,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                 const SizedBox(height: 14),
                 _PartnerCard(
                   partner: partner,
+                  savedPlaces: _savedPlaces,
                   onPair: () => _push(const PairingView()),
                   onBatteryTap: partner != null ? () => _openBatteryActionsSheet(partner) : null,
                   onWeatherTap: partner != null ? () => _openWeatherActionsSheet(partner) : null,
@@ -1222,11 +1245,13 @@ class _HeroCounterState extends State<_HeroCounter> {
 class _PartnerCard extends StatelessWidget {
   const _PartnerCard({
     required this.partner,
+    this.savedPlaces = const [],
     required this.onPair,
     this.onBatteryTap,
     this.onWeatherTap,
   });
   final AppUser? partner;
+  final List<SavedPlace> savedPlaces;
   final VoidCallback onPair;
   final VoidCallback? onBatteryTap;
   final VoidCallback? onWeatherTap;
@@ -1236,6 +1261,56 @@ class _PartnerCard extends StatelessWidget {
     if (p.lastActive == null) return true;
     final diff = DateTime.now().toUtc().difference(p.lastActive!.toUtc()).abs();
     return diff.inMinutes < 2;
+  }
+
+  /// Partnerin anlık durumunu belirler: Kayıtlı yer (Ev, İş vb.) > Arabada > Yürüyor / Koşuyor
+  Map<String, dynamic>? _getMovementOrPlaceStatus(AppUser p) {
+    // 1. Kayıtlı bir yerde mi? (Önce p.lat, p.lng ve savedPlaces mesafesiyle kesin kontrol)
+    if (p.lat != null && p.lng != null && savedPlaces.isNotEmpty) {
+      for (final place in savedPlaces) {
+        final dist = Geolocator.distanceBetween(p.lat!, p.lng!, place.lat, place.lng);
+        if (dist <= 150) {
+          return {
+            'emoji': place.iconEmoji,
+            'title': place.title,
+            'color': const Color(0xFF10B981),
+            'bgColor': const Color(0xFF10B981).withValues(alpha: 0.14),
+          };
+        }
+      }
+    }
+
+    // 2. Eğer sunucudan gelen etiket varsa
+    if (p.currentPlaceTitle != null && p.currentPlaceTitle!.isNotEmpty) {
+      return {
+        'emoji': (p.currentPlaceEmoji != null && p.currentPlaceEmoji!.isNotEmpty) ? p.currentPlaceEmoji! : '📍',
+        'title': p.currentPlaceTitle!,
+        'color': const Color(0xFF10B981),
+        'bgColor': const Color(0xFF10B981).withValues(alpha: 0.14),
+      };
+    }
+
+    // 3. Hız durumuna göre hareket tespiti (km/s)
+    final speedKmH = (p.speed != null) ? p.speed! * 3.6 : 0.0;
+    if (speedKmH >= 22.0) {
+      // Araçta / Arabada seyir halinde
+      return {
+        'emoji': '🚗',
+        'title': 'Arabada',
+        'color': const Color(0xFF388AF6),
+        'bgColor': const Color(0xFF388AF6).withValues(alpha: 0.14),
+      };
+    } else if (speedKmH >= 3.0) {
+      // Yürüyor / Koşuyor
+      return {
+        'emoji': speedKmH >= 12.0 ? '🏃' : '🚶',
+        'title': speedKmH >= 12.0 ? 'Koşuyor' : 'Yürüyor',
+        'color': const Color(0xFFF59E0B),
+        'bgColor': const Color(0xFFF59E0B).withValues(alpha: 0.14),
+      };
+    }
+
+    return null;
   }
 
   String _lastSeen(AppUser p) {
@@ -1306,11 +1381,13 @@ class _PartnerCard extends StatelessWidget {
 
     final batColor = _batteryColor(p.batteryLevel);
     final batIcon = _batteryIcon(p.batteryLevel);
+    final dynamicStatus = _getMovementOrPlaceStatus(p);
 
     return _BentoCard(
       child: Column(
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               CircleAvatar(
                 radius: 28,
@@ -1334,8 +1411,14 @@ class _PartnerCard extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Text(p.name,
-                            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                        Flexible(
+                          child: Text(
+                            p.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                        ),
                         if (p.city != null && p.city!.isNotEmpty) ...[
                           const SizedBox(width: 8),
                           Container(
@@ -1407,6 +1490,45 @@ class _PartnerCard extends StatelessWidget {
                   ],
                 ),
               ),
+
+              // Sağ Üst Alan: Kayıtlı Yer Rozeti veya Hareket (Yürüyor / Arabada) Rozeti
+              if (dynamicStatus != null) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: dynamicStatus['bgColor'] as Color,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: (dynamicStatus['color'] as Color).withValues(alpha: 0.35),
+                      width: 1.2,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        dynamicStatus['emoji'] as String,
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                      const SizedBox(width: 5),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 85),
+                        child: Text(
+                          dynamicStatus['title'] as String,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: dynamicStatus['color'] as Color,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 16),

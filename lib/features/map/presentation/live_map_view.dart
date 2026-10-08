@@ -127,6 +127,9 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
         coupleId: data['coupleId'],
         isAppOpen: data['isAppOpen'] as bool?,
         birthDate: data['birthDate'] as String?,
+        speed: (data['speed'] as num?)?.toDouble(),
+        currentPlaceTitle: data['currentPlaceTitle'] as String?,
+        currentPlaceEmoji: data['currentPlaceEmoji'] as String?,
       );
 
       ref.read(partnerProvider.notifier).state = partnerUser;

@@ -41,11 +41,8 @@ class DeviceService {
   double? _lastWeatherLat;
   double? _lastWeatherLng;
 
-  int? _lastSyncedBattery;
   double? _lastSyncedLat;
   double? _lastSyncedLng;
-  String? _lastSyncedCity;
-  String? _lastSyncedWeather;
 
   /// Cihazın gerçek pil seviyesini alır (0-100)
   Future<int?> getBatteryLevel() async {
@@ -254,22 +251,63 @@ class DeviceService {
   }
 
   DateTime? _lastPosWriteTime;
+  double? _lastPosLat;
+  double? _lastPosLng;
+
+  /// Kullanıcının o an kayıtlı bir yerde (Ev, İş vb.) olup olmadığını kontrol eder (<= 150m)
+  Future<Map<String, String>?> _checkSavedPlaceMatch(double lat, double lng) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final coupleId = prefs.getString('saved_couple_id');
+      if (coupleId == null || coupleId.isEmpty) return null;
+
+      final places = await DatabaseService().savedPlacesStream(coupleId).first.timeout(const Duration(seconds: 3));
+      for (final p in places) {
+        final d = Geolocator.distanceBetween(lat, lng, p.lat, p.lng);
+        if (d <= 150) { // 150 metre yarıçap içindeyse o mekandadır
+          return {
+            'title': p.title,
+            'emoji': p.iconEmoji,
+          };
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
 
   /// Yeni GPS konumu alındığında akıllı throttling ile Firebase'e aktarır
   Future<void> _onNewPositionReceived(Position pos) async {
     try {
       final now = DateTime.now();
-      if (_lastPosWriteTime != null && now.difference(_lastPosWriteTime!) < const Duration(seconds: 20)) {
+      if (_lastPosWriteTime != null && now.difference(_lastPosWriteTime!) < const Duration(seconds: 15)) {
         if (_lastSyncedLat != null && _lastSyncedLng != null) {
           final d = Geolocator.distanceBetween(_lastSyncedLat!, _lastSyncedLng!, pos.latitude, pos.longitude);
-          if (d < 25) return; // 20 saniye içinde 25 metreden az oynadıysa yazma (Kota koruması)
+          if (d < 15) return; // 15 saniye içinde 15 metreden az oynadıysa yazma (Kota koruması)
         }
       }
+
+      // Hız hesaplama veya alma (pos.speed m/s -> pos.speed * 3.6 km/s)
+      double calculatedSpeed = pos.speed;
+      if (calculatedSpeed <= 0 && _lastPosLat != null && _lastPosLng != null && _lastPosWriteTime != null) {
+        final seconds = now.difference(_lastPosWriteTime!).inSeconds;
+        if (seconds > 0 && seconds < 60) {
+          final distMeters = Geolocator.distanceBetween(_lastPosLat!, _lastPosLng!, pos.latitude, pos.longitude);
+          calculatedSpeed = distMeters / seconds;
+        }
+      }
+      _lastPosLat = pos.latitude;
+      _lastPosLng = pos.longitude;
       _lastPosWriteTime = now;
+
+      // Kayıtlı bir konumda mı?
+      final matchedPlace = await _checkSavedPlaceMatch(pos.latitude, pos.longitude);
 
       await DatabaseService().updateStatus(
         lat: pos.latitude,
         lng: pos.longitude,
+        speed: calculatedSpeed >= 0 ? calculatedSpeed : 0.0,
+        currentPlaceTitle: matchedPlace?['title'] ?? '',
+        currentPlaceEmoji: matchedPlace?['emoji'] ?? '',
         weather: _lastWeather,
         city: _lastCity,
         updateLastActive: true,
@@ -325,32 +363,25 @@ class DeviceService {
       city ??= _lastCity;
       weather ??= _lastWeather;
 
-      // Değerlerde hiçbir değişiklik yoksa gereksiz Firestore yazımı yapma (Flicker & Yarış önleme)
-      final bool hasBatteryChange = battery != null && battery != _lastSyncedBattery;
-      final bool hasLocationChange = (lat != null && lng != null) &&
-          (lat != _lastSyncedLat || lng != _lastSyncedLng);
-      final bool hasCityChange = city != null && city != _lastSyncedCity;
-      final bool hasWeatherChange = weather != null && weather != _lastSyncedWeather;
-
-      if (!hasBatteryChange && !hasLocationChange && !hasCityChange && !hasWeatherChange && _lastSyncedBattery != null) {
-        return;
+      Map<String, String>? matchedPlace;
+      if (lat != null && lng != null) {
+        matchedPlace = await _checkSavedPlaceMatch(lat, lng);
       }
 
       await DatabaseService().updateStatus(
         batteryLevel: battery,
         lat: lat,
         lng: lng,
+        currentPlaceTitle: matchedPlace?['title'],
+        currentPlaceEmoji: matchedPlace?['emoji'],
         weather: weather,
         city: city,
       );
 
-      if (battery != null) _lastSyncedBattery = battery;
       if (lat != null && lng != null) {
         _lastSyncedLat = lat;
         _lastSyncedLng = lng;
       }
-      if (city != null) _lastSyncedCity = city;
-      if (weather != null) _lastSyncedWeather = weather;
     } catch (_) {}
   }
 
@@ -362,10 +393,7 @@ class DeviceService {
     _batteryStateSub = null;
     _periodicSyncTimer = null;
     _isBackgroundTrackingActive = false;
-    _lastSyncedBattery = null;
     _lastSyncedLat = null;
     _lastSyncedLng = null;
-    _lastSyncedCity = null;
-    _lastSyncedWeather = null;
   }
 }

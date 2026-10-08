@@ -501,6 +501,9 @@ class DatabaseService {
     int? batteryLevel,
     String? weather,
     String? city,
+    double? speed,
+    String? currentPlaceTitle,
+    String? currentPlaceEmoji,
     bool updateLastActive = false,
   }) async {
     String? targetUid = uid;
@@ -529,6 +532,15 @@ class DatabaseService {
     }
     if (city != null && city.isNotEmpty) {
       data['city'] = city;
+    }
+    if (speed != null) {
+      data['speed'] = speed;
+    }
+    if (currentPlaceTitle != null) {
+      data['currentPlaceTitle'] = currentPlaceTitle;
+    }
+    if (currentPlaceEmoji != null) {
+      data['currentPlaceEmoji'] = currentPlaceEmoji;
     }
     if (data.isNotEmpty) {
       try {

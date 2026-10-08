@@ -12,6 +12,10 @@ class AppUser {
   final bool? isAppOpen;
   final String? birthDate; // 'YYYY-MM-DD'
 
+  final double? speed; // m/s cinsinden anlık hız (hız * 3.6 = km/s)
+  final String? currentPlaceTitle; // Örn. "Evim", "İş Yeri"
+  final String? currentPlaceEmoji; // Örn. "🏠", "💼"
+
   const AppUser({
     required this.id,
     required this.name,
@@ -25,6 +29,9 @@ class AppUser {
     this.coupleId,
     this.isAppOpen,
     this.birthDate,
+    this.speed,
+    this.currentPlaceTitle,
+    this.currentPlaceEmoji,
   });
 
   factory AppUser.fromJson(Map<String, dynamic> j) => AppUser(
@@ -44,6 +51,9 @@ class AppUser {
         coupleId: (j['coupleId'] ?? j['couple_id']) as String?,
         isAppOpen: (j['isAppOpen'] ?? j['is_app_open']) as bool?,
         birthDate: (j['birthDate'] ?? j['birth_date']) as String?,
+        speed: (j['speed'] as num?)?.toDouble(),
+        currentPlaceTitle: j['currentPlaceTitle'] as String?,
+        currentPlaceEmoji: j['currentPlaceEmoji'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -59,6 +69,9 @@ class AppUser {
         'couple_id': coupleId,
         'is_app_open': isAppOpen,
         'birth_date': birthDate,
+        'speed': speed,
+        'currentPlaceTitle': currentPlaceTitle,
+        'currentPlaceEmoji': currentPlaceEmoji,
       };
 }
 
