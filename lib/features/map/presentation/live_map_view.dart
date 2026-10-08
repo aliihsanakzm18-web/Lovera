@@ -835,11 +835,14 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                     point: LatLng(place.lat, place.lng),
                     width: 100,
                     height: 64,
-                    alignment: Alignment.bottomCenter,
-                    child: _SavedPlaceMarker(
-                      place: place,
-                      isDark: isDark,
-                      onTap: () => _showPlaceDetailsDialog(place),
+                    alignment: Alignment.topCenter,
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: _SavedPlaceMarker(
+                        place: place,
+                        isDark: isDark,
+                        onTap: () => _showPlaceDetailsDialog(place),
+                      ),
                     ),
                   );
                 }).toList(),
@@ -853,7 +856,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                       point: effectiveMyPos,
                       width: 160,
                       height: 120,
-                      alignment: Alignment.bottomCenter,
+                      alignment: Alignment.topCenter,
                       child: _SnapAvatarMarker(
                         name: currentUser?.name ?? 'Ben',
                         avatarUrl: currentUser?.avatarUrl,
@@ -872,7 +875,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                       point: effectivePartnerPos,
                       width: 160,
                       height: 120,
-                      alignment: Alignment.bottomCenter,
+                      alignment: Alignment.topCenter,
                       child: _SnapAvatarMarker(
                         name: partner?.name ?? 'Partner',
                         avatarUrl: partner?.avatarUrl,
