@@ -17,6 +17,10 @@ import '../../map/presentation/live_map_view.dart';
 /// 
 /// Sabit Alt Gezinti Çubuğu (Bottom Navigation Bar):
 /// Sadece [Ana Sayfa (1), Mesajlar (2), Oyun (3)] için sabit, temaya özgü şık ikonlar barındırır.
+import 'dart:async';
+import '../../../core/services/database_service.dart';
+import '../../../core/state/app_state.dart';
+
 class MainNavigationShell extends ConsumerStatefulWidget {
   const MainNavigationShell({super.key, this.initialPage = 1});
   final int initialPage;
@@ -28,16 +32,63 @@ class MainNavigationShell extends ConsumerStatefulWidget {
 class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
   late final PageController _pageController;
   int _currentIndex = 1;
+  Timer? _heartbeatTimer;
+  AppLifecycleListener? _lifecycleListener;
+  StreamSubscription? _deliverySub;
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialPage;
     _pageController = PageController(initialPage: widget.initialPage);
+
+    // Uygulama açık olduğu sürece (ister ana sayfada, ister sohbette, ister oyunda)
+    // her 15 saniyede bir partnerin "Şimdi aktif" görmesi için presence heartbeat gönder
+    DatabaseService().setAppPresence(true);
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      DatabaseService().setAppPresence(true);
+    });
+
+    _lifecycleListener = AppLifecycleListener(
+      onResume: () => DatabaseService().setAppPresence(true),
+      onPause: () => DatabaseService().setAppPresence(false),
+      onDetach: () => DatabaseService().setAppPresence(false),
+    );
+
+    // Cihaz internete bağlı ve uygulama açık olduğu anda partnerin attığı mesajları
+    // "İletildi (Çift gri tik)" olarak işaretle!
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      void setupDeliveryListener(String? coupleId) {
+        _deliverySub?.cancel();
+        final myUid = DatabaseService().uid;
+        if (coupleId != null && coupleId.isNotEmpty && myUid != null) {
+          _deliverySub = DatabaseService().messagesStream(coupleId).listen((messages) {
+            final undeliveredIds = messages
+                .where((m) => m.senderId != myUid && !m.isDelivered && !m.isRead)
+                .map((m) => m.id)
+                .toList();
+            if (undeliveredIds.isNotEmpty) {
+              DatabaseService().markMessagesAsDelivered(coupleId, undeliveredIds);
+            }
+          });
+        }
+      }
+
+      setupDeliveryListener(ref.read(coupleIdProvider));
+      // coupleId sonradan yüklenirse de dinleyiciyi başlat
+      ref.listenManual(coupleIdProvider, (prev, next) {
+        if (next != prev && next != null) {
+          setupDeliveryListener(next);
+        }
+      });
+    });
   }
 
   @override
   void dispose() {
+    _deliverySub?.cancel();
+    _heartbeatTimer?.cancel();
+    _lifecycleListener?.dispose();
     _pageController.dispose();
     super.dispose();
   }

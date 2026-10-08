@@ -566,7 +566,87 @@ class DatabaseService {
         .map((snap) => snap.docs.map((doc) => ChatMessage.fromJson(doc.data(), doc.id)).toList());
   }
 
-  Future<void> sendMessage({
+  /// Mesajları okundu olarak işaretle (Çift tik -> Mavi/renkli tik geçişi)
+  Future<void> markMessagesAsRead(String coupleId, [List<String>? messageIds]) async {
+    if (uid == null) return;
+    try {
+      if (messageIds != null && messageIds.isNotEmpty) {
+        final batch = _db.batch();
+        for (final id in messageIds) {
+          final docRef = _db.collection('couples').doc(coupleId).collection('messages').doc(id);
+          batch.update(docRef, {'isRead': true});
+        }
+        await batch.commit();
+        return;
+      }
+
+      // İndeks gerektirmeyen tek alanlı filtre: Sadece 'isRead == false' sorgula,
+      // senderId kontrolünü istemci tarafında yap.
+      final unreadQuery = await _db
+          .collection('couples')
+          .doc(coupleId)
+          .collection('messages')
+          .where('isRead', isEqualTo: false)
+          .limit(30)
+          .get();
+
+      if (unreadQuery.docs.isEmpty) return;
+
+      final batch = _db.batch();
+      bool hasUpdates = false;
+      for (final doc in unreadQuery.docs) {
+        final data = doc.data();
+        if (data['senderId'] != uid) {
+          batch.update(doc.reference, {'isRead': true});
+          hasUpdates = true;
+        }
+      }
+      if (hasUpdates) {
+        await batch.commit();
+      }
+    } catch (_) {}
+  }
+
+  /// Mesajları iletildi olarak işaretle (Tek tik -> Çift tik gri geçişi)
+  Future<void> markMessagesAsDelivered(String coupleId, [List<String>? messageIds]) async {
+    if (uid == null) return;
+    try {
+      if (messageIds != null && messageIds.isNotEmpty) {
+        final batch = _db.batch();
+        for (final id in messageIds) {
+          final docRef = _db.collection('couples').doc(coupleId).collection('messages').doc(id);
+          batch.update(docRef, {'isDelivered': true});
+        }
+        await batch.commit();
+        return;
+      }
+
+      final undeliveredQuery = await _db
+          .collection('couples')
+          .doc(coupleId)
+          .collection('messages')
+          .where('isDelivered', isEqualTo: false)
+          .limit(30)
+          .get();
+
+      if (undeliveredQuery.docs.isEmpty) return;
+
+      final batch = _db.batch();
+      bool hasUpdates = false;
+      for (final doc in undeliveredQuery.docs) {
+        final data = doc.data();
+        if (data['senderId'] != uid) {
+          batch.update(doc.reference, {'isDelivered': true});
+          hasUpdates = true;
+        }
+      }
+      if (hasUpdates) {
+        await batch.commit();
+      }
+    } catch (_) {}
+  }
+
+  Future<String?> sendMessage({
     required String coupleId,
     required String text,
     String? mediaBase64,
@@ -574,19 +654,23 @@ class DatabaseService {
     String? replyToText,
     String? replyToSender,
   }) async {
-    if (uid == null) return;
+    if (uid == null) return null;
     try {
-      await _db.collection('couples').doc(coupleId).collection('messages').add({
+      final docRef = await _db.collection('couples').doc(coupleId).collection('messages').add({
         'senderId': uid,
         'text': text,
         'mediaBase64': mediaBase64,
         'type': type,
         'createdAt': FieldValue.serverTimestamp(),
+        'isDelivered': false,
         'isRead': false,
         'replyToText': replyToText,
         'replyToSender': replyToSender,
-      }).timeout(const Duration(seconds: 4));
-    } catch (_) {}
+      }).timeout(const Duration(seconds: 15));
+      return docRef.id;
+    } catch (e) {
+      rethrow;
+    }
   }
 
   Future<void> deleteMessage(String coupleId, String messageId) async {

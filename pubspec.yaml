@@ -31,6 +31,11 @@ dependencies:
   firebase_messaging: ^15.2.10
   flutter_background_service: ^5.1.0
   dart_jsonwebtoken: ^2.14.0
+  record: ^7.1.1
+  audioplayers: ^6.8.1
+  video_player: ^2.14.1
+  gal: ^2.3.3
+  path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_test:

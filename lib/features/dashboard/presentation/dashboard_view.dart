@@ -109,33 +109,30 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     // İlk açılışta uygulamada olduğumuzu bildir
     DatabaseService().setAppPresence(true);
 
-    // Periyodik olarak hem uygulamada olduğumuzu bildir hem de partnerin durumunu tazele
-    _statusSyncTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+    // Periyodik olarak hem uygulamada olduğumuzu bildir hem de durumu tazele
+    _statusSyncTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       DatabaseService().setAppPresence(true);
-      final pUid = ref.read(partnerUidProvider);
-      if (pUid != null && pUid.isNotEmpty) {
-        NotificationService().requestPartnerStatusSync(pUid);
-      }
       DeviceService().syncStatusToFirebase();
     });
 
     // Uygulama alta atıldığında veya kapatılmak üzereyken durumu güncelle
     _lifecycleListener = AppLifecycleListener(
       onPause: () {
+        _statusSyncTimer?.cancel();
         DatabaseService().setAppPresence(false);
-        DeviceService().syncStatusToFirebase();
       },
-      onInactive: () {
+      onDetach: () {
+        _statusSyncTimer?.cancel();
         DatabaseService().setAppPresence(false);
-        DeviceService().syncStatusToFirebase();
-      },
-      onHide: () {
-        DatabaseService().setAppPresence(false);
-        DeviceService().syncStatusToFirebase();
       },
       onResume: () {
         DatabaseService().setAppPresence(true);
         DeviceService().syncStatusToFirebase();
+        _statusSyncTimer?.cancel();
+        _statusSyncTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+          DatabaseService().setAppPresence(true);
+          DeviceService().syncStatusToFirebase();
+        });
       },
     );
 
@@ -227,17 +224,19 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
           final res = Map<String, dynamic>.from(data['dateChangeResult']);
           // Hemen veritabanından silelim ki her Stream güncellemesinde (pil, konum vs) tekrar fırlatmasın!
           DatabaseService().clearDateChangeResult();
-          if (res['status'] == 'accepted') {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Partneriniz tarih değişikliğini kabul etti! Sayaç güncellendi. 💕'),
-                backgroundColor: LoveraColors.secondary,
-              ),
-            );
-          } else if (res['status'] == 'rejected') {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Partneriniz tarih değişikliğini kabul etmedi.')),
-            );
+          if (mounted) {
+            if (res['status'] == 'accepted') {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Partneriniz tarih değişikliğini kabul etti! Sayaç güncellendi. 💕'),
+                  backgroundColor: LoveraColors.secondary,
+                ),
+              );
+            } else if (res['status'] == 'rejected') {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Partneriniz tarih değişikliğini kabul etmedi.')),
+              );
+            }
           }
         }
 
@@ -266,11 +265,15 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
 
         // Partner UID'sini aldık mı? Partnerin profilini de canlı dinle!
         final partnerUid = data['partnerUid'] as String?;
-        if (partnerUid != null && partnerUid != ref.read(partnerUidProvider)) {
-          ref.read(partnerUidProvider.notifier).state = partnerUid;
-          _listenToPartner(partnerUid);
-          // Partnerin telefonu kapalıysa bile arka planda hemen şarj ve konumunu güncellemesi için sessiz uyandır
-          NotificationService().requestPartnerStatusSync(partnerUid);
+        if (partnerUid != null && partnerUid.isNotEmpty) {
+          if (partnerUid != ref.read(partnerUidProvider)) {
+            ref.read(partnerUidProvider.notifier).state = partnerUid;
+          }
+          if (_partnerSub == null) {
+            _listenToPartner(partnerUid);
+            // Partnerin telefonu kapalıysa bile arka planda hemen şarj ve konumunu güncellemesi için sessiz uyandır
+            NotificationService().requestPartnerStatusSync(partnerUid);
+          }
         }
       });
     });
@@ -771,6 +774,18 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
         }
       }
 
+      DateTime? parsedLastActive;
+      final rawLastActive = data['lastActive'];
+      if (rawLastActive is DateTime) {
+        parsedLastActive = rawLastActive;
+      } else if (rawLastActive is String) {
+        parsedLastActive = DateTime.tryParse(rawLastActive);
+      } else if (rawLastActive != null) {
+        try {
+          parsedLastActive = (rawLastActive as dynamic).toDate?.call();
+        } catch (_) {}
+      }
+
       final partnerUser = AppUser(
         id: doc.id,
         name: data['name'] ?? 'Partnerin',
@@ -780,9 +795,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
         city: data['city'],
         lat: (data['lat'] as num?)?.toDouble(),
         lng: (data['lng'] as num?)?.toDouble(),
-        lastActive: data['lastActive'] != null
-            ? (data['lastActive'] as dynamic).toDate?.call() ?? DateTime.now()
-            : DateTime.now(),
+        lastActive: parsedLastActive ?? DateTime.now(),
         coupleId: data['coupleId'],
         isAppOpen: data['isAppOpen'] as bool?,
         birthDate: data['birthDate'] as String?,
@@ -820,10 +833,10 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
 
   Future<void> _sendThought() async {
     HapticFeedback.mediumImpact();
-    final partnerUid = ref.read(partnerUidProvider);
+    final partnerUid = ref.read(partnerUidProvider) ?? ref.read(partnerProvider)?.id;
     final myName = ref.read(userNameProvider);
-    await DatabaseService().sendHeart(partnerUid);
     if (partnerUid != null && partnerUid.isNotEmpty) {
+      await DatabaseService().sendHeart(partnerUid);
       NotificationService().sendPushToPartner(
         partnerUid: partnerUid,
         title: '🥺 Seni Çok Özledim!',
@@ -1220,21 +1233,21 @@ class _PartnerCard extends StatelessWidget {
 
   bool _isOnline(AppUser p) {
     if (p.isAppOpen != true) return false;
-    if (p.lastActive == null) return false;
-    final d = DateTime.now().difference(p.lastActive!);
-    return d.inMinutes < 2;
+    if (p.lastActive == null) return true;
+    final diff = DateTime.now().toUtc().difference(p.lastActive!.toUtc()).abs();
+    return diff.inMinutes < 2;
   }
 
   String _lastSeen(AppUser p) {
-    if (p.lastActive == null) return '-';
     if (_isOnline(p)) {
       return 'Şimdi aktif';
     }
-    final d = DateTime.now().difference(p.lastActive!);
-    if (d.inMinutes < 1) return '1 dk önce aktifti';
-    if (d.inMinutes < 60) return '${d.inMinutes} dk önce aktifti';
-    if (d.inHours < 24) return '${d.inHours} sa önce aktifti';
-    return '${d.inDays} gün önce aktifti';
+    if (p.lastActive == null) return 'Çevrimdışı';
+    final diff = DateTime.now().toUtc().difference(p.lastActive!.toUtc()).abs();
+    if (diff.inMinutes < 1) return '1 dk önce aktifti';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} dk önce aktifti';
+    if (diff.inHours < 24) return '${diff.inHours} sa önce aktifti';
+    return '${diff.inDays} gün önce aktifti';
   }
 
   Color _batteryColor(int? level) {

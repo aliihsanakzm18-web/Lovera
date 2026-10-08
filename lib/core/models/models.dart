@@ -196,6 +196,7 @@ class ChatMessage {
   final String? mediaBase64;
   final String? type; // 'text', 'image', 'heart'
   final DateTime createdAt;
+  final bool isDelivered;
   final bool isRead;
   final String? replyToText;
   final String? replyToSender;
@@ -207,6 +208,7 @@ class ChatMessage {
     this.mediaBase64,
     this.type = 'text',
     required this.createdAt,
+    this.isDelivered = false,
     this.isRead = false,
     this.replyToText,
     this.replyToSender,
@@ -226,6 +228,9 @@ class ChatMessage {
       time = DateTime.now();
     }
 
+    final isReadVal = json['isRead'] as bool? ?? false;
+    final isDeliveredVal = (json['isDelivered'] as bool? ?? false) || isReadVal;
+
     return ChatMessage(
       id: docId,
       senderId: json['senderId'] as String? ?? '',
@@ -233,7 +238,8 @@ class ChatMessage {
       mediaBase64: json['mediaBase64'] as String?,
       type: json['type'] as String? ?? 'text',
       createdAt: time,
-      isRead: json['isRead'] as bool? ?? false,
+      isDelivered: isDeliveredVal,
+      isRead: isReadVal,
       replyToText: json['replyToText'] as String?,
       replyToSender: json['replyToSender'] as String?,
     );
@@ -245,6 +251,7 @@ class ChatMessage {
         'mediaBase64': mediaBase64,
         'type': type,
         'createdAt': createdAt.toIso8601String(),
+        'isDelivered': isDelivered,
         'isRead': isRead,
         'replyToText': replyToText,
         'replyToSender': replyToSender,

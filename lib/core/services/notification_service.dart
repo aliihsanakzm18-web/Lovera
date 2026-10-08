@@ -90,6 +90,25 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     }
   }
 
+  // 1.5. Eğer yeni sohbet mesajı bildirimi ulaştıysa mesajı anında iletildi (isDelivered: true - Çift Gri Tik) olarak işaretle!
+  if (message.data['type'] == 'chat_message') {
+    try {
+      final cId = message.data['coupleId'] as String?;
+      final mId = message.data['messageId'] as String?;
+      if (cId != null && cId.isNotEmpty && mId != null && mId.isNotEmpty) {
+        await FirebaseFirestore.instance
+            .collection('couples')
+            .doc(cId)
+            .collection('messages')
+            .doc(mId)
+            .update({'isDelivered': true});
+        debugPrint('[FCM-DELIVERY-ACK] Mesaj arka planda cihaza ulaştı ve çift tike güncellendi: $mId');
+      }
+    } catch (e) {
+      debugPrint('[FCM-DELIVERY-ACK-ERR] $e');
+    }
+  }
+
   // 2. Normal kullanıcı bildirimi gösterimi (sadece gerçek başlığı olan bildirimler)
   if (message.notification == null &&
       message.data.isNotEmpty &&
