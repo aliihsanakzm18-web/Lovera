@@ -616,7 +616,6 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
   // Kayıtlı Konum Detayı ve Silme / Uçma Penceresi
   void _showPlaceDetailsDialog(SavedPlace place) {
     final coupleId = ref.read(coupleIdProvider);
-    final myUid = DatabaseService().uid;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     showModalBottomSheet(
@@ -1655,8 +1654,8 @@ class _SavedPlaceMarker extends StatelessWidget {
             ),
           ),
           // Minik Pin İğnesi
-          CustomPaint(
-            size: const Size(10, 6),
+          const CustomPaint(
+            size: Size(10, 6),
             painter: _TrianglePainter(
               color: LoveraColors.primary,
             ),
@@ -1665,28 +1664,5 @@ class _SavedPlaceMarker extends StatelessWidget {
       ),
     );
   }
-}
-
-class _TrianglePainter extends CustomPainter {
-  _TrianglePainter({required this.color});
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-
-    final path = Path()
-      ..moveTo(0, 0)
-      ..lineTo(size.width, 0)
-      ..lineTo(size.width / 2, size.height)
-      ..close();
-
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
