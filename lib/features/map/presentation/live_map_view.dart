@@ -771,6 +771,33 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
 
     final mapBgColor = isDark ? const Color(0xFF141620) : const Color(0xFFE8EEF3);
 
+    // Kayıtlı bir yerde bulunma kontrolü (150m içi ise yer rozeti avatar rozetiyle birleşir)
+    SavedPlace? myCurrentPlace;
+    SavedPlace? partnerCurrentPlace;
+
+    if (effectiveMyPos != null) {
+      for (final p in _savedPlaces) {
+        if (Geolocator.distanceBetween(effectiveMyPos.latitude, effectiveMyPos.longitude, p.lat, p.lng) <= 150) {
+          myCurrentPlace = p;
+          break;
+        }
+      }
+    }
+
+    if (effectivePartnerPos != null) {
+      for (final p in _savedPlaces) {
+        if (Geolocator.distanceBetween(effectivePartnerPos.latitude, effectivePartnerPos.longitude, p.lat, p.lng) <= 150) {
+          partnerCurrentPlace = p;
+          break;
+        }
+      }
+    }
+
+    // Avatar ile birleşen yerleri bağımsız yer pinleri katmanından çıkar (çift pin oluşmasın)
+    final standalonePlaces = _savedPlaces.where((p) =>
+      p.id != myCurrentPlace?.id && p.id != partnerCurrentPlace?.id
+    ).toList();
+
     return Scaffold(
       backgroundColor: mapBgColor,
       body: Stack(
@@ -803,7 +830,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
 
               // Kalıcı Kayıtlı Özel Konumlar Katmanı (Ev, İş, Okul vb.)
               MarkerLayer(
-                markers: _savedPlaces.map((place) {
+                markers: standalonePlaces.map((place) {
                   return Marker(
                     point: LatLng(place.lat, place.lng),
                     width: 100,
@@ -824,7 +851,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                   if (effectiveMyPos != null)
                     Marker(
                       point: effectiveMyPos,
-                      width: 140,
+                      width: 160,
                       height: 120,
                       alignment: Alignment.bottomCenter,
                       child: _SnapAvatarMarker(
@@ -836,13 +863,14 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                         isMe: true,
                         isOnline: true,
                         isDark: isDark,
+                        currentPlace: myCurrentPlace,
                         onTap: () => _animatedFlightMove(effectiveMyPos, 16.0),
                       ),
                     ),
                   if (effectivePartnerPos != null)
                     Marker(
                       point: effectivePartnerPos,
-                      width: 140,
+                      width: 160,
                       height: 120,
                       alignment: Alignment.bottomCenter,
                       child: _SnapAvatarMarker(
@@ -864,6 +892,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                             partner?.lastActive != null &&
                             DateTime.now().difference(partner!.lastActive!).inMinutes < 2),
                         isDark: isDark,
+                        currentPlace: partnerCurrentPlace,
                         onTap: () => _animatedFlightMove(effectivePartnerPos, 16.0),
                       ),
                     ),
@@ -1000,6 +1029,17 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
 
 /// Snap Map Tarzı Avatar Pin Tasarımı (3D zemin gölgesi, canlı rozet ve bilgi hapı)
 class _SnapAvatarMarker extends StatelessWidget {
+  final String name;
+  final String? avatarUrl;
+  final int? batteryLevel;
+  final Color borderColor;
+  final Color glowColor;
+  final bool isMe;
+  final bool isOnline;
+  final bool isDark;
+  final VoidCallback onTap;
+  final SavedPlace? currentPlace;
+
   const _SnapAvatarMarker({
     required this.name,
     this.avatarUrl,
@@ -1010,17 +1050,8 @@ class _SnapAvatarMarker extends StatelessWidget {
     this.isOnline = false,
     required this.isDark,
     required this.onTap,
+    this.currentPlace,
   });
-
-  final String name;
-  final String? avatarUrl;
-  final int? batteryLevel;
-  final Color borderColor;
-  final Color glowColor;
-  final bool isMe;
-  final bool isOnline;
-  final bool isDark;
-  final VoidCallback onTap;
 
   static final Map<String, Uint8List> _avatarCache = <String, Uint8List>{};
 
@@ -1043,24 +1074,26 @@ class _SnapAvatarMarker extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Üst Snap Bilgi Hapı: İsim + Canlı Durum + Pil Durumu
+            // Üst Snap Bilgi Hapı: Kayıtlı yerdeyse birleşik (örn. 🏠 Eda Evde %94), değilse klasik hap
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                 color: isDark ? const Color(0xFF1E212B) : Colors.white,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: isOnline
+                  color: currentPlace != null
                       ? const Color(0xFF10B981)
-                      : (isDark ? Colors.white.withValues(alpha: 0.15) : borderColor.withValues(alpha: 0.3)),
-                  width: isOnline ? 1.8 : 1.2,
+                      : (isOnline
+                          ? const Color(0xFF10B981)
+                          : (isDark ? Colors.white.withValues(alpha: 0.15) : borderColor.withValues(alpha: 0.3))),
+                  width: (currentPlace != null || isOnline) ? 1.8 : 1.2,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: isOnline
+                    color: (currentPlace != null || isOnline)
                         ? const Color(0xFF10B981).withValues(alpha: 0.4)
                         : Colors.black.withValues(alpha: isDark ? 0.35 : 0.14),
-                    blurRadius: isOnline ? 10 : 8,
+                    blurRadius: (currentPlace != null || isOnline) ? 10 : 8,
                     offset: const Offset(0, 3),
                   ),
                 ],
@@ -1068,31 +1101,44 @@ class _SnapAvatarMarker extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Parlayan Canlılık / Aktiflik Noktası
-                  Container(
-                    width: 7,
-                    height: 7,
-                    decoration: BoxDecoration(
-                      color: isOnline
-                          ? const Color(0xFF10B981)
-                          : (isMe ? const Color(0xFF388AF6) : const Color(0xFF94A3B8)),
-                      shape: BoxShape.circle,
-                      boxShadow: isOnline
-                          ? [
-                              BoxShadow(
-                                color: const Color(0xFF10B981).withValues(alpha: 0.8),
-                                blurRadius: 6,
-                                spreadRadius: 1.5,
-                              ),
-                            ]
-                          : null,
+                  if (currentPlace != null) ...[
+                    // Birleşik Ev / Kayıtlı Yer Emojisi
+                    Text(
+                      currentPlace!.iconEmoji,
+                      style: const TextStyle(fontSize: 13),
                     ),
-                  ),
-                  const SizedBox(width: 5),
+                    const SizedBox(width: 4),
+                  ] else ...[
+                    // Parlayan Canlılık / Aktiflik Noktası
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        color: isOnline
+                            ? const Color(0xFF10B981)
+                            : (isMe ? const Color(0xFF388AF6) : const Color(0xFF94A3B8)),
+                        shape: BoxShape.circle,
+                        boxShadow: isOnline
+                            ? [
+                                BoxShadow(
+                                  color: const Color(0xFF10B981).withValues(alpha: 0.8),
+                                  blurRadius: 6,
+                                  spreadRadius: 1.5,
+                                ),
+                              ]
+                            : null,
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                  ],
                   ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 80),
+                    constraints: const BoxConstraints(maxWidth: 110),
                     child: Text(
-                      name,
+                      currentPlace != null
+                          ? (currentPlace!.category == 'home' || currentPlace!.title.toLowerCase().contains('ev')
+                              ? '$name Evde'
+                              : '$name ${currentPlace!.title}\'de')
+                          : name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
