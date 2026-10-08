@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -150,16 +151,19 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     final int animDurationMs = (elapsedSec * 1050).round().clamp(600, 1500);
 
     _targetMyPos = newTarget;
-    _myAnimController?.stop();
+    final ctrl = _myAnimController;
+    if (ctrl != null && ctrl.isAnimating) {
+      ctrl.stop();
+    }
     _myAnimController?.dispose();
-    _myAnimController = AnimationController(
+    final newCtrl = AnimationController(
       vsync: this,
       duration: Duration(milliseconds: animDurationMs),
     );
-    // Linear + hafif tahmin (araba / yaya navigasyonlarındaki dead-reckoning)
-    _myAnimController!.addListener(() {
+    _myAnimController = newCtrl;
+    newCtrl.addListener(() {
       if (!mounted) return;
-      final t = _myAnimController!.value;
+      final t = newCtrl.value;
       setState(() {
         _animatedMyPos = LatLng(
           from.latitude + (newTarget.latitude - from.latitude) * t,
@@ -167,7 +171,13 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
         );
       });
     });
-    _myAnimController!.forward();
+    newCtrl.forward().then((_) {
+      if (mounted) {
+        setState(() {
+          _animatedMyPos = newTarget;
+        });
+      }
+    });
   }
 
   void _smoothAnimatePartnerPos(LatLng newTarget) {
@@ -193,15 +203,19 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     final int animDurationMs = (elapsedSec * 1100).round().clamp(700, 1600);
 
     _targetPartnerPos = newTarget;
-    _partnerAnimController?.stop();
+    final ctrl = _partnerAnimController;
+    if (ctrl != null && ctrl.isAnimating) {
+      ctrl.stop();
+    }
     _partnerAnimController?.dispose();
-    _partnerAnimController = AnimationController(
+    final newCtrl = AnimationController(
       vsync: this,
       duration: Duration(milliseconds: animDurationMs),
     );
-    _partnerAnimController!.addListener(() {
+    _partnerAnimController = newCtrl;
+    newCtrl.addListener(() {
       if (!mounted) return;
-      final t = _partnerAnimController!.value;
+      final t = newCtrl.value;
       setState(() {
         _animatedPartnerPos = LatLng(
           from.latitude + (newTarget.latitude - from.latitude) * t,
@@ -209,7 +223,13 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
         );
       });
     });
-    _partnerAnimController!.forward();
+    newCtrl.forward().then((_) {
+      if (mounted) {
+        setState(() {
+          _animatedPartnerPos = newTarget;
+        });
+      }
+    });
   }
 
   @override
@@ -419,8 +439,8 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                     Marker(
                       point: effectiveMyPos,
                       width: 140,
-                      height: 115,
-                      alignment: Alignment.topCenter,
+                      height: 120,
+                      alignment: Alignment.bottomCenter,
                       child: _SnapAvatarMarker(
                         name: currentUser?.name ?? 'Ben',
                         avatarUrl: currentUser?.avatarUrl,
@@ -437,8 +457,8 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                     Marker(
                       point: effectivePartnerPos,
                       width: 140,
-                      height: 115,
-                      alignment: Alignment.topCenter,
+                      height: 120,
+                      alignment: Alignment.bottomCenter,
                       child: _SnapAvatarMarker(
                         name: partner?.name ?? 'Partner',
                         avatarUrl: partner?.avatarUrl,
@@ -599,6 +619,18 @@ class _SnapAvatarMarker extends StatelessWidget {
   final bool isDark;
   final VoidCallback onTap;
 
+  static final Map<String, Uint8List> _avatarCache = <String, Uint8List>{};
+
+  Uint8List _getAvatarBytes(String url) {
+    if (_avatarCache.containsKey(url)) {
+      return _avatarCache[url]!;
+    }
+    final raw = url.split(',').last;
+    final bytes = base64Decode(raw);
+    _avatarCache[url] = bytes;
+    return bytes;
+  }
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -744,10 +776,12 @@ class _SnapAvatarMarker extends StatelessWidget {
                         ? () {
                             if (avatarUrl!.startsWith('data:image')) {
                               try {
-                                final base64String = avatarUrl!.split(',').last;
+                                final bytes = _getAvatarBytes(avatarUrl!);
                                 return Image.memory(
-                                  base64Decode(base64String),
+                                  bytes,
                                   fit: BoxFit.cover,
+                                  gaplessPlayback: true,
+                                  cacheWidth: 160,
                                   errorBuilder: (_, __, ___) => _buildFallbackIcon(),
                                 );
                               } catch (_) {
@@ -757,12 +791,16 @@ class _SnapAvatarMarker extends StatelessWidget {
                               return Image.network(
                                 avatarUrl!,
                                 fit: BoxFit.cover,
+                                gaplessPlayback: true,
+                                cacheWidth: 160,
                                 errorBuilder: (_, __, ___) => _buildFallbackIcon(),
                               );
                             } else {
                               return Image.file(
                                 File(avatarUrl!),
                                 fit: BoxFit.cover,
+                                gaplessPlayback: true,
+                                cacheWidth: 160,
                                 errorBuilder: (_, __, ___) => _buildFallbackIcon(),
                               );
                             }
