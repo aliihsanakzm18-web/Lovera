@@ -225,7 +225,7 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
     Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 20, // 20 metre: Arka planda pil ve kota tasarrufu
+        distanceFilter: 5, // 5 metre: Canlı rota ve yürüyüş hareketlerinde anında tetiklenme
       ),
     ).listen(
       (newPosition) async {

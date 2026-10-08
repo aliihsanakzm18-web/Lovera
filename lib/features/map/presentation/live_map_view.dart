@@ -10,6 +10,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart' hide Path;
 
+import '../../../core/models/models.dart';
+import '../../../core/services/database_service.dart';
 import '../../../core/services/device_service.dart';
 import '../../../core/services/notification_service.dart';
 import '../../../core/state/app_state.dart';
@@ -32,6 +34,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
   LatLng? _lastRouteStart;
   LatLng? _lastRouteEnd;
   Timer? _mapSyncTimer;
+  StreamSubscription? _partnerSub;
 
   // 60 FPS Pürüzsüz Snap Konum İnterpolasyonu (Kayarak İlerleme)
   AnimationController? _myAnimController;
@@ -50,15 +53,63 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
       _initInitialRoute();
       final partnerUid = ref.read(partnerUidProvider);
       if (partnerUid != null && partnerUid.isNotEmpty) {
+        _subscribeToPartnerLive(partnerUid);
         NotificationService().requestPartnerStatusSync(partnerUid);
       }
     });
 
-    // Harita açıkken partnerin kapalı cihazını 12 saniyede bir sessiz uyandır ve konumunu tazelet
-    _mapSyncTimer = Timer.periodic(const Duration(seconds: 12), (_) {
+    // Harita açıkken partnerin kapalı cihazını 6 saniyede bir sessiz uyandır ve konumunu tazelet
+    _mapSyncTimer = Timer.periodic(const Duration(seconds: 6), (_) {
       final partnerUid = ref.read(partnerUidProvider);
       if (partnerUid != null && partnerUid.isNotEmpty) {
+        if (_partnerSub == null) {
+          _subscribeToPartnerLive(partnerUid);
+        }
         NotificationService().requestPartnerStatusSync(partnerUid);
+      }
+    });
+  }
+
+  void _subscribeToPartnerLive(String partnerUid) {
+    _partnerSub?.cancel();
+    _partnerSub = DatabaseService().partnerStream(partnerUid).listen((doc) {
+      if (!doc.exists || doc.data() == null || !mounted) return;
+      final data = doc.data()!;
+      final double? newLat = (data['lat'] as num?)?.toDouble();
+      final double? newLng = (data['lng'] as num?)?.toDouble();
+
+      DateTime? parsedLastActive;
+      final rawLastActive = data['lastActive'];
+      if (rawLastActive is DateTime) {
+        parsedLastActive = rawLastActive;
+      } else if (rawLastActive is String) {
+        parsedLastActive = DateTime.tryParse(rawLastActive);
+      } else if (rawLastActive != null) {
+        try {
+          parsedLastActive = (rawLastActive as dynamic).toDate?.call();
+        } catch (_) {}
+      }
+
+      final partnerUser = AppUser(
+        id: doc.id,
+        name: data['name'] ?? ref.read(partnerProvider)?.name ?? 'Partnerin',
+        avatarUrl: data['avatarUrl'] ?? ref.read(partnerProvider)?.avatarUrl,
+        batteryLevel: data['batteryLevel'] as int?,
+        weather: data['weather'] as String?,
+        city: data['city'] as String?,
+        lat: newLat,
+        lng: newLng,
+        lastActive: parsedLastActive ?? DateTime.now(),
+        coupleId: data['coupleId'],
+        isAppOpen: data['isAppOpen'] as bool?,
+        birthDate: data['birthDate'] as String?,
+      );
+
+      ref.read(partnerProvider.notifier).state = partnerUser;
+
+      if (newLat != null && newLng != null) {
+        final newPartnerLatLng = LatLng(newLat, newLng);
+        _smoothAnimatePartnerPos(newPartnerLatLng);
       }
     });
   }
@@ -163,6 +214,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
 
   @override
   void dispose() {
+    _partnerSub?.cancel();
     _mapSyncTimer?.cancel();
     _flightController?.stop();
     _flightController?.dispose();
