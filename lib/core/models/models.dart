@@ -257,3 +257,67 @@ class ChatMessage {
         'replyToSender': replyToSender,
       };
 }
+
+/// Haritada Kalıcı Olarak Etiketlenen Özel Konum (Ev, İş, Okul vb.)
+class SavedPlace {
+  final String id;
+  final String title;
+  final String category; // 'home', 'work', 'school', 'gym', 'cafe', 'favorite', 'other'
+  final String iconEmoji;
+  final double lat;
+  final double lng;
+  final String createdBy;
+  final String? createdByName;
+  final DateTime createdAt;
+
+  const SavedPlace({
+    required this.id,
+    required this.title,
+    required this.category,
+    required this.iconEmoji,
+    required this.lat,
+    required this.lng,
+    required this.createdBy,
+    this.createdByName,
+    required this.createdAt,
+  });
+
+  factory SavedPlace.fromJson(Map<String, dynamic> json, String docId) {
+    DateTime time;
+    if (json['createdAt'] != null) {
+      if (json['createdAt'] is DateTime) {
+        time = json['createdAt'] as DateTime;
+      } else if (json['createdAt'] is String) {
+        time = DateTime.tryParse(json['createdAt'] as String) ?? DateTime.now();
+      } else {
+        time = (json['createdAt'] as dynamic).toDate?.call() ?? DateTime.now();
+      }
+    } else {
+      time = DateTime.now();
+    }
+
+    return SavedPlace(
+      id: docId,
+      title: json['title'] as String? ?? 'Özel Konum',
+      category: json['category'] as String? ?? 'favorite',
+      iconEmoji: json['iconEmoji'] as String? ?? '📍',
+      lat: (json['lat'] as num?)?.toDouble() ?? 0.0,
+      lng: (json['lng'] as num?)?.toDouble() ?? 0.0,
+      createdBy: json['createdBy'] as String? ?? '',
+      createdByName: json['createdByName'] as String?,
+      createdAt: time,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'title': title,
+        'category': category,
+        'iconEmoji': iconEmoji,
+        'lat': lat,
+        'lng': lng,
+        'createdBy': createdBy,
+        'createdByName': createdByName,
+        'createdAt': createdAt.toIso8601String(),
+      };
+}
+

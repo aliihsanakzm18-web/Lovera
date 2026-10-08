@@ -704,4 +704,52 @@ class DatabaseService {
       return typingMap[partnerUid] == true;
     });
   }
+
+  // 9. HARİTADA KAYITLI / ETİKETLİ ÖZEL YERLER (Ev, İş, Okul vb.)
+  Stream<List<SavedPlace>> savedPlacesStream(String coupleId) {
+    return _db
+        .collection('couples')
+        .doc(coupleId)
+        .collection('saved_places')
+        .orderBy('createdAt', descending: false)
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) => SavedPlace.fromJson(doc.data(), doc.id)).toList());
+  }
+
+  Future<void> addSavedPlace({
+    required String coupleId,
+    required String title,
+    required String category,
+    required String iconEmoji,
+    required double lat,
+    required double lng,
+    String? createdByName,
+  }) async {
+    if (uid == null) return;
+    try {
+      await _db.collection('couples').doc(coupleId).collection('saved_places').add({
+        'title': title,
+        'category': category,
+        'iconEmoji': iconEmoji,
+        'lat': lat,
+        'lng': lng,
+        'createdBy': uid,
+        'createdByName': createdByName,
+        'createdAt': FieldValue.serverTimestamp(),
+      }).timeout(const Duration(seconds: 4));
+    } catch (_) {}
+  }
+
+  Future<void> deleteSavedPlace(String coupleId, String placeId) async {
+    try {
+      await _db
+          .collection('couples')
+          .doc(coupleId)
+          .collection('saved_places')
+          .doc(placeId)
+          .delete()
+          .timeout(const Duration(seconds: 4));
+    } catch (_) {}
+  }
 }
+
