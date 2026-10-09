@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/models.dart';
@@ -728,6 +729,20 @@ class DatabaseService {
         .map((snap) => snap.docs.map((doc) => SavedPlace.fromJson(doc.data(), doc.id)).toList());
   }
 
+  Future<List<SavedPlace>> getSavedPlaces(String coupleId) async {
+    try {
+      final snap = await _db
+          .collection('couples')
+          .doc(coupleId)
+          .collection('saved_places')
+          .get(const GetOptions(source: Source.serverAndCache))
+          .timeout(const Duration(seconds: 4));
+      return snap.docs.map((doc) => SavedPlace.fromJson(doc.data(), doc.id)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
   Future<void> addSavedPlace({
     required String coupleId,
     required String title,
@@ -748,8 +763,11 @@ class DatabaseService {
         'createdBy': uid,
         'createdByName': createdByName,
         'createdAt': FieldValue.serverTimestamp(),
-      }).timeout(const Duration(seconds: 4));
-    } catch (_) {}
+      }).timeout(const Duration(seconds: 10));
+    } catch (e) {
+      debugPrint('[SAVED_PLACES] addSavedPlace error: $e');
+      rethrow;
+    }
   }
 
   Future<void> deleteSavedPlace(String coupleId, String placeId) async {

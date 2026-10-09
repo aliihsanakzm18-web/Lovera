@@ -106,8 +106,29 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
     service.stopSelf();
   });
 
+  // Senkronizasyon durumu ve akıllı kota/pil koruma değişkenleri
+  bool isSyncing = false;
+  DateTime? lastSyncTime;
+  double? lastSyncedLat;
+  double? lastSyncedLng;
+  DateTime? lastDeviceCheck;
+
   // Senkronizasyon fonksiyonu (Gerçek zamanlı GPS koordinatları)
-  Future<void> performLiveSync({Position? customPos}) async {
+  Future<void> performLiveSync({Position? customPos, bool force = false}) async {
+    if (isSyncing) return;
+
+    final now = DateTime.now();
+    // 25 saniye içinde 30 metreden az oynadıysa gereksiz yere Firestore yazma
+    if (!force && lastSyncTime != null && now.difference(lastSyncTime!) < const Duration(seconds: 25)) {
+      if (customPos != null && lastSyncedLat != null && lastSyncedLng != null) {
+        final d = Geolocator.distanceBetween(lastSyncedLat!, lastSyncedLng!, customPos.latitude, customPos.longitude);
+        if (d < 30) return;
+      } else {
+        return;
+      }
+    }
+
+    isSyncing = true;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.reload();
@@ -121,28 +142,26 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
         return;
       }
 
-      // Firestore'dan bu kullanıcının aktif cihazını sorgula
-      try {
-        final userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(uid)
-            .get()
-            .timeout(const Duration(seconds: 4));
-        if (!userDoc.exists) {
-          service.stopSelf();
-          return;
-        }
-
-        final activeDeviceId = userDoc.data()?['currentDeviceId'] as String?;
-        if (activeDeviceId != null && myDeviceId != null && activeDeviceId != myDeviceId) {
-          // Başka bir cihaz (örneğin kullanıcının yeni telefonu) bu hesaba girdi!
-          // Bu cihaz artık konum veya şarj güncellemesi yapamaz!
-          debugPrint('[BG-SERVICE] Başka cihaz ($activeDeviceId) aktif oldu. Bu cihaz ($myDeviceId) durduruluyor.');
-          await prefs.remove('saved_uid');
-          service.stopSelf();
-          return;
-        }
-      } catch (_) {}
+      // Sadece 5 dakikada bir aktif cihaz kontrolü yap (Her GPS güncellemesinde read yakma!)
+      if (lastDeviceCheck == null || now.difference(lastDeviceCheck!) > const Duration(minutes: 5)) {
+        lastDeviceCheck = now;
+        try {
+          final userDoc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(uid)
+              .get(const GetOptions(source: Source.serverAndCache))
+              .timeout(const Duration(seconds: 8));
+          if (userDoc.exists) {
+            final activeDeviceId = userDoc.data()?['currentDeviceId'] as String?;
+            if (activeDeviceId != null && myDeviceId != null && activeDeviceId != myDeviceId) {
+              debugPrint('[BG-SERVICE] Başka cihaz ($activeDeviceId) aktif oldu. Bu cihaz ($myDeviceId) durduruluyor.');
+              await prefs.remove('saved_uid');
+              service.stopSelf();
+              return;
+            }
+          }
+        } catch (_) {}
+      }
 
       int? batteryLevel;
       try {
@@ -197,12 +216,19 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
       if (city != null && city.isNotEmpty) {
         updateData['city'] = city;
       }
+      updateData['lastActive'] = FieldValue.serverTimestamp();
 
       await FirebaseFirestore.instance
           .collection('users')
           .doc(uid)
           .set(updateData, SetOptions(merge: true))
-          .timeout(const Duration(seconds: 4));
+          .timeout(const Duration(seconds: 10));
+
+      lastSyncTime = DateTime.now();
+      if (lat != null && lng != null) {
+        lastSyncedLat = lat;
+        lastSyncedLng = lng;
+      }
 
       if (service is AndroidServiceInstance) {
         final batText = batteryLevel != null ? '%$batteryLevel' : '';
@@ -214,18 +240,20 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
       debugPrint('[BG-SERVICE-SYNC-SUCCESS] Pil: $batteryLevel, Konum: $lat, $lng ($city)');
     } catch (e) {
       debugPrint('[BG-TRACKING-ERROR] $e');
+    } finally {
+      isSyncing = false;
     }
   }
 
   // 1. İlk açılışta anında senkronize et
-  await performLiveSync();
+  await performLiveSync(force: true);
 
   // 2. Anlık GPS Hareket Dinleyicisi (Snapchat / Zenly Tarzı):
   try {
     Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 5, // 5 metre: Canlı rota ve yürüyüş hareketlerinde anında tetiklenme
+        distanceFilter: 20, // 20 metre: Titreşimsiz ve stabil rota takibi
       ),
     ).listen(
       (newPosition) async {
@@ -251,11 +279,11 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
       service.stopSelf();
       return;
     }
-    performLiveSync();
+    performLiveSync(force: true);
   });
 
-  // 4. Periyodik olarak 60 saniyede bir saati, şarjı ve konumu canlı tut
-  Timer.periodic(const Duration(seconds: 60), (timer) async {
+  // 4. Periyodik olarak 90 saniyede bir saati, şarjı ve konumu canlı tut
+  Timer.periodic(const Duration(seconds: 90), (timer) async {
     final prefs = await SharedPreferences.getInstance();
     final uid = prefs.getString('saved_uid');
     if (uid == null || uid.isEmpty) {

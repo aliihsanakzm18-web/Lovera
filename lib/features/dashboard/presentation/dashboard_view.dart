@@ -40,6 +40,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
   StreamSubscription? _partnerSub;
   StreamSubscription? _coupleSub;
   StreamSubscription? _savedPlacesSub;
+  String? _listenedCoupleId;
   List<SavedPlace> _savedPlaces = [];
   Timer? _statusSyncTimer;
   int? _lastHeartTimestamp;
@@ -140,6 +141,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      NotificationService().updateFcmTokenInFirestore();
       // 1. Kendi profilimizi dinle
       _userSub = DatabaseService().userStream()?.listen((doc) async {
         if (!doc.exists || doc.data() == null || !mounted || _isKicked) return;
@@ -209,8 +211,9 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
               coupleId: cId,
             );
           }
-          if (cId != ref.read(coupleIdProvider)) {
-            ref.read(coupleIdProvider.notifier).state = cId;
+          ref.read(coupleIdProvider.notifier).state = cId;
+          if (_coupleSub == null || _listenedCoupleId != cId) {
+            _listenedCoupleId = cId;
             _listenToCouple(cId);
           }
         } else if (data['relationshipStartDate'] != null) {
@@ -535,7 +538,9 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                   onPressed: () async {
                     Navigator.pop(ctx);
                     HapticFeedback.mediumImpact();
-                    final partnerUid = ref.read(partnerUidProvider);
+                    final partnerUid = partner.id.isNotEmpty
+                        ? partner.id
+                        : (ref.read(partnerUidProvider) ?? ref.read(currentUserProvider)?.partnerUid);
                     final myName = ref.read(userNameProvider);
                     final senderName = myName.isEmpty ? 'Partnerin' : myName;
                     await DatabaseService().sendChargeReminder(
@@ -728,7 +733,9 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
   }) async {
     Navigator.pop(context);
     HapticFeedback.mediumImpact();
-    final partnerUid = ref.read(partnerUidProvider);
+    final partnerUid = partner.id.isNotEmpty
+        ? partner.id
+        : (ref.read(partnerUidProvider) ?? ref.read(currentUserProvider)?.partnerUid);
     if (partnerUid != null && partnerUid.isNotEmpty) {
       await NotificationService().sendPushToPartner(
         partnerUid: partnerUid,
@@ -855,7 +862,9 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
 
   Future<void> _sendThought() async {
     HapticFeedback.mediumImpact();
-    final partnerUid = ref.read(partnerUidProvider) ?? ref.read(partnerProvider)?.id;
+    final partnerUid = ref.read(partnerUidProvider) ??
+        ref.read(partnerProvider)?.id ??
+        ref.read(currentUserProvider)?.partnerUid;
     final myName = ref.read(userNameProvider);
     if (partnerUid != null && partnerUid.isNotEmpty) {
       await DatabaseService().sendHeart(partnerUid);
@@ -1260,7 +1269,7 @@ class _PartnerCard extends StatelessWidget {
     if (p.isAppOpen != true) return false;
     if (p.lastActive == null) return true;
     final diff = DateTime.now().toUtc().difference(p.lastActive!.toUtc()).abs();
-    return diff.inMinutes < 2;
+    return diff.inMinutes < 5;
   }
 
   /// Partnerin anlık durumunu belirler: Kayıtlı yer (Ev, İş vb.) > Arabada > Yürüyor / Koşuyor
@@ -1270,9 +1279,10 @@ class _PartnerCard extends StatelessWidget {
       for (final place in savedPlaces) {
         final dist = Geolocator.distanceBetween(p.lat!, p.lng!, place.lat, place.lng);
         if (dist <= 150) {
+          final isHome = place.category == 'home' || place.title.toLowerCase().contains('ev');
           return {
             'emoji': place.iconEmoji,
-            'title': place.title,
+            'title': isHome ? '${p.name} Evde' : place.title,
             'color': const Color(0xFF10B981),
             'bgColor': const Color(0xFF10B981).withValues(alpha: 0.14),
           };
@@ -1282,9 +1292,10 @@ class _PartnerCard extends StatelessWidget {
 
     // 2. Eğer sunucudan gelen etiket varsa
     if (p.currentPlaceTitle != null && p.currentPlaceTitle!.isNotEmpty) {
+      final isHome = p.currentPlaceTitle!.toLowerCase().contains('ev');
       return {
         'emoji': (p.currentPlaceEmoji != null && p.currentPlaceEmoji!.isNotEmpty) ? p.currentPlaceEmoji! : '📍',
-        'title': p.currentPlaceTitle!,
+        'title': isHome ? '${p.name} Evde' : p.currentPlaceTitle!,
         'color': const Color(0xFF10B981),
         'bgColor': const Color(0xFF10B981).withValues(alpha: 0.14),
       };
@@ -1513,7 +1524,7 @@ class _PartnerCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 5),
                       ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 85),
+                        constraints: const BoxConstraints(maxWidth: 120),
                         child: Text(
                           dynamicStatus['title'] as String,
                           maxLines: 1,

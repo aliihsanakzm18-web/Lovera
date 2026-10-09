@@ -740,6 +740,10 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     final effectiveMyPos = _animatedMyPos ?? myLatLng;
     final effectivePartnerPos = _animatedPartnerPos ?? partnerLatLng;
 
+    final bool isPartnerOnline = partner?.isAppOpen == true &&
+        (partner?.lastActive == null ||
+            DateTime.now().toUtc().difference(partner!.lastActive!.toUtc()).abs().inMinutes < 5);
+
     // Yol mesafesi sorgusunu UI döngüsünden bağımsız post-frame olarak tetikle
     if (myLatLng != null && partnerLatLng != null) {
       if (_lastRouteStart?.latitude != myLatLng.latitude ||
@@ -880,20 +884,14 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                         name: partner?.name ?? 'Partner',
                         avatarUrl: partner?.avatarUrl,
                         batteryLevel: partner?.batteryLevel,
-                        borderColor: (partner?.isAppOpen == true &&
-                                partner?.lastActive != null &&
-                                DateTime.now().difference(partner!.lastActive!).inMinutes < 2)
+                        borderColor: isPartnerOnline
                             ? const Color(0xFF10B981)
                             : LoveraColors.primary,
-                        glowColor: (partner?.isAppOpen == true &&
-                                partner?.lastActive != null &&
-                                DateTime.now().difference(partner!.lastActive!).inMinutes < 2)
+                        glowColor: isPartnerOnline
                             ? const Color(0xFF10B981).withValues(alpha: 0.5)
                             : LoveraColors.primary.withValues(alpha: 0.35),
                         isMe: false,
-                        isOnline: (partner?.isAppOpen == true &&
-                            partner?.lastActive != null &&
-                            DateTime.now().difference(partner!.lastActive!).inMinutes < 2),
+                        isOnline: isPartnerOnline,
                         isDark: isDark,
                         currentPlace: partnerCurrentPlace,
                         onTap: () => _animatedFlightMove(effectivePartnerPos, 16.0),

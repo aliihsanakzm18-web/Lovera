@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:battery_plus/battery_plus.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/models.dart';
 import 'database_service.dart';
 
 class DeviceService {
@@ -254,15 +256,39 @@ class DeviceService {
   double? _lastPosLat;
   double? _lastPosLng;
 
+  List<SavedPlace>? _cachedSavedPlaces;
+  DateTime? _cachedSavedPlacesTime;
+
   /// Kullanıcının o an kayıtlı bir yerde (Ev, İş vb.) olup olmadığını kontrol eder (<= 150m)
   Future<Map<String, String>?> _checkSavedPlaceMatch(double lat, double lng) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final coupleId = prefs.getString('saved_couple_id');
+      String? coupleId = prefs.getString('saved_couple_id');
+      if (coupleId == null || coupleId.isEmpty) {
+        final uid = DatabaseService().uid;
+        if (uid != null) {
+          final uDoc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(uid)
+              .get(const GetOptions(source: Source.serverAndCache))
+              .timeout(const Duration(seconds: 4));
+          coupleId = uDoc.data()?['coupleId'] as String?;
+          if (coupleId != null && coupleId.isNotEmpty) {
+            await prefs.setString('saved_couple_id', coupleId);
+          }
+        }
+      }
       if (coupleId == null || coupleId.isEmpty) return null;
 
-      final places = await DatabaseService().savedPlacesStream(coupleId).first.timeout(const Duration(seconds: 3));
-      for (final p in places) {
+      final now = DateTime.now();
+      if (_cachedSavedPlaces == null ||
+          _cachedSavedPlacesTime == null ||
+          now.difference(_cachedSavedPlacesTime!) > const Duration(minutes: 1)) {
+        _cachedSavedPlaces = await DatabaseService().getSavedPlaces(coupleId);
+        _cachedSavedPlacesTime = now;
+      }
+
+      for (final p in (_cachedSavedPlaces ?? [])) {
         final d = Geolocator.distanceBetween(lat, lng, p.lat, p.lng);
         if (d <= 150) { // 150 metre yarıçap içindeyse o mekandadır
           return {

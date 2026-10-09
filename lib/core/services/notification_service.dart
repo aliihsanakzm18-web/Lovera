@@ -199,6 +199,13 @@ class NotificationService {
         _saveTokenToFirestore(newToken);
       });
 
+      // Kullanıcı oturum açtığında veya oturduğunda da token'ı hemen kaydet
+      FirebaseAuth.instance.authStateChanges().listen((user) {
+        if (user != null) {
+          updateFcmTokenInFirestore();
+        }
+      });
+
       // Ön plandayken gelen gerçek kullanıcı bildirimlerini yerel bildirim olarak düşür
       FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
         final prefs = await SharedPreferences.getInstance();
@@ -253,8 +260,9 @@ class NotificationService {
   /// Aktif FCM tokenını döner
   Future<String?> getFcmToken() async {
     try {
-      return await _fcm.getToken().timeout(const Duration(seconds: 2), onTimeout: () => null);
-    } catch (_) {
+      return await _fcm.getToken().timeout(const Duration(seconds: 10), onTimeout: () => null);
+    } catch (e) {
+      debugPrint('[FCM] getFcmToken error: $e');
       return null;
     }
   }
@@ -262,7 +270,7 @@ class NotificationService {
   /// Oturum kapatıldığında FCM token'ını iptal eder ve tüm bildirimleri temizler
   Future<void> clearFcmTokenOnSignOut() async {
     try {
-      await _fcm.deleteToken().timeout(const Duration(seconds: 2), onTimeout: () => null);
+      await _fcm.deleteToken().timeout(const Duration(seconds: 4), onTimeout: () => null);
       await _localPlugin.cancelAll();
       _ready = false;
       debugPrint('[FCM] Token silindi ve yerel bildirimler temizlendi.');
@@ -274,7 +282,12 @@ class NotificationService {
   /// Cihazın tokenını Firestore profilimize yazar
   Future<void> updateFcmTokenInFirestore() async {
     try {
-      final token = await getFcmToken();
+      String? token = await getFcmToken();
+      if (token == null) {
+        // İlk seferde Google Play Services hazır değilse 2.5 saniye sonra tekrar dene
+        await Future.delayed(const Duration(milliseconds: 2500));
+        token = await getFcmToken();
+      }
       debugPrint('[FCM] Aldığımız cihaz FCM Token: $token');
       if (token != null) {
         await _saveTokenToFirestore(token);
@@ -294,7 +307,7 @@ class NotificationService {
           'fcmToken': token,
           'currentDeviceId': deviceId,
           'fcmUpdatedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true)).timeout(const Duration(seconds: 3));
+        }, SetOptions(merge: true)).timeout(const Duration(seconds: 6));
         debugPrint('[FCM] Token ve Cihaz ID ($deviceId) Firestore’a başarıyla kaydedildi!');
       }
     } catch (e) {
@@ -312,7 +325,11 @@ class NotificationService {
     try {
       debugPrint('[FCM-SEND] Partner FCM aranıyor: $partnerUid');
       // 1. Partnerin FCM Token'ını Firestore'dan oku
-      final partnerDoc = await FirebaseFirestore.instance.collection('users').doc(partnerUid).get();
+      final partnerDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(partnerUid)
+          .get(const GetOptions(source: Source.serverAndCache))
+          .timeout(const Duration(seconds: 6));
       final fcmToken = partnerDoc.data()?['fcmToken'] as String?;
       debugPrint('[FCM-SEND] Bulunan partner token: $fcmToken');
       if (fcmToken == null || fcmToken.isEmpty) {
@@ -336,7 +353,11 @@ class NotificationService {
   /// Kapalı olan partner cihazına sessiz ping atarak arka planda anlık şarj ve konumunu almasını ister
   Future<void> requestPartnerStatusSync(String partnerUid) async {
     try {
-      final partnerDoc = await FirebaseFirestore.instance.collection('users').doc(partnerUid).get();
+      final partnerDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(partnerUid)
+          .get(const GetOptions(source: Source.serverAndCache))
+          .timeout(const Duration(seconds: 6));
       final fcmToken = partnerDoc.data()?['fcmToken'] as String?;
       if (fcmToken != null && fcmToken.isNotEmpty) {
         await FcmV1Service().sendDataOnlyPush(

@@ -9,6 +9,7 @@ class AppUser {
   final String? city;
   final DateTime? lastActive;
   final String? coupleId;
+  final String? partnerUid;
   final bool? isAppOpen;
   final String? birthDate; // 'YYYY-MM-DD'
 
@@ -27,6 +28,7 @@ class AppUser {
     this.lng,
     this.lastActive,
     this.coupleId,
+    this.partnerUid,
     this.isAppOpen,
     this.birthDate,
     this.speed,
@@ -43,12 +45,19 @@ class AppUser {
         city: j['city'] as String?,
         lat: (j['lat'] as num?)?.toDouble(),
         lng: (j['lng'] as num?)?.toDouble(),
-        lastActive: (j['lastActive'] ?? j['last_active']) == null
-            ? null
-            : ((j['lastActive'] ?? j['last_active']) is DateTime
-                ? (j['lastActive'] ?? j['last_active']) as DateTime
-                : DateTime.tryParse((j['lastActive'] ?? j['last_active']).toString())),
+        lastActive: () {
+          final raw = j['lastActive'] ?? j['last_active'];
+          if (raw == null) return null;
+          if (raw is DateTime) return raw;
+          if (raw is String) return DateTime.tryParse(raw);
+          try {
+            return (raw as dynamic).toDate();
+          } catch (_) {
+            return DateTime.tryParse(raw.toString());
+          }
+        }(),
         coupleId: (j['coupleId'] ?? j['couple_id']) as String?,
+        partnerUid: (j['partnerUid'] ?? j['partner_uid']) as String?,
         isAppOpen: (j['isAppOpen'] ?? j['is_app_open']) as bool?,
         birthDate: (j['birthDate'] ?? j['birth_date']) as String?,
         speed: (j['speed'] as num?)?.toDouble(),
@@ -67,6 +76,7 @@ class AppUser {
         'lng': lng,
         'last_active': lastActive?.toIso8601String(),
         'couple_id': coupleId,
+        'partner_uid': partnerUid,
         'is_app_open': isAppOpen,
         'birth_date': birthDate,
         'speed': speed,

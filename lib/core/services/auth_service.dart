@@ -37,7 +37,7 @@ class AuthService {
           .collection('users')
           .doc(uid)
           .set(updateData, SetOptions(merge: true))
-          .timeout(const Duration(seconds: 4));
+          .timeout(const Duration(seconds: 8));
     } catch (_) {}
   }
 

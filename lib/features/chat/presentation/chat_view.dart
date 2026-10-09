@@ -51,8 +51,11 @@ class _ChatViewState extends ConsumerState<ChatView> {
   }
 
   Future<void> _send({String? type, String? mediaBase64}) async {
-    final coupleId = ref.read(coupleIdProvider);
-    final partnerUid = ref.read(partnerUidProvider);
+    final coupleId = ref.read(coupleIdProvider) ??
+        ref.read(currentUserProvider)?.coupleId;
+    final partnerUid = ref.read(partnerUidProvider) ??
+        ref.read(partnerProvider)?.id ??
+        ref.read(currentUserProvider)?.partnerUid;
     final myName = ref.read(userNameProvider);
 
     if (coupleId == null || coupleId.isEmpty) {
@@ -171,8 +174,11 @@ class _ChatViewState extends ConsumerState<ChatView> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final partner = ref.watch(partnerProvider);
-    final partnerUid = ref.watch(partnerUidProvider);
-    final coupleId = ref.watch(coupleIdProvider);
+    final partnerUid = ref.watch(partnerUidProvider) ??
+        partner?.id ??
+        ref.watch(currentUserProvider)?.partnerUid;
+    final coupleId = ref.watch(coupleIdProvider) ??
+        ref.watch(currentUserProvider)?.coupleId;
     final myUid = DatabaseService().uid;
 
     return GestureDetector(
