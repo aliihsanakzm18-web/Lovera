@@ -134,6 +134,7 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin _localPlugin = FlutterLocalNotificationsPlugin();
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
   bool _ready = false;
+  DateTime? _lastPingRequestTime;
 
   /// Kullanıcı şu an sohbet ekranında mı kontrolü (sohbetteyken bildirim sesi/penceresi basmamak için)
   bool Function()? isChatScreenActive;
@@ -352,6 +353,12 @@ class NotificationService {
 
   /// Kapalı olan partner cihazına sessiz ping atarak arka planda anlık şarj ve konumunu almasını ister
   Future<void> requestPartnerStatusSync(String partnerUid) async {
+    final now = DateTime.now();
+    if (_lastPingRequestTime != null && now.difference(_lastPingRequestTime!).inSeconds < 45) {
+      return; // 45 saniye içinde tekrar ping atma (quota koruması)
+    }
+    _lastPingRequestTime = now;
+
     try {
       final partnerDoc = await FirebaseFirestore.instance
           .collection('users')

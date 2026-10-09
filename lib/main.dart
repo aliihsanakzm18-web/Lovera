@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -33,8 +34,20 @@ Future<void> main() async {
   final currentUid = FirebaseAuth.instance.currentUser?.uid;
   if (currentUid != null && currentUid.isNotEmpty) {
     await prefs.setString('saved_uid', currentUid);
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUid)
+          .get(const GetOptions(source: Source.serverAndCache))
+          .timeout(const Duration(seconds: 4));
+      final coupleId = userDoc.data()?['coupleId'] as String?;
+      if (coupleId != null && coupleId.isNotEmpty) {
+        await prefs.setString('saved_couple_id', coupleId);
+      }
+    } catch (_) {}
   } else {
     await prefs.remove('saved_uid');
+    await prefs.remove('saved_couple_id');
   }
 
   final onboarded = prefs.getBool('onboarded') ?? false;

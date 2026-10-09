@@ -110,13 +110,12 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     DeviceService().startContinuousLocationTracking();
     NotificationService().updateFcmTokenInFirestore();
 
-    // İlk açılışta uygulamada olduğumuzu bildir
-    DatabaseService().setAppPresence(true);
+    // İlk açılışta hem uygulamada olduğumuzu bildir hem de durumu tazele (Tek yazım)
+    DeviceService().syncStatusToFirebase(isOnline: true);
 
-    // Periyodik olarak hem uygulamada olduğumuzu bildir hem de durumu tazele
-    _statusSyncTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      DatabaseService().setAppPresence(true);
-      DeviceService().syncStatusToFirebase();
+    // Periyodik olarak 60 saniyede bir durumu ve aktifliği tek yazımla tazele
+    _statusSyncTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      DeviceService().syncStatusToFirebase(isOnline: true);
     });
 
     // Uygulama alta atıldığında veya kapatılmak üzereyken durumu güncelle
@@ -130,12 +129,10 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
         DatabaseService().setAppPresence(false);
       },
       onResume: () {
-        DatabaseService().setAppPresence(true);
-        DeviceService().syncStatusToFirebase();
+        DeviceService().syncStatusToFirebase(isOnline: true);
         _statusSyncTimer?.cancel();
-        _statusSyncTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-          DatabaseService().setAppPresence(true);
-          DeviceService().syncStatusToFirebase();
+        _statusSyncTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+          DeviceService().syncStatusToFirebase(isOnline: true);
         });
       },
     );
@@ -1266,10 +1263,10 @@ class _PartnerCard extends StatelessWidget {
   final VoidCallback? onWeatherTap;
 
   bool _isOnline(AppUser p) {
-    if (p.isAppOpen != true) return false;
-    if (p.lastActive == null) return true;
+    if (p.isAppOpen == true) return true;
+    if (p.lastActive == null) return false;
     final diff = DateTime.now().toUtc().difference(p.lastActive!.toUtc()).abs();
-    return diff.inMinutes < 5;
+    return diff.inMinutes < 4;
   }
 
   /// Partnerin anlık durumunu belirler: Kayıtlı yer (Ev, İş vb.) > Arabada > Yürüyor / Koşuyor

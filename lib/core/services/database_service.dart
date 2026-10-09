@@ -495,6 +495,8 @@ class DatabaseService {
     } catch (_) {}
   }
 
+  DateTime? _lastStatusUpdateAt;
+
   // 6. CANLI KONUM, HAVA, ŞEHİR VE PİL GÜNCELLEME
   Future<void> updateStatus({
     double? lat,
@@ -505,8 +507,14 @@ class DatabaseService {
     double? speed,
     String? currentPlaceTitle,
     String? currentPlaceEmoji,
+    bool? isAppOpen,
     bool updateLastActive = false,
   }) async {
+    final now = DateTime.now();
+    if (_lastStatusUpdateAt != null && now.difference(_lastStatusUpdateAt!).inMilliseconds < 2500) {
+      return; // 2.5 saniyelik minimum aralık koruması (Firestore WriteStream kotası)
+    }
+
     String? targetUid = uid;
     if (targetUid == null) {
       final prefs = await SharedPreferences.getInstance();
@@ -520,6 +528,10 @@ class DatabaseService {
     final Map<String, dynamic> data = {};
     if (updateLastActive) {
       data['lastActive'] = FieldValue.serverTimestamp();
+    }
+    if (isAppOpen != null) {
+      data['isAppOpen'] = isAppOpen;
+      data['isOnline'] = isAppOpen;
     }
     if (lat != null && lng != null) {
       data['lat'] = lat;
@@ -545,6 +557,7 @@ class DatabaseService {
     }
     if (data.isNotEmpty) {
       try {
+        _lastStatusUpdateAt = now;
         await _db.collection('users').doc(targetUid).set(data, SetOptions(merge: true)).timeout(const Duration(seconds: 4));
       } catch (_) {}
     }
@@ -562,6 +575,7 @@ class DatabaseService {
     try {
       await _db.collection('users').doc(targetUid).set({
         'isAppOpen': isOpen,
+        'isOnline': isOpen,
         'lastActive': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true)).timeout(const Duration(seconds: 4));
     } catch (_) {}

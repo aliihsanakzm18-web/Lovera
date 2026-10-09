@@ -305,10 +305,10 @@ class DeviceService {
   Future<void> _onNewPositionReceived(Position pos) async {
     try {
       final now = DateTime.now();
-      if (_lastPosWriteTime != null && now.difference(_lastPosWriteTime!) < const Duration(seconds: 15)) {
+      if (_lastPosWriteTime != null && now.difference(_lastPosWriteTime!) < const Duration(seconds: 25)) {
         if (_lastSyncedLat != null && _lastSyncedLng != null) {
           final d = Geolocator.distanceBetween(_lastSyncedLat!, _lastSyncedLng!, pos.latitude, pos.longitude);
-          if (d < 15) return; // 15 saniye içinde 15 metreden az oynadıysa yazma (Kota koruması)
+          if (d < 25) return; // 25 saniye içinde 25 metreden az oynadıysa yazma (Kota koruması)
         }
       }
 
@@ -328,12 +328,25 @@ class DeviceService {
       // Kayıtlı bir konumda mı?
       final matchedPlace = await _checkSavedPlaceMatch(pos.latitude, pos.longitude);
 
+      String? placeTitleToSet;
+      String? placeEmojiToSet;
+      if (matchedPlace != null) {
+        placeTitleToSet = matchedPlace['title'];
+        placeEmojiToSet = matchedPlace['emoji'];
+      } else if (_cachedSavedPlaces != null && _cachedSavedPlaces!.isNotEmpty) {
+        final allFar = _cachedSavedPlaces!.every((p) => Geolocator.distanceBetween(pos.latitude, pos.longitude, p.lat, p.lng) > 250);
+        if (allFar) {
+          placeTitleToSet = '';
+          placeEmojiToSet = '';
+        }
+      }
+
       await DatabaseService().updateStatus(
         lat: pos.latitude,
         lng: pos.longitude,
         speed: calculatedSpeed >= 0 ? calculatedSpeed : 0.0,
-        currentPlaceTitle: matchedPlace?['title'] ?? '',
-        currentPlaceEmoji: matchedPlace?['emoji'] ?? '',
+        currentPlaceTitle: placeTitleToSet,
+        currentPlaceEmoji: placeEmojiToSet,
         weather: _lastWeather,
         city: _lastCity,
         updateLastActive: true,
@@ -349,7 +362,7 @@ class DeviceService {
   }
 
   /// Gerçek cihaz durumunu (Pil, Konum, Şehir, Hava Durumu, Aktiflik) Firebase'e kaydeder
-  Future<void> syncStatusToFirebase() async {
+  Future<void> syncStatusToFirebase({bool? isOnline}) async {
     try {
       final battery = await getBatteryLevel();
 
@@ -385,7 +398,7 @@ class DeviceService {
         }
       } catch (_) {}
 
-      // Eğer konum alınamadıysa önbellekteki son bilinen değerleri koru, ASLA İstanbul veya sabit değer uydurma!
+      // Eğer konum alınamadıysa önbellekteki son bilinen değerleri koru, ASLA sabit değer uydurma!
       city ??= _lastCity;
       weather ??= _lastWeather;
 
@@ -394,14 +407,29 @@ class DeviceService {
         matchedPlace = await _checkSavedPlaceMatch(lat, lng);
       }
 
+      String? placeTitleToSet;
+      String? placeEmojiToSet;
+      if (matchedPlace != null) {
+        placeTitleToSet = matchedPlace['title'];
+        placeEmojiToSet = matchedPlace['emoji'];
+      } else if (_cachedSavedPlaces != null && _cachedSavedPlaces!.isNotEmpty && lat != null && lng != null) {
+        final allFar = _cachedSavedPlaces!.every((p) => Geolocator.distanceBetween(lat!, lng!, p.lat, p.lng) > 250);
+        if (allFar) {
+          placeTitleToSet = '';
+          placeEmojiToSet = '';
+        }
+      }
+
       await DatabaseService().updateStatus(
         batteryLevel: battery,
         lat: lat,
         lng: lng,
-        currentPlaceTitle: matchedPlace?['title'],
-        currentPlaceEmoji: matchedPlace?['emoji'],
+        currentPlaceTitle: placeTitleToSet,
+        currentPlaceEmoji: placeEmojiToSet,
         weather: weather,
         city: city,
+        isAppOpen: isOnline,
+        updateLastActive: true,
       );
 
       if (lat != null && lng != null) {

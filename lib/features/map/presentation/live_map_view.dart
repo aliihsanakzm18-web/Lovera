@@ -67,8 +67,8 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
       }
     });
 
-    // Harita açıkken partnerin kapalı cihazını 6 saniyede bir sessiz uyandır ve konumunu tazelet
-    _mapSyncTimer = Timer.periodic(const Duration(seconds: 6), (_) {
+    // Harita açıkken partnerin kapalı cihazını 60 saniyede bir sessiz uyandır ve konumunu tazelet
+    _mapSyncTimer = Timer.periodic(const Duration(seconds: 60), (_) {
       final partnerUid = ref.read(partnerUidProvider);
       if (partnerUid != null && partnerUid.isNotEmpty) {
         if (_partnerSub == null) {
@@ -740,9 +740,9 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     final effectiveMyPos = _animatedMyPos ?? myLatLng;
     final effectivePartnerPos = _animatedPartnerPos ?? partnerLatLng;
 
-    final bool isPartnerOnline = partner?.isAppOpen == true &&
-        (partner?.lastActive == null ||
-            DateTime.now().toUtc().difference(partner!.lastActive!.toUtc()).abs().inMinutes < 5);
+    final bool isPartnerOnline = partner?.isAppOpen == true ||
+        (partner?.lastActive != null &&
+            DateTime.now().toUtc().difference(partner!.lastActive!.toUtc()).abs().inMinutes < 4);
 
     // Yol mesafesi sorgusunu UI döngüsünden bağımsız post-frame olarak tetikle
     if (myLatLng != null && partnerLatLng != null) {

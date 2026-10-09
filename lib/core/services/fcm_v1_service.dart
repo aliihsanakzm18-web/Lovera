@@ -131,6 +131,22 @@ class FcmV1Service {
               'notification_priority': 'PRIORITY_MAX',
             },
           },
+          'apns': {
+            'headers': {
+              'apns-priority': '10',
+            },
+            'payload': {
+              'aps': {
+                'alert': {
+                  'title': title,
+                  'body': body,
+                },
+                'sound': 'default',
+                'badge': 1,
+                'content-available': 1,
+              },
+            },
+          },
         },
       };
 
@@ -171,6 +187,17 @@ class FcmV1Service {
           'data': data,
           'android': {
             'priority': 'HIGH',
+          },
+          'apns': {
+            'headers': {
+              'apns-priority': '5',
+              'apns-push-type': 'background',
+            },
+            'payload': {
+              'aps': {
+                'content-available': 1,
+              },
+            },
           },
         },
       };

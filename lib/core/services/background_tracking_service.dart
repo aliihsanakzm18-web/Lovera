@@ -209,6 +209,46 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
       if (lat != null && lng != null) {
         updateData['lat'] = lat;
         updateData['lng'] = lng;
+
+        try {
+          final coupleId = prefs.getString('saved_couple_id');
+          if (coupleId != null && coupleId.isNotEmpty) {
+            final placesSnap = await FirebaseFirestore.instance
+                .collection('couples')
+                .doc(coupleId)
+                .collection('saved_places')
+                .get(const GetOptions(source: Source.serverAndCache))
+                .timeout(const Duration(seconds: 4));
+            bool matched = false;
+            for (final doc in placesSnap.docs) {
+              final d = doc.data();
+              final pLat = (d['lat'] as num?)?.toDouble();
+              final pLng = (d['lng'] as num?)?.toDouble();
+              if (pLat != null && pLng != null) {
+                final dist = Geolocator.distanceBetween(lat, lng, pLat, pLng);
+                if (dist <= 150) {
+                  updateData['currentPlaceTitle'] = d['title'] ?? 'Evim';
+                  updateData['currentPlaceEmoji'] = d['iconEmoji'] ?? d['emoji'] ?? '🏠';
+                  matched = true;
+                  break;
+                }
+              }
+            }
+            if (!matched && placesSnap.docs.isNotEmpty) {
+              final allFar = placesSnap.docs.every((doc) {
+                final d = doc.data();
+                final pLat = (d['lat'] as num?)?.toDouble();
+                final pLng = (d['lng'] as num?)?.toDouble();
+                if (pLat == null || pLng == null) return true;
+                return Geolocator.distanceBetween(lat!, lng!, pLat, pLng) > 250;
+              });
+              if (allFar) {
+                updateData['currentPlaceTitle'] = '';
+                updateData['currentPlaceEmoji'] = '';
+              }
+            }
+          }
+        } catch (_) {}
       }
       if (weather != null && weather.isNotEmpty) {
         updateData['weather'] = weather;
@@ -271,7 +311,7 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
     );
   } catch (_) {}
 
-  // 3. Şarj durumu her değiştiğinde anında güncelle (kablo takma/çıkarma)
+  // 3. Şarj durumu her değiştiğinde güncelle
   battery.onBatteryStateChanged.listen((_) async {
     final prefs = await SharedPreferences.getInstance();
     final uid = prefs.getString('saved_uid');
@@ -279,7 +319,7 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
       service.stopSelf();
       return;
     }
-    performLiveSync(force: true);
+    performLiveSync();
   });
 
   // 4. Periyodik olarak 90 saniyede bir saati, şarjı ve konumu canlı tut
