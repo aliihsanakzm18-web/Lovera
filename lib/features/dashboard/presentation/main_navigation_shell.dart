@@ -93,6 +93,13 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
           setupDeliveryListener(next);
         }
       });
+
+      // activeNavigationIndexProvider değiştiğinde (harita veya başka yerden yönlendirilince) o sayfaya kaydır
+      ref.listenManual(activeNavigationIndexProvider, (prev, next) {
+        if (next != _currentIndex) {
+          _goToPage(next);
+        }
+      });
     });
   }
 
@@ -139,6 +146,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
           // Sayfa 0: Canlı Harita
           LiveMapView(
             onBackToHome: () => _goToPage(1),
+            onOpenChat: () => _goToPage(2),
           ),
 
           // Sayfa 1: Ana Sayfa (Dashboard)
@@ -150,6 +158,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
           // Sayfa 2: Mesajlaşma (Chat)
           ChatView(
             onBackToHome: () => _goToPage(1),
+            onOpenMap: () => _goToPage(0),
           ),
 
           // Sayfa 3: Oyun & Eğlence Odası (Games)

@@ -25,8 +25,32 @@ final startDateProvider = StateProvider<DateTime?>((ref) => null);
 /// Kullanıcının eklediği özel günler.
 final milestonesProvider = StateProvider<List<Milestone>>((ref) => []);
 
+/// Kalıcı ve anlık paylaşılan kayıtlı yerler (Ev, Okul vb.)
+final savedPlacesProvider = StateProvider<List<SavedPlace>>((ref) => []);
+
 /// Aktif sayfa indeksi (0: Harita, 1: Ana Sayfa, 2: Sohbet, 3: Oyunlar)
 final activeNavigationIndexProvider = StateProvider<int>((ref) => 1);
+
+/// Haritadan veya diğer sayfalardan sohbete gönderilen hazır mesaj metni (örn: konum cevabı)
+final pendingChatInputTextProvider = StateProvider<String?>((ref) => null);
+
+/// Haritadan sohbete iliştirilen tıklanabilir konum bilgisi
+class AttachedLocation {
+  final double lat;
+  final double lng;
+  final String title;
+
+  const AttachedLocation({
+    required this.lat,
+    required this.lng,
+    required this.title,
+  });
+}
+
+final pendingChatLocationAttachmentProvider = StateProvider<AttachedLocation?>((ref) => null);
+
+/// Sohbetteki konuma tıklandığında haritanın odaklanacağı hedef koordinat
+final targetMapFocusLocationProvider = StateProvider<AttachedLocation?>((ref) => null);
 
 /// Kullanıcı şu an sohbet sayfasında mı?
 final isChatActiveProvider = Provider<bool>((ref) {

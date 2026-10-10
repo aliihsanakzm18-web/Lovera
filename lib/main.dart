@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -6,12 +5,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'dart:convert';
+
+import 'core/models/models.dart';
 import 'core/services/background_tracking_service.dart';
+import 'core/services/connectivity_service.dart';
 import 'core/services/notification_service.dart';
 import 'core/state/app_state.dart';
 import 'core/theme/app_theme.dart';
-import 'features/dashboard/presentation/main_navigation_shell.dart';
-import 'features/onboarding/presentation/onboarding_flow.dart';
+import 'features/splash/presentation/splash_view.dart';
 
 import 'firebase_options.dart';
 
@@ -29,25 +31,24 @@ Future<void> main() async {
   // Arka plan ve bildirim servislerini UI render'ı bloke etmeden asenkron başlat
   NotificationService().init().catchError((e) => debugPrint('Notification init error: $e'));
   BackgroundTrackingService().initialize().catchError((e) => debugPrint('BG init error: $e'));
+
+  // Sayfa geçişlerinde anlık render aksaklıklarında kırmızı hata ekranı (Red Screen of Death)
+  // flaşlamasını önle; hatayı sessizce konsola bas ve UI'ı temiz/şeffaf tut
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    debugPrint('[FLUTTER-ERROR-CAUGHT] ${details.exceptionAsString()}');
+  };
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    debugPrint('[ERROR-WIDGET-TRIGGERED] ${details.exceptionAsString()}\n${details.stack}');
+    return const SizedBox.shrink();
+  };
   
   final prefs = await SharedPreferences.getInstance();
   final currentUid = FirebaseAuth.instance.currentUser?.uid;
   if (currentUid != null && currentUid.isNotEmpty) {
     await prefs.setString('saved_uid', currentUid);
-    try {
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(currentUid)
-          .get(const GetOptions(source: Source.serverAndCache))
-          .timeout(const Duration(seconds: 4));
-      final coupleId = userDoc.data()?['coupleId'] as String?;
-      if (coupleId != null && coupleId.isNotEmpty) {
-        await prefs.setString('saved_couple_id', coupleId);
-      }
-    } catch (_) {}
   } else {
     await prefs.remove('saved_uid');
-    await prefs.remove('saved_couple_id');
   }
 
   final onboarded = prefs.getBool('onboarded') ?? false;
@@ -58,10 +59,31 @@ Future<void> main() async {
       ? ThemeMode.light
       : (themeModeStr == 'dark' ? ThemeMode.dark : ThemeMode.system);
 
+  // Önbellekteki partner, coupleId ve sayaç tarihini oku (açılışta sıfır gecikmeli gösterim için)
+  final savedCoupleId = prefs.getString('saved_couple_id');
+  final savedPartnerUid = prefs.getString('saved_partner_uid');
+  final savedStartDateStr = prefs.getString('saved_start_date');
+  final initialStartDate = savedStartDateStr != null ? DateTime.tryParse(savedStartDateStr) : null;
+  
+  AppUser? initialPartner;
+  final cachedPartnerJson = prefs.getString('cached_partner_json');
+  if (cachedPartnerJson != null && cachedPartnerJson.isNotEmpty) {
+    try {
+      final decoded = jsonDecode(cachedPartnerJson) as Map<String, dynamic>;
+      initialPartner = AppUser.fromJson(decoded);
+    } catch (e) {
+      debugPrint('Partner cache decode error: $e');
+    }
+  }
+
   runApp(ProviderScope(
     overrides: [
       userNameProvider.overrideWith((ref) => name),
       userAvatarProvider.overrideWith((ref) => initialAvatar),
+      coupleIdProvider.overrideWith((ref) => savedCoupleId),
+      partnerUidProvider.overrideWith((ref) => savedPartnerUid),
+      if (initialPartner != null) partnerProvider.overrideWith((ref) => initialPartner),
+      if (initialStartDate != null) startDateProvider.overrideWith((ref) => initialStartDate),
       themeModeProvider.overrideWith((ref) => ThemeModeNotifier(initialMode: initialThemeMode)),
     ],
     child: LoveraApp(onboarded: onboarded),
@@ -82,7 +104,110 @@ class LoveraApp extends ConsumerWidget {
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: themeMode,
-      home: onboarded ? const MainNavigationShell() : const OnboardingFlow(),
+      builder: (context, child) {
+        return _OfflineBannerWrapper(child: child ?? const SizedBox());
+      },
+      home: SplashView(onboarded: onboarded),
+    );
+  }
+}
+
+class _OfflineBannerWrapper extends ConsumerWidget {
+  const _OfflineBannerWrapper({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isOnline = ref.watch(connectivityProvider);
+
+    return Stack(
+      children: [
+        child,
+        AnimatedPositioned(
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeOutCubic,
+          top: isOnline ? -90 : 0,
+          left: 0,
+          right: 0,
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              padding: EdgeInsets.only(
+                top: MediaQuery.of(context).padding.top + 6,
+                bottom: 8,
+                left: 16,
+                right: 16,
+              ),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [
+                    Color(0xFFE11D48),
+                    Color(0xFFBE123C),
+                  ],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFE11D48).withValues(alpha: 0.4),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.wifi_off_rounded,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'İnternete bağlı değilsiniz',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  InkWell(
+                    onTap: () {
+                      ref.read(connectivityProvider.notifier).checkConnection();
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.refresh_rounded, color: Colors.white, size: 13),
+                          SizedBox(width: 4),
+                          Text(
+                            'Tekrar Dene',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

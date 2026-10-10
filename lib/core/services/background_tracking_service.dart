@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ui';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -11,7 +12,9 @@ import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../firebase_options.dart';
+import '../models/models.dart';
 import 'device_service.dart';
+import 'notification_service.dart';
 
 /// 7/24 Kesintisiz Arka Plan Canlı Şarj ve Konum Servisi (Snapchat / Life360 Modeli)
 /// Uygulama görev yöneticisinden kapatılsa dahi Android Foreground Service olarak
@@ -93,6 +96,8 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
   final battery = Battery();
 
   if (service is AndroidServiceInstance) {
+    service.setAsForegroundService();
+
     service.on('setAsForeground').listen((_) {
       service.setAsForegroundService();
     });
@@ -106,61 +111,24 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
     service.stopSelf();
   });
 
-  // Senkronizasyon durumu ve akıllı kota/pil koruma değişkenleri
-  bool isSyncing = false;
-  DateTime? lastSyncTime;
-  double? lastSyncedLat;
-  double? lastSyncedLng;
-  DateTime? lastDeviceCheck;
+  int? lastBgBattery;
+  double? lastBgLat;
+  double? lastBgLng;
+  DateTime? lastBgWriteTime;
+  String? lastBgMatchedPlaceId;
 
   // Senkronizasyon fonksiyonu (Gerçek zamanlı GPS koordinatları)
-  Future<void> performLiveSync({Position? customPos, bool force = false}) async {
-    if (isSyncing) return;
-
-    final now = DateTime.now();
-    // 25 saniye içinde 30 metreden az oynadıysa gereksiz yere Firestore yazma
-    if (!force && lastSyncTime != null && now.difference(lastSyncTime!) < const Duration(seconds: 25)) {
-      if (customPos != null && lastSyncedLat != null && lastSyncedLng != null) {
-        final d = Geolocator.distanceBetween(lastSyncedLat!, lastSyncedLng!, customPos.latitude, customPos.longitude);
-        if (d < 30) return;
-      } else {
-        return;
-      }
-    }
-
-    isSyncing = true;
+  Future<void> performLiveSync({Position? customPos}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.reload();
       final uid = prefs.getString('saved_uid') ?? FirebaseAuth.instance.currentUser?.uid;
-      final myDeviceId = prefs.getString('device_session_id');
 
       // Eğer kullanıcı oturum açmamışsa veya çıkış yapmışsa arka plan servisini derhal durdur!
       if (uid == null || uid.isEmpty) {
         debugPrint('[BG-SERVICE] Oturum kapalı, servis sonlandırılıyor.');
         service.stopSelf();
         return;
-      }
-
-      // Sadece 5 dakikada bir aktif cihaz kontrolü yap (Her GPS güncellemesinde read yakma!)
-      if (lastDeviceCheck == null || now.difference(lastDeviceCheck!) > const Duration(minutes: 5)) {
-        lastDeviceCheck = now;
-        try {
-          final userDoc = await FirebaseFirestore.instance
-              .collection('users')
-              .doc(uid)
-              .get(const GetOptions(source: Source.serverAndCache))
-              .timeout(const Duration(seconds: 8));
-          if (userDoc.exists) {
-            final activeDeviceId = userDoc.data()?['currentDeviceId'] as String?;
-            if (activeDeviceId != null && myDeviceId != null && activeDeviceId != myDeviceId) {
-              debugPrint('[BG-SERVICE] Başka cihaz ($activeDeviceId) aktif oldu. Bu cihaz ($myDeviceId) durduruluyor.');
-              await prefs.remove('saved_uid');
-              service.stopSelf();
-              return;
-            }
-          }
-        } catch (_) {}
       }
 
       int? batteryLevel;
@@ -192,6 +160,31 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
         lng = pos.longitude;
       }
 
+      final now = DateTime.now();
+
+      // Akıllı Değişim Kontrolü: Pil veya konum değişti mi?
+      bool hasMeaningfulChange = false;
+      if (batteryLevel != null && batteryLevel != lastBgBattery) {
+        hasMeaningfulChange = true;
+      }
+      if (lat != null && lng != null) {
+        if (lastBgLat == null || lastBgLng == null) {
+          hasMeaningfulChange = true;
+        } else {
+          final dist = Geolocator.distanceBetween(lastBgLat!, lastBgLng!, lat, lng);
+          if (dist >= 15) { // 15 metreden fazla konum hareketi
+            hasMeaningfulChange = true;
+          }
+        }
+      }
+
+      final isPeriodicFallback = lastBgWriteTime == null || now.difference(lastBgWriteTime!).inSeconds >= 180;
+
+      // Değişiklik yoksa ve 3 dakika geçmediyse Firestore yazma hakkını harcama!
+      if (!hasMeaningfulChange && !isPeriodicFallback) {
+        return;
+      }
+
       if (lat != null && lng != null) {
         city = await DeviceService().getCityForLocation(lat, lng);
         weather = await DeviceService().getWeatherForLocation(lat, lng);
@@ -202,6 +195,15 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
         prefs.setString('saved_city', city);
       }
 
+      double calculatedSpeed = (pos?.speed != null && pos!.speed >= 0) ? pos.speed : 0.0;
+      if (calculatedSpeed <= 0 && lat != null && lng != null && lastBgLat != null && lastBgLng != null && lastBgWriteTime != null) {
+        final sec = now.difference(lastBgWriteTime!).inSeconds;
+        if (sec > 0 && sec < 180) {
+          final dist = Geolocator.distanceBetween(lastBgLat!, lastBgLng!, lat, lng);
+          calculatedSpeed = dist / sec;
+        }
+      }
+
       final Map<String, dynamic> updateData = {};
       if (batteryLevel != null) {
         updateData['batteryLevel'] = batteryLevel;
@@ -209,65 +211,148 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
       if (lat != null && lng != null) {
         updateData['lat'] = lat;
         updateData['lng'] = lng;
-
-        try {
-          final coupleId = prefs.getString('saved_couple_id');
-          if (coupleId != null && coupleId.isNotEmpty) {
-            final placesSnap = await FirebaseFirestore.instance
-                .collection('couples')
-                .doc(coupleId)
-                .collection('saved_places')
-                .get(const GetOptions(source: Source.serverAndCache))
-                .timeout(const Duration(seconds: 4));
-            bool matched = false;
-            for (final doc in placesSnap.docs) {
-              final d = doc.data();
-              final pLat = (d['lat'] as num?)?.toDouble();
-              final pLng = (d['lng'] as num?)?.toDouble();
-              if (pLat != null && pLng != null) {
-                final dist = Geolocator.distanceBetween(lat, lng, pLat, pLng);
-                if (dist <= 150) {
-                  updateData['currentPlaceTitle'] = d['title'] ?? 'Evim';
-                  updateData['currentPlaceEmoji'] = d['iconEmoji'] ?? d['emoji'] ?? '🏠';
-                  matched = true;
-                  break;
-                }
-              }
-            }
-            if (!matched && placesSnap.docs.isNotEmpty) {
-              final allFar = placesSnap.docs.every((doc) {
-                final d = doc.data();
-                final pLat = (d['lat'] as num?)?.toDouble();
-                final pLng = (d['lng'] as num?)?.toDouble();
-                if (pLat == null || pLng == null) return true;
-                return Geolocator.distanceBetween(lat!, lng!, pLat, pLng) > 250;
-              });
-              if (allFar) {
-                updateData['currentPlaceTitle'] = '';
-                updateData['currentPlaceEmoji'] = '';
-              }
-            }
-          }
-        } catch (_) {}
       }
+      updateData['speed'] = calculatedSpeed >= 0 ? calculatedSpeed : 0.0;
       if (weather != null && weather.isNotEmpty) {
         updateData['weather'] = weather;
       }
       if (city != null && city.isNotEmpty) {
         updateData['city'] = city;
       }
-      updateData['lastActive'] = FieldValue.serverTimestamp();
 
       await FirebaseFirestore.instance
           .collection('users')
           .doc(uid)
           .set(updateData, SetOptions(merge: true))
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 4));
 
-      lastSyncTime = DateTime.now();
+      lastBgWriteTime = now;
+      if (batteryLevel != null) lastBgBattery = batteryLevel;
       if (lat != null && lng != null) {
-        lastSyncedLat = lat;
-        lastSyncedLng = lng;
+        lastBgLat = lat;
+        lastBgLng = lng;
+      }
+
+      // 4. Arka Plan Geofence (Mekan Giriş / Çıkış) Kontrolü (Uygulama tamamen kapalıyken de çalışır)
+      if (lat != null && lng != null) {
+        try {
+          final coupleId = prefs.getString('saved_couple_id');
+          final partnerUid = prefs.getString('saved_partner_uid');
+          final myName = prefs.getString('saved_user_name') ?? 'Partnerin';
+
+          if (coupleId != null && coupleId.isNotEmpty) {
+            // Önbellekteki veya Firestore'daki kayıtlı mekanları al (Önce sıfır gecikmeli yerel önbellek, yoksa Firestore)
+            List<SavedPlace> placesList = [];
+            final cachedPlacesJson = prefs.getString('cached_saved_places_json');
+            if (cachedPlacesJson != null && cachedPlacesJson.isNotEmpty) {
+              try {
+                final List decoded = jsonDecode(cachedPlacesJson);
+                placesList = decoded.map((e) => SavedPlace.fromJson(Map<String, dynamic>.from(e), e['id']?.toString() ?? '')).toList();
+              } catch (_) {}
+            }
+
+            if (placesList.isEmpty) {
+              final placesSnap = await FirebaseFirestore.instance
+                  .collection('couples')
+                  .doc(coupleId)
+                  .collection('saved_places')
+                  .get();
+              placesList = placesSnap.docs.map((d) => SavedPlace.fromJson(d.data(), d.id)).toList();
+            }
+
+            SavedPlace? currentMatchedPlace;
+            for (final p in placesList) {
+              final dist = Geolocator.distanceBetween(lat, lng, p.lat, p.lng);
+              if (dist <= 80) { // 80 metre güvenilir menzil
+                currentMatchedPlace = p;
+                break;
+              }
+            }
+
+            final currentPlaceId = currentMatchedPlace?.id;
+            final previousPlaceId = lastBgMatchedPlaceId ?? prefs.getString('bg_last_matched_place_id');
+
+            // Eğer mekan durumu değiştiyse bildirimleri ateşle!
+            if (currentPlaceId != previousPlaceId) {
+              lastBgMatchedPlaceId = currentPlaceId;
+              if (currentPlaceId != null) {
+                await prefs.setString('bg_last_matched_place_id', currentPlaceId);
+              } else {
+                await prefs.remove('bg_last_matched_place_id');
+              }
+
+              // İlk açılışta veya ilk tespitte spam olmaması için previousPlaceId null değilse veya yer değiştiyse
+              if (previousPlaceId != null || currentPlaceId != null) {
+                final myUid = prefs.getString('saved_uid') ?? uid;
+
+                // A) Ben yeni bir mekana girdim mi?
+                if (currentMatchedPlace != null) {
+                  final placeTitle = currentMatchedPlace.title;
+                  final placeEmoji = currentMatchedPlace.iconEmoji;
+                  final remoteNotifs = currentMatchedPlace.notifications ?? {};
+
+                  // İki taraftan herhangi biri bildirim istemişse gönder!
+                  // 1. Ben "ben gidince haber ver" demiş miyim? (${myUid}_enter / my_enter)
+                  // 2. Partner "o gelince bana haber ver" demiş mi? (${partnerUid}_enter / partner_enter)
+                  final bool shouldNotifyEnter = 
+                      remoteNotifs['${myUid}_enter'] as bool? ??
+                      (partnerUid != null ? remoteNotifs['${partnerUid}_enter'] as bool? : null) ??
+                      remoteNotifs['my_enter'] as bool? ??
+                      remoteNotifs['partner_enter'] as bool? ??
+                      prefs.getBool('my_notify_enter_${currentMatchedPlace.id}') ??
+                      prefs.getBool('partner_notify_enter_${currentMatchedPlace.id}') ??
+                      prefs.getBool('notify_enter_${currentMatchedPlace.id}') ?? true;
+
+                  if (shouldNotifyEnter && partnerUid != null && partnerUid.isNotEmpty) {
+                    NotificationService().sendPushToPartner(
+                      partnerUid: partnerUid,
+                      title: '$placeEmoji $myName Konuma Ulaştı',
+                      body: '$myName "$placeTitle" konumuna vardı. 💕',
+                    );
+                  }
+                }
+
+                // B) Ben önceki mekandan ayrıldım mı?
+                if (previousPlaceId != null) {
+                  SavedPlace? oldPlace;
+                  for (final p in placesList) {
+                    if (p.id == previousPlaceId) {
+                      oldPlace = p;
+                      break;
+                    }
+                  }
+
+                  if (oldPlace != null) {
+                    final oldTitle = oldPlace.title;
+                    final remoteNotifs = oldPlace.notifications ?? {};
+
+                    // İki taraftan herhangi biri bildirim istemişse gönder!
+                    // 1. Ben "ben ayrılınca haber ver" demiş miyim? (${myUid}_exit / my_exit)
+                    // 2. Partner "o ayrılınca bana haber ver" demiş mi? (${partnerUid}_exit / partner_exit)
+                    final bool shouldNotifyExit = 
+                        remoteNotifs['${myUid}_exit'] as bool? ??
+                        (partnerUid != null ? remoteNotifs['${partnerUid}_exit'] as bool? : null) ??
+                        remoteNotifs['my_exit'] as bool? ??
+                        remoteNotifs['partner_exit'] as bool? ??
+                        prefs.getBool('my_notify_exit_${oldPlace.id}') ??
+                        prefs.getBool('partner_notify_exit_${oldPlace.id}') ??
+                        prefs.getBool('notify_exit_${oldPlace.id}') ?? true;
+
+                    if (shouldNotifyExit && partnerUid != null && partnerUid.isNotEmpty) {
+                      NotificationService().sendPushToPartner(
+                        partnerUid: partnerUid,
+                        title: '🚶 $myName Konumdan Ayrıldı',
+                        body: '$myName "$oldTitle" konumundan ayrıldı.',
+                      );
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint('[BG-GEOFENCE-ERR] $e');
+        }
       }
 
       if (service is AndroidServiceInstance) {
@@ -280,20 +365,18 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
       debugPrint('[BG-SERVICE-SYNC-SUCCESS] Pil: $batteryLevel, Konum: $lat, $lng ($city)');
     } catch (e) {
       debugPrint('[BG-TRACKING-ERROR] $e');
-    } finally {
-      isSyncing = false;
     }
   }
 
   // 1. İlk açılışta anında senkronize et
-  await performLiveSync(force: true);
+  await performLiveSync();
 
   // 2. Anlık GPS Hareket Dinleyicisi (Snapchat / Zenly Tarzı):
   try {
     Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 20, // 20 metre: Titreşimsiz ve stabil rota takibi
+        distanceFilter: 15, // 15 metre: Canlı rota ve yürüyüş hareketlerinde anında tetiklenme
       ),
     ).listen(
       (newPosition) async {
@@ -311,7 +394,7 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
     );
   } catch (_) {}
 
-  // 3. Şarj durumu her değiştiğinde güncelle
+  // 3. Şarj durumu her değiştiğinde anında güncelle (kablo takma/çıkarma)
   battery.onBatteryStateChanged.listen((_) async {
     final prefs = await SharedPreferences.getInstance();
     final uid = prefs.getString('saved_uid');
@@ -322,8 +405,8 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
     performLiveSync();
   });
 
-  // 4. Periyodik olarak 90 saniyede bir saati, şarjı ve konumu canlı tut
-  Timer.periodic(const Duration(seconds: 90), (timer) async {
+  // 4. Periyodik olarak 180 saniyede bir saati, şarjı ve konumu canlı tut
+  Timer.periodic(const Duration(seconds: 180), (timer) async {
     final prefs = await SharedPreferences.getInstance();
     final uid = prefs.getString('saved_uid');
     if (uid == null || uid.isEmpty) {

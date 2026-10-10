@@ -9,7 +9,6 @@ class AppUser {
   final String? city;
   final DateTime? lastActive;
   final String? coupleId;
-  final String? partnerUid;
   final bool? isAppOpen;
   final String? birthDate; // 'YYYY-MM-DD'
 
@@ -28,7 +27,6 @@ class AppUser {
     this.lng,
     this.lastActive,
     this.coupleId,
-    this.partnerUid,
     this.isAppOpen,
     this.birthDate,
     this.speed,
@@ -57,7 +55,6 @@ class AppUser {
           }
         }(),
         coupleId: (j['coupleId'] ?? j['couple_id']) as String?,
-        partnerUid: (j['partnerUid'] ?? j['partner_uid']) as String?,
         isAppOpen: (j['isAppOpen'] ?? j['is_app_open']) as bool?,
         birthDate: (j['birthDate'] ?? j['birth_date']) as String?,
         speed: (j['speed'] as num?)?.toDouble(),
@@ -76,7 +73,6 @@ class AppUser {
         'lng': lng,
         'last_active': lastActive?.toIso8601String(),
         'couple_id': coupleId,
-        'partner_uid': partnerUid,
         'is_app_open': isAppOpen,
         'birth_date': birthDate,
         'speed': speed,
@@ -223,6 +219,9 @@ class ChatMessage {
   final bool isRead;
   final String? replyToText;
   final String? replyToSender;
+  final double? locationLat;
+  final double? locationLng;
+  final String? locationTitle;
 
   const ChatMessage({
     required this.id,
@@ -235,6 +234,9 @@ class ChatMessage {
     this.isRead = false,
     this.replyToText,
     this.replyToSender,
+    this.locationLat,
+    this.locationLng,
+    this.locationTitle,
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json, String docId) {
@@ -265,6 +267,9 @@ class ChatMessage {
       isRead: isReadVal,
       replyToText: json['replyToText'] as String?,
       replyToSender: json['replyToSender'] as String?,
+      locationLat: (json['locationLat'] as num?)?.toDouble(),
+      locationLng: (json['locationLng'] as num?)?.toDouble(),
+      locationTitle: json['locationTitle'] as String?,
     );
   }
 
@@ -278,6 +283,9 @@ class ChatMessage {
         'isRead': isRead,
         'replyToText': replyToText,
         'replyToSender': replyToSender,
+        'locationLat': locationLat,
+        'locationLng': locationLng,
+        'locationTitle': locationTitle,
       };
 }
 
@@ -293,6 +301,8 @@ class SavedPlace {
   final String? createdByName;
   final DateTime createdAt;
 
+  final Map<String, dynamic>? notifications;
+
   const SavedPlace({
     required this.id,
     required this.title,
@@ -303,6 +313,7 @@ class SavedPlace {
     required this.createdBy,
     this.createdByName,
     required this.createdAt,
+    this.notifications,
   });
 
   factory SavedPlace.fromJson(Map<String, dynamic> json, String docId) {
@@ -329,6 +340,7 @@ class SavedPlace {
       createdBy: json['createdBy'] as String? ?? '',
       createdByName: json['createdByName'] as String?,
       createdAt: time,
+      notifications: json['notifications'] != null ? Map<String, dynamic>.from(json['notifications'] as Map) : null,
     );
   }
 
@@ -341,6 +353,7 @@ class SavedPlace {
         'createdBy': createdBy,
         'createdByName': createdByName,
         'createdAt': createdAt.toIso8601String(),
+        if (notifications != null) 'notifications': notifications,
       };
 }
 

@@ -45,6 +45,10 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
   Timer? _statusSyncTimer;
   int? _lastHeartTimestamp;
   int? _lastChargeTimestamp;
+  String? _lastPartnerDetectedPlaceId;
+  String? _lastMyDetectedPlaceId;
+  String? _syncedMyBirthDate;
+  String? _syncedPartnerBirthDate;
   AppLifecycleListener? _lifecycleListener;
   bool _isKicked = false;
 
@@ -110,12 +114,13 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     DeviceService().startContinuousLocationTracking();
     NotificationService().updateFcmTokenInFirestore();
 
-    // İlk açılışta hem uygulamada olduğumuzu bildir hem de durumu tazele (Tek yazım)
-    DeviceService().syncStatusToFirebase(isOnline: true);
+    // İlk açılışta uygulamada olduğumuzu bildir
+    DatabaseService().setAppPresence(true);
 
-    // Periyodik olarak 60 saniyede bir durumu ve aktifliği tek yazımla tazele
-    _statusSyncTimer = Timer.periodic(const Duration(seconds: 60), (_) {
-      DeviceService().syncStatusToFirebase(isOnline: true);
+    // Periyodik olarak durumu kontrol et (yalnızca pil/konum değiştiyse yazılır)
+    _statusSyncTimer = Timer.periodic(const Duration(seconds: 120), (_) {
+      DatabaseService().setAppPresence(true);
+      DeviceService().syncStatusToFirebase();
     });
 
     // Uygulama alta atıldığında veya kapatılmak üzereyken durumu güncelle
@@ -129,10 +134,12 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
         DatabaseService().setAppPresence(false);
       },
       onResume: () {
-        DeviceService().syncStatusToFirebase(isOnline: true);
+        DatabaseService().setAppPresence(true);
+        DeviceService().syncStatusToFirebase();
         _statusSyncTimer?.cancel();
-        _statusSyncTimer = Timer.periodic(const Duration(seconds: 60), (_) {
-          DeviceService().syncStatusToFirebase(isOnline: true);
+        _statusSyncTimer = Timer.periodic(const Duration(seconds: 120), (_) {
+          DatabaseService().setAppPresence(true);
+          DeviceService().syncStatusToFirebase();
         });
       },
     );
@@ -157,11 +164,13 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
         SharedPreferences.getInstance().then((p) => p.setString('saved_uid', doc.id));
         if (data['name'] != null && data['name'].toString().isNotEmpty) {
           ref.read(userNameProvider.notifier).state = data['name'];
+          SharedPreferences.getInstance().then((p) => p.setString('saved_user_name', data['name']));
         } else {
           // Eğer Firestore'daki isim boşsa yerel hafızadaki ismi Firestore'a eşitle
           final currentName = ref.read(userNameProvider);
           if (currentName.isNotEmpty) {
             DatabaseService().updateUserName(currentName);
+            SharedPreferences.getInstance().then((p) => p.setString('saved_user_name', currentName));
           }
         }
         if (data['avatarUrl'] != null && (data['avatarUrl'] as String).isNotEmpty) {
@@ -178,7 +187,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
             }
           });
         }
-        ref.read(currentUserProvider.notifier).state = AppUser(
+        final meUser = AppUser(
           id: doc.id,
           name: data['name'] ?? ref.read(userNameProvider),
           avatarUrl: data['avatarUrl'],
@@ -197,10 +206,16 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
           currentPlaceTitle: data['currentPlaceTitle'] as String?,
           currentPlaceEmoji: data['currentPlaceEmoji'] as String?,
         );
+        ref.read(currentUserProvider.notifier).state = meUser;
+
+        if (meUser.lat != null && meUser.lng != null && _savedPlaces.isNotEmpty) {
+          _checkMyPlaceNotifications(meUser);
+        }
         if (data['coupleId'] != null) {
           final cId = data['coupleId'] as String;
           SharedPreferences.getInstance().then((p) => p.setString('saved_couple_id', cId));
-          if (data['birthDate'] != null) {
+          if (data['birthDate'] != null && _syncedMyBirthDate != data['birthDate']) {
+            _syncedMyBirthDate = data['birthDate'];
             DatabaseService().syncBirthdayMilestone(
               targetUserId: doc.id,
               userName: data['name'] ?? ref.read(userNameProvider),
@@ -214,8 +229,11 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
             _listenToCouple(cId);
           }
         } else if (data['relationshipStartDate'] != null) {
-          ref.read(startDateProvider.notifier).state =
-              DateTime.tryParse(data['relationshipStartDate']);
+          final sDate = DateTime.tryParse(data['relationshipStartDate']);
+          ref.read(startDateProvider.notifier).state = sDate;
+          if (sDate != null) {
+            SharedPreferences.getInstance().then((p) => p.setString('saved_start_date', sDate.toIso8601String()));
+          }
         }
 
         // Bize partnerden tarih değiştirme isteği geldi mi?
@@ -273,6 +291,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
         // Partner UID'sini aldık mı? Partnerin profilini de canlı dinle!
         final partnerUid = data['partnerUid'] as String?;
         if (partnerUid != null && partnerUid.isNotEmpty) {
+          SharedPreferences.getInstance().then((p) => p.setString('saved_partner_uid', partnerUid));
           if (partnerUid != ref.read(partnerUidProvider)) {
             ref.read(partnerUidProvider.notifier).state = partnerUid;
           }
@@ -302,9 +321,18 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     _savedPlacesSub?.cancel();
     _savedPlacesSub = DatabaseService().savedPlacesStream(coupleId).listen((places) {
       if (!mounted) return;
+      ref.read(savedPlacesProvider.notifier).state = places;
       setState(() {
         _savedPlaces = places;
       });
+      try {
+        final placesJsonList = places.map((p) {
+          final m = p.toJson();
+          m['id'] = p.id;
+          return m;
+        }).toList();
+        SharedPreferences.getInstance().then((p) => p.setString('cached_saved_places_json', jsonEncode(placesJsonList)));
+      } catch (_) {}
     });
   }
 
@@ -319,6 +347,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
         final date = DateTime.tryParse(cData['relationshipStartDate']);
         ref.read(startDateProvider.notifier).state = date;
         if (date != null) {
+          SharedPreferences.getInstance().then((p) => p.setString('saved_start_date', date.toIso8601String()));
           DatabaseService().syncDefaultAnniversary(date, coupleId: coupleId);
         }
       }
@@ -521,7 +550,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                   style: FilledButton.styleFrom(
                     backgroundColor: batteryColor,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
@@ -530,14 +559,12 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                   icon: const Icon(Icons.bolt_rounded, size: 22),
                   label: const Text(
                     'Şarjını Doldur Hatırlatması Gönder ⚡',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
                   ),
                   onPressed: () async {
                     Navigator.pop(ctx);
                     HapticFeedback.mediumImpact();
-                    final partnerUid = partner.id.isNotEmpty
-                        ? partner.id
-                        : (ref.read(partnerUidProvider) ?? ref.read(currentUserProvider)?.partnerUid);
+                    final partnerUid = ref.read(partnerUidProvider);
                     final myName = ref.read(userNameProvider);
                     final senderName = myName.isEmpty ? 'Partnerin' : myName;
                     await DatabaseService().sendChargeReminder(
@@ -558,6 +585,102 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                           '${partner.name}\'in telefonuna "Şarjını Doldur" hatırlatması gönderildi! 🔋⚡',
                         ),
                         backgroundColor: batteryColor,
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 10),
+              // "Şarjını Yanına Al" Hatırlatma Butonu
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: isDark ? Colors.white : const Color(0xFF1E293B),
+                    side: BorderSide(
+                      color: isDark ? Colors.white24 : const Color(0xFFCBD5E1),
+                      width: 1.2,
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  icon: const Icon(Icons.electrical_services_rounded, size: 20, color: Color(0xFF3B82F6)),
+                  label: const Text(
+                    'Şarjını Yanına Al 🔌',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                  ),
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    HapticFeedback.mediumImpact();
+                    final partnerUid = ref.read(partnerUidProvider);
+                    final myName = ref.read(userNameProvider);
+                    final senderName = myName.isEmpty ? 'Partnerin' : myName;
+                    if (partnerUid != null && partnerUid.isNotEmpty) {
+                      NotificationService().sendPushToPartner(
+                        partnerUid: partnerUid,
+                        title: '🔌 Şarjını Unutma!',
+                        body: '$senderName şarj aletini yanına almanı hatırlatıyor 🔌💕',
+                      );
+                    }
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          '${partner.name}\'in telefonuna "Şarjını Yanına Al" hatırlatması gönderildi! 🔌',
+                        ),
+                        backgroundColor: const Color(0xFF3B82F6),
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 10),
+              // "Powerbank'ini Yanına Al" Hatırlatma Butonu
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: isDark ? Colors.white : const Color(0xFF1E293B),
+                    side: BorderSide(
+                      color: isDark ? Colors.white24 : const Color(0xFFCBD5E1),
+                      width: 1.2,
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  icon: const Icon(Icons.battery_charging_full_rounded, size: 20, color: Color(0xFF8B5CF6)),
+                  label: const Text(
+                    'Powerbank\'ini Yanına Al 🔋',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                  ),
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    HapticFeedback.mediumImpact();
+                    final partnerUid = ref.read(partnerUidProvider);
+                    final myName = ref.read(userNameProvider);
+                    final senderName = myName.isEmpty ? 'Partnerin' : myName;
+                    if (partnerUid != null && partnerUid.isNotEmpty) {
+                      NotificationService().sendPushToPartner(
+                        partnerUid: partnerUid,
+                        title: '🔋 Powerbank Hatırlatması!',
+                        body: '$senderName powerbank\'ini yanına almanı hatırlatıyor 🔋⚡',
+                      );
+                    }
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          '${partner.name}\'in telefonuna "Powerbank\'ini Yanına Al" hatırlatması gönderildi! 🔋',
+                        ),
+                        backgroundColor: const Color(0xFF8B5CF6),
                         behavior: SnackBarBehavior.floating,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       ),
@@ -730,9 +853,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
   }) async {
     Navigator.pop(context);
     HapticFeedback.mediumImpact();
-    final partnerUid = partner.id.isNotEmpty
-        ? partner.id
-        : (ref.read(partnerUidProvider) ?? ref.read(currentUserProvider)?.partnerUid);
+    final partnerUid = ref.read(partnerUidProvider);
     if (partnerUid != null && partnerUid.isNotEmpty) {
       await NotificationService().sendPushToPartner(
         partnerUid: partnerUid,
@@ -827,8 +948,27 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
       );
       ref.read(partnerProvider.notifier).state = partnerUser;
 
+      // Partner bilgilerini yerel belleğe JSON olarak önbellekle
+      try {
+        SharedPreferences.getInstance().then((p) {
+          p.setString('cached_partner_json', jsonEncode(partnerUser.toJson()));
+          final partnerFcm = data['fcmToken'] as String?;
+          if (partnerFcm != null && partnerFcm.isNotEmpty) {
+            p.setString('cached_partner_fcm_token_${doc.id}', partnerFcm);
+          }
+        });
+      } catch (e) {
+        debugPrint('Partner caching error: $e');
+      }
+
+      // Kayıtlı mekanlara giriş ve ayrılma bildirim kontrolü
+      if (partnerUser.lat != null && partnerUser.lng != null && _savedPlaces.isNotEmpty) {
+        _checkPartnerPlaceNotifications(partnerUser);
+      }
+
       final coupleId = ref.read(coupleIdProvider) ?? data['coupleId'] as String?;
-      if (coupleId != null && data['birthDate'] != null) {
+      if (coupleId != null && data['birthDate'] != null && _syncedPartnerBirthDate != data['birthDate']) {
+        _syncedPartnerBirthDate = data['birthDate'];
         DatabaseService().syncBirthdayMilestone(
           targetUserId: doc.id,
           userName: data['name'] ?? 'Partner',
@@ -839,10 +979,173 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
       
       // Eğer partner ilişki tarihini güncellemişse bize de yansısın
       if (data['relationshipStartDate'] != null) {
-        ref.read(startDateProvider.notifier).state =
-            DateTime.tryParse(data['relationshipStartDate']);
+        final rDate = DateTime.tryParse(data['relationshipStartDate']);
+        ref.read(startDateProvider.notifier).state = rDate;
+        if (rDate != null) {
+          SharedPreferences.getInstance().then((p) => p.setString('saved_start_date', rDate.toIso8601String()));
+        }
       }
     });
+  }
+
+  /// Partner bir kayıtlı konuma girdiğinde veya ayrıldığında kullanıcıya anlık bildirim basar
+  void _checkPartnerPlaceNotifications(AppUser partner) async {
+    if (partner.lat == null || partner.lng == null) return;
+    final partnerLat = partner.lat!;
+    final partnerLng = partner.lng!;
+
+    SavedPlace? matchedPlace;
+    for (final p in _savedPlaces) {
+      final dist = Geolocator.distanceBetween(partnerLat, partnerLng, p.lat, p.lng);
+      if (dist <= 80) { // 80 metre: GPS doğruluğu ve bina içi sapmalar için güvenilir menzil
+        matchedPlace = p;
+        break;
+      }
+    }
+
+    final newPlaceId = matchedPlace?.id;
+    if (newPlaceId == _lastPartnerDetectedPlaceId) {
+      return; // Konum mekan durumu değişmedi
+    }
+
+    final oldPlaceId = _lastPartnerDetectedPlaceId;
+    _lastPartnerDetectedPlaceId = newPlaceId;
+
+    final partnerName = partner.name.isNotEmpty ? partner.name : 'Partnerin';
+
+    // İlk uygulama açılışında durum henüz oturmamışsa ayrılma spam'i yapma
+    if (oldPlaceId == null && matchedPlace != null) {
+      debugPrint('[GEOFENCE-PARTNER] İlk tespit: $partnerName "${matchedPlace.title}" konumunda.');
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+
+    // 1. Yeni bir mekana girdi mi?
+    if (matchedPlace != null) {
+      final remoteNotifs = matchedPlace.notifications ?? {};
+      final myUid = DatabaseService().uid ?? '';
+      final partnerUid = partner.id;
+      final shouldNotifyEnter = 
+          remoteNotifs['${partnerUid}_enter'] as bool? ??
+          remoteNotifs['partner_enter'] as bool? ??
+          remoteNotifs['${myUid}_enter'] as bool? ??
+          remoteNotifs['my_enter'] as bool? ??
+          prefs.getBool('partner_notify_enter_${matchedPlace.id}') ??
+          prefs.getBool('notify_enter_${matchedPlace.id}') ?? true;
+      if (shouldNotifyEnter) {
+        NotificationService().show(
+          id: matchedPlace.id.hashCode ^ 1,
+          title: '${matchedPlace.iconEmoji} $partnerName Konuma Ulaştı',
+          body: '$partnerName "${matchedPlace.title}" konumuna vardı. 💕',
+        );
+      }
+    }
+
+    // 2. Önceki bir mekandan ayrıldı mı?
+    if (oldPlaceId != null) {
+      final oldPlaceList = _savedPlaces.where((p) => p.id == oldPlaceId);
+      if (oldPlaceList.isNotEmpty) {
+        final oldPlace = oldPlaceList.first;
+        final remoteNotifs = oldPlace.notifications ?? {};
+        final myUid = DatabaseService().uid ?? '';
+        final partnerUid = partner.id;
+        final shouldNotifyExit = 
+            remoteNotifs['${partnerUid}_exit'] as bool? ??
+            remoteNotifs['partner_exit'] as bool? ??
+            remoteNotifs['${myUid}_exit'] as bool? ??
+            remoteNotifs['my_exit'] as bool? ??
+            prefs.getBool('partner_notify_exit_${oldPlace.id}') ??
+            prefs.getBool('notify_exit_${oldPlace.id}') ?? true;
+        if (shouldNotifyExit) {
+          NotificationService().show(
+            id: oldPlace.id.hashCode ^ 2,
+            title: '🚶 $partnerName Konumdan Ayrıldı',
+            body: '$partnerName "${oldPlace.title}" konumundan ayrıldı.',
+          );
+        }
+      }
+    }
+  }
+
+  /// Kullanıcının kendisi bir kayıtlı konuma girdiğinde veya ayrıldığında partnere FCM bildirim gönderir
+  void _checkMyPlaceNotifications(AppUser me) async {
+    if (me.lat == null || me.lng == null) return;
+    final myLat = me.lat!;
+    final myLng = me.lng!;
+
+    SavedPlace? matchedPlace;
+    for (final p in _savedPlaces) {
+      final dist = Geolocator.distanceBetween(myLat, myLng, p.lat, p.lng);
+      if (dist <= 80) {
+        matchedPlace = p;
+        break;
+      }
+    }
+
+    final newPlaceId = matchedPlace?.id;
+    if (newPlaceId == _lastMyDetectedPlaceId) {
+      return;
+    }
+
+    final oldPlaceId = _lastMyDetectedPlaceId;
+    _lastMyDetectedPlaceId = newPlaceId;
+
+    if (oldPlaceId == null && matchedPlace != null) {
+      debugPrint('[GEOFENCE-SELF] İlk tespit: "${matchedPlace.title}" konumundasınız.');
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final partnerUid = ref.read(partnerUidProvider) ?? ref.read(partnerProvider)?.id;
+    final myName = ref.read(userNameProvider).isNotEmpty ? ref.read(userNameProvider) : 'Partnerin';
+    final myUid = DatabaseService().uid ?? me.id;
+
+    // 1. Yeni bir mekana vardık mı? (Partnere haber ver)
+    if (matchedPlace != null) {
+      final remoteNotifs = matchedPlace.notifications ?? {};
+      final shouldNotifyEnter = 
+          remoteNotifs['${myUid}_enter'] as bool? ??
+          (partnerUid != null ? remoteNotifs['${partnerUid}_enter'] as bool? : null) ??
+          remoteNotifs['my_enter'] as bool? ??
+          remoteNotifs['partner_enter'] as bool? ??
+          prefs.getBool('my_notify_enter_${matchedPlace.id}') ??
+          prefs.getBool('partner_notify_enter_${matchedPlace.id}') ??
+          prefs.getBool('notify_enter_${matchedPlace.id}') ?? true;
+
+      if (shouldNotifyEnter && partnerUid != null && partnerUid.isNotEmpty) {
+        NotificationService().sendPushToPartner(
+          partnerUid: partnerUid,
+          title: '${matchedPlace.iconEmoji} $myName Konuma Ulaştı',
+          body: '$myName "${matchedPlace.title}" konumuna vardı. 💕',
+        );
+      }
+    }
+
+    // 2. Önceki mekandan ayrıldık mı? (Partnere haber ver)
+    if (oldPlaceId != null) {
+      final oldPlaceList = _savedPlaces.where((p) => p.id == oldPlaceId);
+      if (oldPlaceList.isNotEmpty) {
+        final oldPlace = oldPlaceList.first;
+        final remoteNotifs = oldPlace.notifications ?? {};
+        final shouldNotifyExit = 
+            remoteNotifs['${myUid}_exit'] as bool? ??
+            (partnerUid != null ? remoteNotifs['${partnerUid}_exit'] as bool? : null) ??
+            remoteNotifs['my_exit'] as bool? ??
+            remoteNotifs['partner_exit'] as bool? ??
+            prefs.getBool('my_notify_exit_${oldPlace.id}') ??
+            prefs.getBool('partner_notify_exit_${oldPlace.id}') ??
+            prefs.getBool('notify_exit_${oldPlace.id}') ?? true;
+
+        if (shouldNotifyExit && partnerUid != null && partnerUid.isNotEmpty) {
+          NotificationService().sendPushToPartner(
+            partnerUid: partnerUid,
+            title: '🚶 $myName Konumdan Ayrıldı',
+            body: '$myName "${oldPlace.title}" konumundan ayrıldı.',
+          );
+        }
+      }
+    }
   }
 
   @override
@@ -859,9 +1162,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
 
   Future<void> _sendThought() async {
     HapticFeedback.mediumImpact();
-    final partnerUid = ref.read(partnerUidProvider) ??
-        ref.read(partnerProvider)?.id ??
-        ref.read(currentUserProvider)?.partnerUid;
+    final partnerUid = ref.read(partnerUidProvider) ?? ref.read(partnerProvider)?.id;
     final myName = ref.read(userNameProvider);
     if (partnerUid != null && partnerUid.isNotEmpty) {
       await DatabaseService().sendHeart(partnerUid);
@@ -931,11 +1232,13 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                 const SizedBox(height: 24),
                 _HeroCounter(
                   start: start,
+                  isPaired: ref.watch(coupleIdProvider) != null || ref.watch(partnerUidProvider) != null,
                   onPick: () {}, // Ana ekrandan değiştirilemez, Eş Yönetim Paneli'nden onaylı değiştirilir
                 ).animate().fadeIn(duration: 500.ms).slideY(begin: 0.08),
                 const SizedBox(height: 14),
                 _PartnerCard(
                   partner: partner,
+                  isPaired: ref.watch(coupleIdProvider) != null || ref.watch(partnerUidProvider) != null,
                   savedPlaces: _savedPlaces,
                   onPair: () => _push(const PairingView()),
                   onBatteryTap: partner != null ? () => _openBatteryActionsSheet(partner) : null,
@@ -1108,9 +1411,10 @@ class _ActionTile extends StatelessWidget {
 }
 
 class _HeroCounter extends StatefulWidget {
-  const _HeroCounter({required this.start, required this.onPick});
+  const _HeroCounter({required this.start, required this.onPick, this.isPaired = false});
   final DateTime? start;
   final VoidCallback onPick;
+  final bool isPaired;
 
   @override
   State<_HeroCounter> createState() => _HeroCounterState();
@@ -1138,6 +1442,31 @@ class _HeroCounterState extends State<_HeroCounter> {
     final cardColor = theme.brightness == Brightness.light ? LoveraColors.lightSurfaceAlt : null;
 
     if (widget.start == null) {
+      if (widget.isPaired) {
+        // Eşleşmiş bir hesap, ilk bağlantı anında boş sayaç butonu flaşlamasın
+        return _BentoCard(
+          color: cardColor,
+          padding: const EdgeInsets.all(24),
+          child: Row(
+            children: [
+              const Icon(Icons.favorite_rounded, color: LoveraColors.primary, size: 32),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Aşk Sayacı Yükleniyor...',
+                        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 4),
+                    Text('Birlikte geçen süre hesaplanıyor 💕',
+                        style: theme.textTheme.bodySmall?.copyWith(color: muted)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      }
       return InkWell(
         borderRadius: BorderRadius.circular(AppTheme.radius),
         onTap: widget.onPick,
@@ -1251,35 +1580,36 @@ class _HeroCounterState extends State<_HeroCounter> {
 class _PartnerCard extends StatelessWidget {
   const _PartnerCard({
     required this.partner,
+    this.isPaired = false,
     this.savedPlaces = const [],
     required this.onPair,
     this.onBatteryTap,
     this.onWeatherTap,
   });
   final AppUser? partner;
+  final bool isPaired;
   final List<SavedPlace> savedPlaces;
   final VoidCallback onPair;
   final VoidCallback? onBatteryTap;
   final VoidCallback? onWeatherTap;
 
   bool _isOnline(AppUser p) {
-    if (p.isAppOpen == true) return true;
-    if (p.lastActive == null) return false;
+    if (p.isAppOpen != true) return false;
+    if (p.lastActive == null) return true;
     final diff = DateTime.now().toUtc().difference(p.lastActive!.toUtc()).abs();
-    return diff.inMinutes < 4;
+    return diff.inMinutes < 5;
   }
 
   /// Partnerin anlık durumunu belirler: Kayıtlı yer (Ev, İş vb.) > Arabada > Yürüyor / Koşuyor
   Map<String, dynamic>? _getMovementOrPlaceStatus(AppUser p) {
-    // 1. Kayıtlı bir yerde mi? (Önce p.lat, p.lng ve savedPlaces mesafesiyle kesin kontrol)
+    // 1. Koordinat kontrolü: Şu an kayıtlı bir yerde mi? (<= 45m)
     if (p.lat != null && p.lng != null && savedPlaces.isNotEmpty) {
       for (final place in savedPlaces) {
         final dist = Geolocator.distanceBetween(p.lat!, p.lng!, place.lat, place.lng);
-        if (dist <= 150) {
-          final isHome = place.category == 'home' || place.title.toLowerCase().contains('ev');
+        if (dist <= 45) {
           return {
             'emoji': place.iconEmoji,
-            'title': isHome ? '${p.name} Evde' : place.title,
+            'title': place.title,
             'color': const Color(0xFF10B981),
             'bgColor': const Color(0xFF10B981).withValues(alpha: 0.14),
           };
@@ -1287,34 +1617,41 @@ class _PartnerCard extends StatelessWidget {
       }
     }
 
-    // 2. Eğer sunucudan gelen etiket varsa
-    if (p.currentPlaceTitle != null && p.currentPlaceTitle!.isNotEmpty) {
-      final isHome = p.currentPlaceTitle!.toLowerCase().contains('ev');
-      return {
-        'emoji': (p.currentPlaceEmoji != null && p.currentPlaceEmoji!.isNotEmpty) ? p.currentPlaceEmoji! : '📍',
-        'title': isHome ? '${p.name} Evde' : p.currentPlaceTitle!,
-        'color': const Color(0xFF10B981),
-        'bgColor': const Color(0xFF10B981).withValues(alpha: 0.14),
-      };
-    }
-
-    // 3. Hız durumuna göre hareket tespiti (km/s)
+    // 2. Hareket tespiti: Normal insan yürüyüşü -> Yürüyor, Araba hızı -> Arabada
     final speedKmH = (p.speed != null) ? p.speed! * 3.6 : 0.0;
-    if (speedKmH >= 22.0) {
-      // Araçta / Arabada seyir halinde
+    if (speedKmH >= 20.0) {
       return {
         'emoji': '🚗',
         'title': 'Arabada',
         'color': const Color(0xFF388AF6),
         'bgColor': const Color(0xFF388AF6).withValues(alpha: 0.14),
       };
-    } else if (speedKmH >= 3.0) {
-      // Yürüyor / Koşuyor
+    } else if (speedKmH >= 1.5) {
       return {
-        'emoji': speedKmH >= 12.0 ? '🏃' : '🚶',
-        'title': speedKmH >= 12.0 ? 'Koşuyor' : 'Yürüyor',
+        'emoji': '🚶',
+        'title': 'Yürüyor',
         'color': const Color(0xFFF59E0B),
         'bgColor': const Color(0xFFF59E0B).withValues(alpha: 0.14),
+      };
+    }
+
+    // 3. Eğer hiçbir kayıtlı yerde değilse ve hareket etmiyorsa (Dünya standartlarında "Dışarıda")
+    if (p.lat != null && p.lng != null) {
+      return {
+        'emoji': '📍',
+        'title': 'Dışarıda',
+        'color': const Color(0xFF8B5CF6),
+        'bgColor': const Color(0xFF8B5CF6).withValues(alpha: 0.14),
+      };
+    }
+
+    // 4. Konum koordinatı hiç yoksa (eski veri kalıntısı)
+    if (p.currentPlaceTitle != null && p.currentPlaceTitle!.isNotEmpty) {
+      return {
+        'emoji': (p.currentPlaceEmoji != null && p.currentPlaceEmoji!.isNotEmpty) ? p.currentPlaceEmoji! : '📍',
+        'title': p.currentPlaceTitle!,
+        'color': const Color(0xFF10B981),
+        'bgColor': const Color(0xFF10B981).withValues(alpha: 0.14),
       };
     }
 
@@ -1360,6 +1697,33 @@ class _PartnerCard extends StatelessWidget {
     final p = partner;
 
     if (p == null) {
+      if (isPaired) {
+        // Kullanıcı eşleşmiş ama Firestore ilk paketi çekiyor (~200ms); "Bağlı değil" flaşlaması YAPMA!
+        return _BentoCard(
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: LoveraColors.primary.withValues(alpha: 0.15),
+                child: const Icon(Icons.favorite_rounded, color: LoveraColors.primary),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Partneriniz bağlanıyor...',
+                        style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 2),
+                    Text('Bilgiler güncelleniyor 💕',
+                        style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      }
       return _BentoCard(
         child: Row(
           children: [
@@ -1501,7 +1865,7 @@ class _PartnerCard extends StatelessWidget {
 
               // Sağ Üst Alan: Kayıtlı Yer Rozeti veya Hareket (Yürüyor / Arabada) Rozeti
               if (dynamicStatus != null) ...[
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
@@ -1517,11 +1881,11 @@ class _PartnerCard extends StatelessWidget {
                     children: [
                       Text(
                         dynamicStatus['emoji'] as String,
-                        style: const TextStyle(fontSize: 16),
+                        style: const TextStyle(fontSize: 15),
                       ),
                       const SizedBox(width: 5),
                       ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 120),
+                        constraints: const BoxConstraints(maxWidth: 115),
                         child: Text(
                           dynamicStatus['title'] as String,
                           maxLines: 1,

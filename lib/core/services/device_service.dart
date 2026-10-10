@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:battery_plus/battery_plus.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
@@ -45,6 +44,10 @@ class DeviceService {
 
   double? _lastSyncedLat;
   double? _lastSyncedLng;
+  int? _lastSyncedBattery;
+  String? _lastSyncedPlaceTitle;
+  String? _lastSyncedPlaceEmoji;
+  DateTime? _lastFirebaseWriteTime;
 
   /// Cihazın gerçek pil seviyesini alır (0-100)
   Future<int?> getBatteryLevel() async {
@@ -203,8 +206,8 @@ class DeviceService {
       if (defaultTargetPlatform == TargetPlatform.android) {
         locationSettings = AndroidSettings(
           accuracy: LocationAccuracy.high,
-          distanceFilter: 10, // 10 metre: Gereksiz quota tüketimini ve titremeyi önler
-          intervalDuration: const Duration(seconds: 5),
+          distanceFilter: 10, // 10 metre: Adım attığı anda akıcı takip, sensör gürültüsünü filtreler
+          intervalDuration: const Duration(seconds: 4),
         );
       } else if (defaultTargetPlatform == TargetPlatform.iOS) {
         locationSettings = AppleSettings(
@@ -238,9 +241,9 @@ class DeviceService {
         syncStatusToFirebase();
       });
 
-      // Ayrıca düzenli olarak 90 saniyede bir gönder
+      // Ayrıca düzenli olarak 180 saniyede bir kontrol et (yalnızca değişiklik varsa yazar)
       _periodicSyncTimer?.cancel();
-      _periodicSyncTimer = Timer.periodic(const Duration(seconds: 90), (_) {
+      _periodicSyncTimer = Timer.periodic(const Duration(seconds: 180), (_) {
         syncStatusToFirebase();
       });
 
@@ -258,39 +261,27 @@ class DeviceService {
 
   List<SavedPlace>? _cachedSavedPlaces;
   DateTime? _cachedSavedPlacesTime;
+  String? _lastMatchedPlaceTitle;
 
-  /// Kullanıcının o an kayıtlı bir yerde (Ev, İş vb.) olup olmadığını kontrol eder (<= 150m)
+  /// Kullanıcının o an kayıtlı bir yerde (Ev, İş vb.) olup olmadığını kontrol eder (<= 45m: Tam kapıdan çıkınca/girince)
   Future<Map<String, String>?> _checkSavedPlaceMatch(double lat, double lng) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      String? coupleId = prefs.getString('saved_couple_id');
-      if (coupleId == null || coupleId.isEmpty) {
-        final uid = DatabaseService().uid;
-        if (uid != null) {
-          final uDoc = await FirebaseFirestore.instance
-              .collection('users')
-              .doc(uid)
-              .get(const GetOptions(source: Source.serverAndCache))
-              .timeout(const Duration(seconds: 4));
-          coupleId = uDoc.data()?['coupleId'] as String?;
-          if (coupleId != null && coupleId.isNotEmpty) {
-            await prefs.setString('saved_couple_id', coupleId);
-          }
-        }
-      }
+      final coupleId = prefs.getString('saved_couple_id');
       if (coupleId == null || coupleId.isEmpty) return null;
 
       final now = DateTime.now();
       if (_cachedSavedPlaces == null ||
           _cachedSavedPlacesTime == null ||
-          now.difference(_cachedSavedPlacesTime!) > const Duration(minutes: 1)) {
+          now.difference(_cachedSavedPlacesTime!) > const Duration(seconds: 15)) {
         _cachedSavedPlaces = await DatabaseService().getSavedPlaces(coupleId);
         _cachedSavedPlacesTime = now;
       }
 
       for (final p in (_cachedSavedPlaces ?? [])) {
         final d = Geolocator.distanceBetween(lat, lng, p.lat, p.lng);
-        if (d <= 150) { // 150 metre yarıçap içindeyse o mekandadır
+        // Ev/iş geofence yarıçapı: 45 metre (Sokaktan yürümeye başlandığı an hemen evden ayrıldı sayılır)
+        if (d <= 45) {
           return {
             'title': p.title,
             'emoji': p.iconEmoji,
@@ -305,12 +296,23 @@ class DeviceService {
   Future<void> _onNewPositionReceived(Position pos) async {
     try {
       final now = DateTime.now();
-      if (_lastPosWriteTime != null && now.difference(_lastPosWriteTime!) < const Duration(seconds: 25)) {
+
+      // Kayıtlı bir konumda mı kontrol et
+      final matchedPlace = await _checkSavedPlaceMatch(pos.latitude, pos.longitude);
+      final currentTitle = matchedPlace?['title'] ?? '';
+
+      // Eğer evden çıkıldıysa veya eve girildiyse (durum değiştiyse) 15 saniyelik beklemeyi BYPASS et!
+      final placeChanged = (currentTitle != (_lastMatchedPlaceTitle ?? ''));
+
+      // Değişiklik kontrolü: Kayıtlı yer değiştiyse ANINDA yaz, değilse en az 15 metre veya 15 saniye kuralı uygula
+      if (!placeChanged && _lastPosWriteTime != null && now.difference(_lastPosWriteTime!).inSeconds < 15) {
         if (_lastSyncedLat != null && _lastSyncedLng != null) {
           final d = Geolocator.distanceBetween(_lastSyncedLat!, _lastSyncedLng!, pos.latitude, pos.longitude);
-          if (d < 25) return; // 25 saniye içinde 25 metreden az oynadıysa yazma (Kota koruması)
+          if (d < 15) return; // 15 saniye içinde 15 metreden az oynadıysa gereksiz yazma
         }
       }
+
+      _lastMatchedPlaceTitle = currentTitle;
 
       // Hız hesaplama veya alma (pos.speed m/s -> pos.speed * 3.6 km/s)
       double calculatedSpeed = pos.speed;
@@ -325,35 +327,24 @@ class DeviceService {
       _lastPosLng = pos.longitude;
       _lastPosWriteTime = now;
 
-      // Kayıtlı bir konumda mı?
-      final matchedPlace = await _checkSavedPlaceMatch(pos.latitude, pos.longitude);
-
-      String? placeTitleToSet;
-      String? placeEmojiToSet;
-      if (matchedPlace != null) {
-        placeTitleToSet = matchedPlace['title'];
-        placeEmojiToSet = matchedPlace['emoji'];
-      } else if (_cachedSavedPlaces != null && _cachedSavedPlaces!.isNotEmpty) {
-        final allFar = _cachedSavedPlaces!.every((p) => Geolocator.distanceBetween(pos.latitude, pos.longitude, p.lat, p.lng) > 250);
-        if (allFar) {
-          placeTitleToSet = '';
-          placeEmojiToSet = '';
-        }
-      }
+      final currentEmoji = matchedPlace?['emoji'] ?? '';
 
       await DatabaseService().updateStatus(
         lat: pos.latitude,
         lng: pos.longitude,
         speed: calculatedSpeed >= 0 ? calculatedSpeed : 0.0,
-        currentPlaceTitle: placeTitleToSet,
-        currentPlaceEmoji: placeEmojiToSet,
+        currentPlaceTitle: currentTitle,
+        currentPlaceEmoji: currentEmoji,
         weather: _lastWeather,
         city: _lastCity,
         updateLastActive: true,
       );
 
+      _lastFirebaseWriteTime = now;
       _lastSyncedLat = pos.latitude;
       _lastSyncedLng = pos.longitude;
+      _lastSyncedPlaceTitle = currentTitle;
+      _lastSyncedPlaceEmoji = currentEmoji;
 
       // Arka planda sessizce şehir/hava durumunu güncelle
       getCityForLocation(pos.latitude, pos.longitude);
@@ -362,7 +353,7 @@ class DeviceService {
   }
 
   /// Gerçek cihaz durumunu (Pil, Konum, Şehir, Hava Durumu, Aktiflik) Firebase'e kaydeder
-  Future<void> syncStatusToFirebase({bool? isOnline}) async {
+  Future<void> syncStatusToFirebase() async {
     try {
       final battery = await getBatteryLevel();
 
@@ -398,7 +389,7 @@ class DeviceService {
         }
       } catch (_) {}
 
-      // Eğer konum alınamadıysa önbellekteki son bilinen değerleri koru, ASLA sabit değer uydurma!
+      // Eğer konum alınamadıysa önbellekteki son bilinen değerleri koru, ASLA İstanbul veya sabit değer uydurma!
       city ??= _lastCity;
       weather ??= _lastWeather;
 
@@ -407,31 +398,50 @@ class DeviceService {
         matchedPlace = await _checkSavedPlaceMatch(lat, lng);
       }
 
-      String? placeTitleToSet;
-      String? placeEmojiToSet;
-      if (matchedPlace != null) {
-        placeTitleToSet = matchedPlace['title'];
-        placeEmojiToSet = matchedPlace['emoji'];
-      } else if (_cachedSavedPlaces != null && _cachedSavedPlaces!.isNotEmpty && lat != null && lng != null) {
-        final allFar = _cachedSavedPlaces!.every((p) => Geolocator.distanceBetween(lat!, lng!, p.lat, p.lng) > 250);
-        if (allFar) {
-          placeTitleToSet = '';
-          placeEmojiToSet = '';
+      // Değer kontrolü: Eğer pil, kayıtlı mekan ve konum değişmediyse ve son yazmadan bu yana 120 sn geçmediyse yazma!
+      final now = DateTime.now();
+      final currentTitle = matchedPlace?['title'] ?? '';
+      final currentEmoji = matchedPlace?['emoji'] ?? '';
+      
+      bool hasMeaningfulChange = false;
+      if (battery != null && battery != _lastSyncedBattery) {
+        hasMeaningfulChange = true;
+      }
+      if (currentTitle != (_lastSyncedPlaceTitle ?? '') || currentEmoji != (_lastSyncedPlaceEmoji ?? '')) {
+        hasMeaningfulChange = true;
+      }
+      if (lat != null && lng != null) {
+        if (_lastSyncedLat == null || _lastSyncedLng == null) {
+          hasMeaningfulChange = true;
+        } else {
+          final dist = Geolocator.distanceBetween(_lastSyncedLat!, _lastSyncedLng!, lat, lng);
+          if (dist >= 15) { // 15 metreden fazla yer değiştiyse
+            hasMeaningfulChange = true;
+          }
         }
+      }
+
+      final isPeriodicFallback = _lastFirebaseWriteTime == null || now.difference(_lastFirebaseWriteTime!).inSeconds >= 120;
+
+      // Eğer hiçbir anlamlı değişiklik yoksa ve 2 dakika dolmadıysa Firestore kotasını harcama!
+      if (!hasMeaningfulChange && !isPeriodicFallback) {
+        return;
       }
 
       await DatabaseService().updateStatus(
         batteryLevel: battery,
         lat: lat,
         lng: lng,
-        currentPlaceTitle: placeTitleToSet,
-        currentPlaceEmoji: placeEmojiToSet,
+        currentPlaceTitle: currentTitle,
+        currentPlaceEmoji: currentEmoji,
         weather: weather,
         city: city,
-        isAppOpen: isOnline,
-        updateLastActive: true,
       );
 
+      _lastFirebaseWriteTime = now;
+      if (battery != null) _lastSyncedBattery = battery;
+      _lastSyncedPlaceTitle = currentTitle;
+      _lastSyncedPlaceEmoji = currentEmoji;
       if (lat != null && lng != null) {
         _lastSyncedLat = lat;
         _lastSyncedLng = lng;

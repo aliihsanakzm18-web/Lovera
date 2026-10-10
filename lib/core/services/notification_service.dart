@@ -134,13 +134,15 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin _localPlugin = FlutterLocalNotificationsPlugin();
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
   bool _ready = false;
-  DateTime? _lastPingRequestTime;
 
   /// Kullanıcı şu an sohbet ekranında mı kontrolü (sohbetteyken bildirim sesi/penceresi basmamak için)
   bool Function()? isChatScreenActive;
 
   /// Bildirime tıklandığında sohbet ekranına yönlendirme callback'i
   void Function()? onNotificationTap;
+
+  /// Soğuk başlatmada (Cold start) bildirime tıklandığında uygulamanın doğrudan sohbete geçmesini sağlayan bayrak
+  bool hasPendingNotificationTap = false;
 
   Future<void> init() async {
     if (_ready) return;
@@ -155,6 +157,7 @@ class NotificationService {
         settings,
         onDidReceiveNotificationResponse: (NotificationResponse response) {
           debugPrint('[NOTIFICATION-TAP] Yerel bildirime tıklandı: ${response.payload}');
+          hasPendingNotificationTap = true;
           onNotificationTap?.call();
         },
       );
@@ -167,12 +170,14 @@ class NotificationService {
     try {
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
         debugPrint('[FCM-OPEN] Bildirime tıklanarak açıldı: ${message.data}');
+        hasPendingNotificationTap = true;
         onNotificationTap?.call();
       });
 
       _fcm.getInitialMessage().then((RemoteMessage? message) {
         if (message != null) {
           debugPrint('[FCM-INITIAL] Uygulama bildirimle başlatıldı: ${message.data}');
+          hasPendingNotificationTap = true;
           onNotificationTap?.call();
         }
       });
@@ -301,16 +306,28 @@ class NotificationService {
   Future<void> _saveTokenToFirestore(String token) async {
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
-      debugPrint('[FCM] Firestore kullanıcısına token kaydediliyor: $uid');
-      if (uid != null) {
-        final deviceId = await DeviceService().getOrCreateDeviceId();
-        await FirebaseFirestore.instance.collection('users').doc(uid).set({
-          'fcmToken': token,
-          'currentDeviceId': deviceId,
-          'fcmUpdatedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true)).timeout(const Duration(seconds: 6));
-        debugPrint('[FCM] Token ve Cihaz ID ($deviceId) Firestore’a başarıyla kaydedildi!');
+      if (uid == null) return;
+      final deviceId = await DeviceService().getOrCreateDeviceId();
+      final prefs = await SharedPreferences.getInstance();
+      final cachedToken = prefs.getString('cached_fcm_token_$uid');
+      final cachedDeviceId = prefs.getString('cached_fcm_dev_$uid');
+
+      // Eğer token ve cihaz ID zaten Firebase'e başarıyla yazılmışsa tekrar yazıp kota harcama!
+      if (cachedToken == token && cachedDeviceId == deviceId) {
+        debugPrint('[FCM] Token ve Cihaz ID zaten güncel, Firestore yazması atlandı.');
+        return;
       }
+
+      debugPrint('[FCM] Firestore kullanıcısına token kaydediliyor: $uid');
+      await FirebaseFirestore.instance.collection('users').doc(uid).set({
+        'fcmToken': token,
+        'currentDeviceId': deviceId,
+        'fcmUpdatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true)).timeout(const Duration(seconds: 4));
+
+      await prefs.setString('cached_fcm_token_$uid', token);
+      await prefs.setString('cached_fcm_dev_$uid', deviceId);
+      debugPrint('[FCM] Token ve Cihaz ID ($deviceId) Firestore’a başarıyla kaydedildi!');
     } catch (e) {
       debugPrint('[FCM] Token kaydetme hatası (veya zaman aşımı): $e');
     }
@@ -325,13 +342,24 @@ class NotificationService {
   }) async {
     try {
       debugPrint('[FCM-SEND] Partner FCM aranıyor: $partnerUid');
-      // 1. Partnerin FCM Token'ını Firestore'dan oku
-      final partnerDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(partnerUid)
-          .get(const GetOptions(source: Source.serverAndCache))
-          .timeout(const Duration(seconds: 6));
-      final fcmToken = partnerDoc.data()?['fcmToken'] as String?;
+      final prefs = await SharedPreferences.getInstance();
+      String? fcmToken = prefs.getString('cached_partner_fcm_token_$partnerUid');
+
+      // 1. Eğer yerelde token önbelleği yoksa Firestore'dan oku
+      if (fcmToken == null || fcmToken.isEmpty) {
+        try {
+          final partnerDoc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(partnerUid)
+              .get()
+              .timeout(const Duration(seconds: 4));
+          fcmToken = partnerDoc.data()?['fcmToken'] as String?;
+          if (fcmToken != null && fcmToken.isNotEmpty) {
+            await prefs.setString('cached_partner_fcm_token_$partnerUid', fcmToken);
+          }
+        } catch (_) {}
+      }
+
       debugPrint('[FCM-SEND] Bulunan partner token: $fcmToken');
       if (fcmToken == null || fcmToken.isEmpty) {
         debugPrint('[FCM-SEND] HATA: Partner FCM token bulunamadı: $partnerUid');
@@ -353,19 +381,24 @@ class NotificationService {
 
   /// Kapalı olan partner cihazına sessiz ping atarak arka planda anlık şarj ve konumunu almasını ister
   Future<void> requestPartnerStatusSync(String partnerUid) async {
-    final now = DateTime.now();
-    if (_lastPingRequestTime != null && now.difference(_lastPingRequestTime!).inSeconds < 45) {
-      return; // 45 saniye içinde tekrar ping atma (quota koruması)
-    }
-    _lastPingRequestTime = now;
-
     try {
-      final partnerDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(partnerUid)
-          .get(const GetOptions(source: Source.serverAndCache))
-          .timeout(const Duration(seconds: 6));
-      final fcmToken = partnerDoc.data()?['fcmToken'] as String?;
+      final prefs = await SharedPreferences.getInstance();
+      String? fcmToken = prefs.getString('cached_partner_fcm_token_$partnerUid');
+
+      if (fcmToken == null || fcmToken.isEmpty) {
+        try {
+          final partnerDoc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(partnerUid)
+              .get()
+              .timeout(const Duration(seconds: 4));
+          fcmToken = partnerDoc.data()?['fcmToken'] as String?;
+          if (fcmToken != null && fcmToken.isNotEmpty) {
+            await prefs.setString('cached_partner_fcm_token_$partnerUid', fcmToken);
+          }
+        } catch (_) {}
+      }
+
       if (fcmToken != null && fcmToken.isNotEmpty) {
         await FcmV1Service().sendDataOnlyPush(
           fcmToken: fcmToken,

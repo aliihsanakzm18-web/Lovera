@@ -1,8 +1,9 @@
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:flutter/foundation.dart';
 
 import '../models/models.dart';
 
@@ -349,31 +350,41 @@ class DatabaseService {
   // 4. "SENİ DÜŞÜNÜYORUM" KALBİ GÖNDERME
   Future<void> sendHeart(String? partnerUid) async {
     if (uid == null || partnerUid == null) return;
-    await _db.collection('users').doc(partnerUid).set({
-      'heartPing': {
-        'fromUid': uid,
-        'timestamp': DateTime.now().millisecondsSinceEpoch,
-      }
-    }, SetOptions(merge: true));
+    try {
+      await _db.collection('users').doc(partnerUid).set({
+        'heartPing': {
+          'fromUid': uid,
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+        }
+      }, SetOptions(merge: true)).timeout(const Duration(seconds: 4));
+    } catch (e) {
+      debugPrint('[DATABASE] sendHeart error (likely quota/network): $e');
+    }
   }
 
   Future<void> clearHeartPing() async {
     if (uid == null) return;
-    await _db.collection('users').doc(uid).update({
-      'heartPing': FieldValue.delete(),
-    }).catchError((_) {});
+    try {
+      await _db.collection('users').doc(uid).update({
+        'heartPing': FieldValue.delete(),
+      }).timeout(const Duration(seconds: 3));
+    } catch (_) {}
   }
 
   /// "Şarjını doldur" hatırlatması gönder
   Future<void> sendChargeReminder(String? partnerUid, {String? fromName}) async {
     if (uid == null || partnerUid == null) return;
-    await _db.collection('users').doc(partnerUid).set({
-      'chargePing': {
-        'fromUid': uid,
-        'fromName': fromName ?? '',
-        'timestamp': DateTime.now().millisecondsSinceEpoch,
-      }
-    }, SetOptions(merge: true));
+    try {
+      await _db.collection('users').doc(partnerUid).set({
+        'chargePing': {
+          'fromUid': uid,
+          'fromName': fromName ?? '',
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+        }
+      }, SetOptions(merge: true)).timeout(const Duration(seconds: 4));
+    } catch (e) {
+      debugPrint('[DATABASE] sendChargeReminder error: $e');
+    }
   }
 
   Future<void> clearChargePing() async {
@@ -495,8 +506,6 @@ class DatabaseService {
     } catch (_) {}
   }
 
-  DateTime? _lastStatusUpdateAt;
-
   // 6. CANLI KONUM, HAVA, ŞEHİR VE PİL GÜNCELLEME
   Future<void> updateStatus({
     double? lat,
@@ -507,14 +516,8 @@ class DatabaseService {
     double? speed,
     String? currentPlaceTitle,
     String? currentPlaceEmoji,
-    bool? isAppOpen,
     bool updateLastActive = false,
   }) async {
-    final now = DateTime.now();
-    if (_lastStatusUpdateAt != null && now.difference(_lastStatusUpdateAt!).inMilliseconds < 2500) {
-      return; // 2.5 saniyelik minimum aralık koruması (Firestore WriteStream kotası)
-    }
-
     String? targetUid = uid;
     if (targetUid == null) {
       final prefs = await SharedPreferences.getInstance();
@@ -528,10 +531,6 @@ class DatabaseService {
     final Map<String, dynamic> data = {};
     if (updateLastActive) {
       data['lastActive'] = FieldValue.serverTimestamp();
-    }
-    if (isAppOpen != null) {
-      data['isAppOpen'] = isAppOpen;
-      data['isOnline'] = isAppOpen;
     }
     if (lat != null && lng != null) {
       data['lat'] = lat;
@@ -551,13 +550,10 @@ class DatabaseService {
     }
     if (currentPlaceTitle != null) {
       data['currentPlaceTitle'] = currentPlaceTitle;
-    }
-    if (currentPlaceEmoji != null) {
-      data['currentPlaceEmoji'] = currentPlaceEmoji;
+      data['currentPlaceEmoji'] = currentPlaceEmoji ?? '';
     }
     if (data.isNotEmpty) {
       try {
-        _lastStatusUpdateAt = now;
         await _db.collection('users').doc(targetUid).set(data, SetOptions(merge: true)).timeout(const Duration(seconds: 4));
       } catch (_) {}
     }
@@ -575,7 +571,6 @@ class DatabaseService {
     try {
       await _db.collection('users').doc(targetUid).set({
         'isAppOpen': isOpen,
-        'isOnline': isOpen,
         'lastActive': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true)).timeout(const Duration(seconds: 4));
     } catch (_) {}
@@ -634,6 +629,29 @@ class DatabaseService {
     } catch (_) {}
   }
 
+  /// Sohbeti temizle (Tüm mesajları siler)
+  Future<void> clearChat(String coupleId) async {
+    try {
+      final messagesSnap = await _db
+          .collection('couples')
+          .doc(coupleId)
+          .collection('messages')
+          .limit(300)
+          .get();
+
+      if (messagesSnap.docs.isEmpty) return;
+
+      final batch = _db.batch();
+      for (final doc in messagesSnap.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    } catch (e) {
+      debugPrint('[CLEAR-CHAT-ERR] $e');
+      rethrow;
+    }
+  }
+
   /// Mesajları iletildi olarak işaretle (Tek tik -> Çift tik gri geçişi)
   Future<void> markMessagesAsDelivered(String coupleId, [List<String>? messageIds]) async {
     if (uid == null) return;
@@ -680,6 +698,9 @@ class DatabaseService {
     String type = 'text',
     String? replyToText,
     String? replyToSender,
+    double? locationLat,
+    double? locationLng,
+    String? locationTitle,
   }) async {
     if (uid == null) return null;
     try {
@@ -693,6 +714,9 @@ class DatabaseService {
         'isRead': false,
         'replyToText': replyToText,
         'replyToSender': replyToSender,
+        if (locationLat != null) 'locationLat': locationLat,
+        if (locationLng != null) 'locationLng': locationLng,
+        if (locationTitle != null) 'locationTitle': locationTitle,
       }).timeout(const Duration(seconds: 15));
       return docRef.id;
     } catch (e) {
@@ -783,6 +807,53 @@ class DatabaseService {
       rethrow;
     }
   }
+
+  Future<void> updateSavedPlace({
+    required String coupleId,
+    required String placeId,
+    required String title,
+    required String category,
+    required String iconEmoji,
+  }) async {
+    try {
+      await _db
+          .collection('couples')
+          .doc(coupleId)
+          .collection('saved_places')
+          .doc(placeId)
+          .update({
+        'title': title,
+        'category': category,
+        'iconEmoji': iconEmoji,
+      }).timeout(const Duration(seconds: 4));
+    } catch (e) {
+      debugPrint('[SAVED_PLACES] updateSavedPlace error: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> updatePlaceNotificationSettings({
+    required String coupleId,
+    required String placeId,
+    required Map<String, dynamic> notificationUpdates,
+  }) async {
+    try {
+      final Map<String, dynamic> updates = {};
+      notificationUpdates.forEach((key, value) {
+        updates['notifications.$key'] = value;
+      });
+      await _db
+          .collection('couples')
+          .doc(coupleId)
+          .collection('saved_places')
+          .doc(placeId)
+          .update(updates)
+          .timeout(const Duration(seconds: 4));
+    } catch (e) {
+      debugPrint('[SAVED_PLACES] updatePlaceNotificationSettings error: $e');
+    }
+  }
+
 
   Future<void> deleteSavedPlace(String coupleId, String placeId) async {
     try {

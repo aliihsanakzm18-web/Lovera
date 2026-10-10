@@ -1,15 +1,19 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart' hide Path;
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/models/models.dart';
 import '../../../core/services/database_service.dart';
@@ -19,12 +23,15 @@ import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
 
 class LiveMapView extends ConsumerStatefulWidget {
-  const LiveMapView({super.key, this.onBackToHome});
+  const LiveMapView({super.key, this.onBackToHome, this.onOpenChat});
   final VoidCallback? onBackToHome;
+  final VoidCallback? onOpenChat;
 
   @override
   ConsumerState<LiveMapView> createState() => _LiveMapViewState();
 }
+
+enum _FollowTarget { none, partner, me }
 
 class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderStateMixin {
   final MapController _mapController = MapController();
@@ -37,6 +44,9 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
   Timer? _mapSyncTimer;
   StreamSubscription? _partnerSub;
 
+  // Anlık Takip (Kamera Kilitleme): Harita serbest kaydırılınca otomatik kapanır
+  _FollowTarget _followTarget = _FollowTarget.partner;
+
   // 60 FPS Pürüzsüz Snap Konum İnterpolasyonu (Kayarak İlerleme)
   AnimationController? _myAnimController;
   AnimationController? _partnerAnimController;
@@ -48,6 +58,11 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
   // Kalıcı Kayıtlı Yerler (Ev, İş, Okul vb.)
   StreamSubscription? _savedPlacesSub;
   List<SavedPlace> _savedPlaces = [];
+  bool _hasInitialPartnerFocused = false;
+
+  // Sohbette veya dışarıdan tıklanarak haritada odaklanılan geçici konum pini
+  AttachedLocation? _highlightedTargetLocation;
+  Timer? _highlightClearTimer;
 
   @override
   void initState() {
@@ -56,6 +71,18 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     WidgetsBinding.instance.addPostFrameCallback((_) {
       DeviceService().syncStatusToFirebase();
       _initInitialRoute();
+      final targetLoc = ref.read(targetMapFocusLocationProvider);
+      if (targetLoc != null) {
+        _hasInitialPartnerFocused = true;
+        _onTargetLocationRequested(targetLoc);
+        ref.read(targetMapFocusLocationProvider.notifier).state = null;
+      } else {
+        final partner = ref.read(partnerProvider);
+        if (partner?.lat != null && partner?.lng != null) {
+          _hasInitialPartnerFocused = true;
+          _animatedFlightMove(LatLng(partner!.lat!, partner.lng!), 16.0);
+        }
+      }
       final partnerUid = ref.read(partnerUidProvider);
       if (partnerUid != null && partnerUid.isNotEmpty) {
         _subscribeToPartnerLive(partnerUid);
@@ -67,8 +94,16 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
       }
     });
 
-    // Harita açıkken partnerin kapalı cihazını 60 saniyede bir sessiz uyandır ve konumunu tazelet
-    _mapSyncTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+    // Sayfa açıkken veya sonradan gelen hedef koordinat isteklerini dinle
+    ref.listenManual(targetMapFocusLocationProvider, (prev, next) {
+      if (next != null) {
+        _onTargetLocationRequested(next);
+        ref.read(targetMapFocusLocationProvider.notifier).state = null;
+      }
+    });
+
+    // Harita açıkken partnerin kapalı cihazını 6 saniyede bir sessiz uyandır ve konumunu tazelet
+    _mapSyncTimer = Timer.periodic(const Duration(seconds: 6), (_) {
       final partnerUid = ref.read(partnerUidProvider);
       if (partnerUid != null && partnerUid.isNotEmpty) {
         if (_partnerSub == null) {
@@ -87,6 +122,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     _savedPlacesSub?.cancel();
     _savedPlacesSub = DatabaseService().savedPlacesStream(coupleId).listen((places) {
       if (mounted) {
+        ref.read(savedPlacesProvider.notifier).state = places;
         setState(() {
           _savedPlaces = places;
         });
@@ -137,6 +173,10 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
       if (newLat != null && newLng != null) {
         final newPartnerLatLng = LatLng(newLat, newLng);
         _smoothAnimatePartnerPos(newPartnerLatLng);
+        if (!_hasInitialPartnerFocused) {
+          _hasInitialPartnerFocused = true;
+          _animatedFlightMove(newPartnerLatLng, 16.0);
+        }
       }
     });
   }
@@ -190,18 +230,26 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     newCtrl.addListener(() {
       if (!mounted) return;
       final t = newCtrl.value;
+      final currentPos = LatLng(
+        from.latitude + (newTarget.latitude - from.latitude) * t,
+        from.longitude + (newTarget.longitude - from.longitude) * t,
+      );
       setState(() {
-        _animatedMyPos = LatLng(
-          from.latitude + (newTarget.latitude - from.latitude) * t,
-          from.longitude + (newTarget.longitude - from.longitude) * t,
-        );
+        _animatedMyPos = currentPos;
       });
+      // Eğer kullanıcı kendi konumunu kilitlediyse kamera hareket eden konumu canlı takip etsin
+      if (_followTarget == _FollowTarget.me && (_flightController == null || !_flightController!.isAnimating)) {
+        _mapController.move(currentPos, _mapController.camera.zoom);
+      }
     });
     newCtrl.forward().then((_) {
       if (mounted) {
         setState(() {
           _animatedMyPos = newTarget;
         });
+        if (_followTarget == _FollowTarget.me && (_flightController == null || !_flightController!.isAnimating)) {
+          _mapController.move(newTarget, _mapController.camera.zoom);
+        }
       }
     });
   }
@@ -212,6 +260,9 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
       _animatedPartnerPos = newTarget;
       _targetPartnerPos = newTarget;
       _lastPartnerPosTime = now;
+      if (_followTarget == _FollowTarget.partner && _highlightedTargetLocation == null && (_flightController == null || !_flightController!.isAnimating)) {
+        _mapController.move(newTarget, _mapController.camera.zoom);
+      }
       return;
     }
     if (_targetPartnerPos?.latitude == newTarget.latitude &&
@@ -242,24 +293,48 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     newCtrl.addListener(() {
       if (!mounted) return;
       final t = newCtrl.value;
+      final currentPos = LatLng(
+        from.latitude + (newTarget.latitude - from.latitude) * t,
+        from.longitude + (newTarget.longitude - from.longitude) * t,
+      );
       setState(() {
-        _animatedPartnerPos = LatLng(
-          from.latitude + (newTarget.latitude - from.latitude) * t,
-          from.longitude + (newTarget.longitude - from.longitude) * t,
-        );
+        _animatedPartnerPos = currentPos;
       });
+      // Eğer kullanıcı partneri kilitlediyse kamera partner hareket ettikçe onu canlı takip etsin
+      if (_followTarget == _FollowTarget.partner && _highlightedTargetLocation == null && (_flightController == null || !_flightController!.isAnimating)) {
+        _mapController.move(currentPos, _mapController.camera.zoom);
+      }
     });
     newCtrl.forward().then((_) {
       if (mounted) {
         setState(() {
           _animatedPartnerPos = newTarget;
         });
+        if (_followTarget == _FollowTarget.partner && _highlightedTargetLocation == null && (_flightController == null || !_flightController!.isAnimating)) {
+          _mapController.move(newTarget, _mapController.camera.zoom);
+        }
       }
     });
   }
 
+  void _onTargetLocationRequested(AttachedLocation targetLoc) {
+    setState(() {
+      _hasInitialPartnerFocused = true;
+      _followTarget = _FollowTarget.none;
+      _highlightedTargetLocation = targetLoc;
+    });
+    _highlightClearTimer?.cancel();
+    _highlightClearTimer = Timer(const Duration(seconds: 15), () {
+      if (mounted) {
+        setState(() => _highlightedTargetLocation = null);
+      }
+    });
+    _animatedFlightMove(LatLng(targetLoc.lat, targetLoc.lng), 17.0);
+  }
+
   @override
   void dispose() {
+    _highlightClearTimer?.cancel();
     _savedPlacesSub?.cancel();
     _partnerSub?.cancel();
     _mapSyncTimer?.cancel();
@@ -396,7 +471,8 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     final categories = [
       {'key': 'home', 'label': 'Evim', 'emoji': '🏠'},
       {'key': 'work', 'label': 'İş / Ofis', 'emoji': '💼'},
-      {'key': 'school', 'label': 'Okul / Kampüs', 'emoji': '🎓'},
+      {'key': 'school', 'label': 'Okul', 'emoji': '🏫'},
+      {'key': 'campus', 'label': 'Kampüs', 'emoji': '🎓'},
       {'key': 'gym', 'label': 'Spor Salonu', 'emoji': '🏋️'},
       {'key': 'cafe', 'label': 'Favori Kafe', 'emoji': '☕'},
       {'key': 'favorite', 'label': 'Özel Yerimiz', 'emoji': '💖'},
@@ -480,7 +556,121 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                       ),
                     ],
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 14),
+
+                  // Koordinat Bilgisi & Tek Tıkla Kopyala / Mesajla Yanıtla Kutusu
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF282C3A) : const Color(0xFFF1F3F7),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.pin_drop_rounded,
+                          size: 18,
+                          color: LoveraColors.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              fontFamily: 'monospace',
+                              color: isDark ? Colors.white70 : const Color(0xFF2C303E),
+                            ),
+                          ),
+                        ),
+                        InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () {
+                            final coordStr = '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}';
+                            Clipboard.setData(ClipboardData(text: coordStr));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Koordinatlar panoya kopyalandı: $coordStr'),
+                                duration: const Duration(seconds: 2),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: LoveraColors.primary.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.copy_rounded, size: 13, color: LoveraColors.primary),
+                                const SizedBox(width: 3),
+                                Text(
+                                  'Kopyala',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: LoveraColors.primary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            HapticFeedback.selectionClick();
+                            final chosenTitle = titleController.text.trim().isNotEmpty
+                                ? '$selectedEmoji ${titleController.text.trim()}'
+                                : '$selectedEmoji Konum';
+                            ref.read(pendingChatLocationAttachmentProvider.notifier).state = AttachedLocation(
+                              lat: point.latitude,
+                              lng: point.longitude,
+                              title: chosenTitle,
+                            );
+                            ref.read(pendingChatInputTextProvider.notifier).state = '';
+                            if (widget.onOpenChat != null) {
+                              widget.onOpenChat!();
+                            } else {
+                              ref.read(activeNavigationIndexProvider.notifier).state = 2;
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.chat_bubble_outline_rounded, size: 13, color: Color(0xFF10B981)),
+                                SizedBox(width: 3),
+                                Text(
+                                  'Yanıtla',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF10B981),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
 
                   // Kategori / İkon Seçimi
                   const Text(
@@ -616,31 +806,249 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     );
   }
 
-  // Kayıtlı Konum Detayı ve Silme / Uçma Penceresi
+  // Kayıtlı Konumu Düzenleme Penceresi
+  void _showEditPlaceDialog(SavedPlace place) {
+    final coupleId = ref.read(coupleIdProvider);
+    if (coupleId == null) return;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final categories = [
+      {'key': 'home', 'label': 'Evim', 'emoji': '🏠'},
+      {'key': 'partner_home', 'label': 'Aşkımın Evi', 'emoji': '🏡'},
+      {'key': 'work', 'label': 'İş / Ofis', 'emoji': '💼'},
+      {'key': 'school', 'label': 'Okul', 'emoji': '📚'},
+      {'key': 'campus', 'label': 'Kampüs', 'emoji': '🎓'},
+      {'key': 'cafe', 'label': 'Kafe / Buluşma', 'emoji': '☕'},
+      {'key': 'park', 'label': 'Park / Sahil', 'emoji': '🌳'},
+      {'key': 'favorite', 'label': 'Özel Yerimiz', 'emoji': '❤️'},
+    ];
+
+    String selectedCategory = place.category;
+    String selectedEmoji = place.iconEmoji;
+    final titleController = TextEditingController(text: place.title);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Container(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+              ),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E212B) : Colors.white,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: LoveraColors.primary.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(selectedEmoji, style: const TextStyle(fontSize: 24)),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Konumu Düzenle',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: isDark ? Colors.white : const Color(0xFF1E2024),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'İsmini veya simgesini güncelleyin.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isDark ? Colors.white60 : LoveraColors.textMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+
+                  const Text(
+                    'Kategori Seçin',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 8),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: categories.map((cat) {
+                        final isSelected = selectedCategory == cat['key'];
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(16),
+                            onTap: () {
+                              setSheetState(() {
+                                selectedCategory = cat['key']!;
+                                selectedEmoji = cat['emoji']!;
+                              });
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? LoveraColors.primary
+                                    : (isDark ? const Color(0xFF282C3A) : const Color(0xFFF1F3F7)),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: isSelected ? LoveraColors.primary : Colors.transparent,
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(cat['emoji']!, style: const TextStyle(fontSize: 16)),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    cat['label']!,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: isSelected
+                                          ? Colors.white
+                                          : (isDark ? Colors.white70 : const Color(0xFF2C303E)),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  TextField(
+                    controller: titleController,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: InputDecoration(
+                      labelText: 'Konum Adı',
+                      filled: true,
+                      fillColor: isDark ? const Color(0xFF282C3A) : const Color(0xFFF6F8FB),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide.none,
+                      ),
+                      prefixIcon: const Icon(Icons.edit_location_alt_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: LoveraColors.primary,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        elevation: 0,
+                      ),
+                      onPressed: () async {
+                        final title = titleController.text.trim();
+                        final finalTitle = title.isNotEmpty ? title : place.title;
+
+                        Navigator.pop(ctx);
+                        await DatabaseService().updateSavedPlace(
+                          coupleId: coupleId,
+                          placeId: place.id,
+                          title: finalTitle,
+                          category: selectedCategory,
+                          iconEmoji: selectedEmoji,
+                        );
+
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('"$finalTitle" güncellendi! ✨'),
+                              backgroundColor: const Color(0xFF10B981),
+                            ),
+                          );
+                        }
+                      },
+                      child: const Text(
+                        'Değişiklikleri Kaydet',
+                        style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // Kayıtlı Konum Detayı ve Silme / Düzenleme / Uçma Penceresi
   void _showPlaceDetailsDialog(SavedPlace place) {
     final coupleId = ref.read(coupleIdProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
-        padding: const EdgeInsets.all(22),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
+        padding: const EdgeInsets.only(left: 22, right: 22, top: 16, bottom: 24),
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1E212B) : Colors.white,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(2),
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
             const SizedBox(height: 18),
             Container(
               width: 58,
@@ -663,18 +1071,270 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                 style: const TextStyle(fontSize: 12, color: LoveraColors.textMuted),
               ),
             ],
-            const SizedBox(height: 22),
+            const SizedBox(height: 16),
+            // Bildirim Tercihleri (Partner ve Kendim İçin Ayrı Ayrı)
+            // Canlı Firestore Stream ile her iki tarafın telefonunda ANLIK (Realtime) senkronize olur!
+            FutureBuilder<SharedPreferences>(
+              future: SharedPreferences.getInstance(),
+              builder: (context, prefSnapshot) {
+                if (!prefSnapshot.hasData) {
+                  return const SizedBox(height: 120);
+                }
+                final prefs = prefSnapshot.data!;
+                final partnerName = ref.watch(partnerProvider)?.name ?? 'Partnerim';
+                final coupleId = ref.read(coupleIdProvider);
+
+                return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                  stream: coupleId != null
+                      ? FirebaseFirestore.instance
+                          .collection('couples')
+                          .doc(coupleId)
+                          .collection('saved_places')
+                          .doc(place.id)
+                          .snapshots()
+                      : null,
+                  builder: (context, docSnapshot) {
+                    final placeData = docSnapshot.data?.data();
+                    final Map<String, dynamic> remoteNotifs = placeData?['notifications'] != null
+                        ? Map<String, dynamic>.from(placeData!['notifications'] as Map)
+                        : (place.notifications ?? {});
+
+                    final myUid = DatabaseService().uid ?? '';
+                    final partnerUid = ref.watch(partnerProvider)?.id ?? '';
+
+                    // Firestore'da bildirim durumları:
+                    // "$myUid_enter": Ben bu mekana gidince bildirim gitsin mi?
+                    // "$partnerUid_enter": Partner bu mekana gidince bana bildirim gelsin mi?
+                    final bool partnerNotifyEnter = remoteNotifs['${partnerUid}_enter'] as bool? ??
+                        remoteNotifs['partner_enter'] as bool? ??
+                        prefs.getBool('partner_notify_enter_${place.id}') ??
+                        prefs.getBool('notify_enter_${place.id}') ?? true;
+
+                    final bool partnerNotifyExit = remoteNotifs['${partnerUid}_exit'] as bool? ??
+                        remoteNotifs['partner_exit'] as bool? ??
+                        prefs.getBool('partner_notify_exit_${place.id}') ??
+                        prefs.getBool('notify_exit_${place.id}') ?? true;
+
+                    final bool myNotifyEnter = remoteNotifs['${myUid}_enter'] as bool? ??
+                        remoteNotifs['my_enter'] as bool? ??
+                        prefs.getBool('my_notify_enter_${place.id}') ?? true;
+
+                    final bool myNotifyExit = remoteNotifs['${myUid}_exit'] as bool? ??
+                        remoteNotifs['my_exit'] as bool? ??
+                        prefs.getBool('my_notify_exit_${place.id}') ?? true;
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 1. PARTNER BÖLÜMÜ
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4, bottom: 8),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.favorite_rounded, size: 14, color: LoveraColors.primary),
+                              const SizedBox(width: 6),
+                              Text(
+                                '$partnerName İçin Bildirimler',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  color: isDark ? Colors.white70 : const Color(0xFF475569),
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF282B37) : const Color(0xFFF3F4F6),
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                          child: Column(
+                            children: [
+                              SwitchListTile(
+                                contentPadding: EdgeInsets.zero,
+                                dense: true,
+                                activeColor: LoveraColors.primary,
+                                secondary: Container(
+                                  padding: const EdgeInsets.all(7),
+                                  decoration: BoxDecoration(
+                                    color: LoveraColors.primary.withValues(alpha: 0.15),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.notifications_active_rounded, color: LoveraColors.primary, size: 18),
+                                ),
+                                title: Text(
+                                  '$partnerName buraya gidince bana haber ver',
+                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                                ),
+                                value: partnerNotifyEnter,
+                                onChanged: (val) async {
+                                  await prefs.setBool('partner_notify_enter_${place.id}', val);
+                                  await prefs.setBool('notify_enter_${place.id}', val);
+                                  if (coupleId != null) {
+                                    DatabaseService().updatePlaceNotificationSettings(
+                                      coupleId: coupleId,
+                                      placeId: place.id,
+                                      notificationUpdates: {
+                                        if (partnerUid.isNotEmpty) '${partnerUid}_enter': val,
+                                        'partner_enter': val,
+                                      },
+                                    );
+                                  }
+                                },
+                              ),
+                              Divider(height: 1, thickness: 1, color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+                              SwitchListTile(
+                                contentPadding: EdgeInsets.zero,
+                                dense: true,
+                                activeColor: LoveraColors.primary,
+                                secondary: Container(
+                                  padding: const EdgeInsets.all(7),
+                                  decoration: BoxDecoration(
+                                    color: Colors.orangeAccent.withValues(alpha: 0.15),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.directions_walk_rounded, color: Colors.orangeAccent, size: 18),
+                                ),
+                                title: Text(
+                                  '$partnerName buradan ayrılınca bana haber ver',
+                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                                ),
+                                value: partnerNotifyExit,
+                                onChanged: (val) async {
+                                  await prefs.setBool('partner_notify_exit_${place.id}', val);
+                                  await prefs.setBool('notify_exit_${place.id}', val);
+                                  if (coupleId != null) {
+                                    DatabaseService().updatePlaceNotificationSettings(
+                                      coupleId: coupleId,
+                                      placeId: place.id,
+                                      notificationUpdates: {
+                                        if (partnerUid.isNotEmpty) '${partnerUid}_exit': val,
+                                        'partner_exit': val,
+                                      },
+                                    );
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 14),
+
+                        // 2. KENDİM BÖLÜMÜ (BEN GİDİNCE / AYRILINCA PARTNERE HABER VER)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4, bottom: 8),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.person_pin_circle_rounded, size: 15, color: Color(0xFF8B5CF6)),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Kendim İçin Bildirimler',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  color: isDark ? Colors.white70 : const Color(0xFF475569),
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF282B37) : const Color(0xFFF3F4F6),
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                          child: Column(
+                            children: [
+                              SwitchListTile(
+                                contentPadding: EdgeInsets.zero,
+                                dense: true,
+                                activeColor: const Color(0xFF8B5CF6),
+                                secondary: Container(
+                                  padding: const EdgeInsets.all(7),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.location_on_rounded, color: Color(0xFF8B5CF6), size: 18),
+                                ),
+                                title: Text(
+                                  'Ben buraya gidince $partnerName\'e haber ver',
+                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                                ),
+                                value: myNotifyEnter,
+                                onChanged: (val) async {
+                                  await prefs.setBool('my_notify_enter_${place.id}', val);
+                                  if (coupleId != null) {
+                                    DatabaseService().updatePlaceNotificationSettings(
+                                      coupleId: coupleId,
+                                      placeId: place.id,
+                                      notificationUpdates: {
+                                        if (myUid.isNotEmpty) '${myUid}_enter': val,
+                                        'my_enter': val,
+                                      },
+                                    );
+                                  }
+                                },
+                              ),
+                              Divider(height: 1, thickness: 1, color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+                              SwitchListTile(
+                                contentPadding: EdgeInsets.zero,
+                                dense: true,
+                                activeColor: const Color(0xFF8B5CF6),
+                                secondary: Container(
+                                  padding: const EdgeInsets.all(7),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF3B82F6).withValues(alpha: 0.15),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.directions_run_rounded, color: Color(0xFF3B82F6), size: 18),
+                                ),
+                                title: Text(
+                                  'Ben buradan ayrılınca $partnerName\'e haber ver',
+                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                                ),
+                                value: myNotifyExit,
+                                onChanged: (val) async {
+                                  await prefs.setBool('my_notify_exit_${place.id}', val);
+                                  if (coupleId != null) {
+                                    DatabaseService().updatePlaceNotificationSettings(
+                                      coupleId: coupleId,
+                                      placeId: place.id,
+                                      notificationUpdates: {
+                                        if (myUid.isNotEmpty) '${myUid}_exit': val,
+                                        'my_exit': val,
+                                      },
+                                    );
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                );
+              },
+            ),
+            const SizedBox(height: 20),
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       side: BorderSide(color: Colors.redAccent.withValues(alpha: 0.4)),
                     ),
-                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20),
-                    label: const Text('Sil', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w700)),
+                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 18),
+                    label: const Text('Sil', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w700, fontSize: 13)),
                     onPressed: () async {
                       Navigator.pop(ctx);
                       if (coupleId != null) {
@@ -688,18 +1348,33 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                     },
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
                 Expanded(
-                  flex: 2,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      side: BorderSide(color: LoveraColors.primary.withValues(alpha: 0.5)),
+                    ),
+                    icon: Icon(Icons.edit_rounded, color: LoveraColors.primary, size: 18),
+                    label: Text('Düzenle', style: TextStyle(color: LoveraColors.primary, fontWeight: FontWeight.w700, fontSize: 13)),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _showEditPlaceDialog(place);
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: LoveraColors.primary,
-                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       elevation: 0,
                     ),
-                    icon: const Icon(Icons.flight_takeoff_rounded, color: Colors.white, size: 20),
-                    label: const Text('Buraya Git', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                    icon: const Icon(Icons.flight_takeoff_rounded, color: Colors.white, size: 18),
+                    label: const Text('Uç', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
                     onPressed: () {
                       Navigator.pop(ctx);
                       _animatedFlightMove(LatLng(place.lat, place.lng), 16.5);
@@ -708,7 +1383,331 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                 ),
               ],
             ),
+            const SizedBox(height: 10),
+            // Mesajla Yanıtlama / Paylaşma Butonu
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: LoveraColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  elevation: 0,
+                ),
+                icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
+                label: const Text(
+                  'Bu Konumu Mesajla Yanıtla / Paylaş',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                ),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  HapticFeedback.selectionClick();
+                  ref.read(pendingChatLocationAttachmentProvider.notifier).state = AttachedLocation(
+                    lat: place.lat,
+                    lng: place.lng,
+                    title: '${place.iconEmoji} ${place.title}',
+                  );
+                  ref.read(pendingChatInputTextProvider.notifier).state = '';
+                  if (widget.onOpenChat != null) {
+                    widget.onOpenChat!();
+                  } else {
+                    ref.read(activeNavigationIndexProvider.notifier).state = 2;
+                  }
+                },
+              ),
+            ),
             const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+  /// Partnerin konum ikonuna basılı tutunca açılan şık alt menü (Mevcut konum, Kopyalama, Mesajla Yanıtlama)
+  void _showPartnerLocationOptionsSheet({
+    required AppUser? partner,
+    required LatLng? partnerPos,
+    required SavedPlace? currentPlace,
+    required double? distanceMeters,
+  }) {
+    if (partnerPos == null) return;
+    HapticFeedback.heavyImpact();
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final partnerName = partner?.name ?? 'Partnerin';
+
+    // Konum başlığı ve detay metni (Örn: "🏠 Evim" veya "İstanbul · 41.0822, 28.9323")
+    final String locationTitle;
+    if (currentPlace != null) {
+      locationTitle = '${currentPlace.iconEmoji} ${currentPlace.title}';
+    } else if (partner?.currentPlaceTitle != null && partner!.currentPlaceTitle!.isNotEmpty) {
+      final emoji = partner.currentPlaceEmoji ?? '📍';
+      locationTitle = '$emoji ${partner.currentPlaceTitle}';
+    } else if (partner?.city != null && partner!.city!.isNotEmpty) {
+      locationTitle = '📍 ${partner.city}';
+    } else {
+      locationTitle = '📍 Canlı Konum';
+    }
+
+    final String coordText = '${partnerPos.latitude.toStringAsFixed(5)}, ${partnerPos.longitude.toStringAsFixed(5)}';
+    final String fullLocationText = (currentPlace != null)
+        ? '${currentPlace.title} ($coordText)'
+        : (partner?.city != null && partner!.city!.isNotEmpty)
+            ? '${partner.city} ($coordText)'
+            : coordText;
+
+    final String distanceInfo = distanceMeters != null
+        ? (distanceMeters >= 1000
+            ? '${(distanceMeters / 1000).toStringAsFixed(1)} km uzaklıkta'
+            : '${distanceMeters.round()} m uzaklıkta')
+        : 'Mesafe hesaplanıyor';
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.only(left: 20, right: 20, top: 14, bottom: 28),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E212B) : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.12),
+              blurRadius: 24,
+              offset: const Offset(0, -6),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Sürükleme Çizgisi
+            Container(
+              width: 38,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 18),
+
+            // Üst Başlık & Avatar
+            Row(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    gradient: LoveraColors.primaryGradient,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: LoveraColors.primary.withValues(alpha: 0.35),
+                        blurRadius: 10,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Text(
+                      currentPlace?.iconEmoji ?? '📍',
+                      style: const TextStyle(fontSize: 26),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              '$partnerName\'in Mevcut Konumu',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: isDark ? Colors.white : const Color(0xFF1E2022),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (partner?.batteryLevel != null) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                '%${partner!.batteryLevel}',
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF10B981),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        locationTitle,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: LoveraColors.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Konum Bilgi Kartı
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF282B37) : const Color(0xFFF3F4F6),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.04),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.near_me_rounded, size: 14, color: LoveraColors.secondary),
+                      const SizedBox(width: 6),
+                      Text(
+                        'KOORDİNAT VE DETAY',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5,
+                          color: isDark ? const Color(0xFFA0A6B2) : const Color(0xFF6B7280),
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        distanceInfo,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: LoveraColors.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  SelectableText(
+                    fullLocationText,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white70 : const Color(0xFF374151),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Eylem Butonları: 1. Mesajla Cevapla, 2. Kopyala
+            Row(
+              children: [
+                // 1. Kopyala Butonu
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      side: BorderSide(
+                        color: isDark ? Colors.white.withValues(alpha: 0.15) : Colors.black.withValues(alpha: 0.1),
+                      ),
+                    ),
+                    icon: const Icon(Icons.copy_rounded, size: 18),
+                    label: const Text(
+                      'Kopyala',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                    ),
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: fullLocationText));
+                      HapticFeedback.mediumImpact();
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Row(
+                            children: [
+                              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                              const SizedBox(width: 10),
+                              Expanded(child: Text('$partnerName\'in konumu panoya kopyalandı! 📋')),
+                            ],
+                          ),
+                          backgroundColor: const Color(0xFF10B981),
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          duration: const Duration(seconds: 3),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(width: 10),
+
+                // 2. Mesajlar Kısmından Cevapla Butonu
+                Expanded(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: LoveraColors.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      elevation: 0,
+                    ),
+                    icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
+                    label: const Text(
+                      'Mesajla Yanıtla',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      HapticFeedback.selectionClick();
+
+                      // Konumu ek olarak sohbete iliştir (Tıklanabilir konum kartı olarak gidecek)
+                      ref.read(pendingChatLocationAttachmentProvider.notifier).state = AttachedLocation(
+                        lat: partnerPos.latitude,
+                        lng: partnerPos.longitude,
+                        title: locationTitle,
+                      );
+                      // Mesaj giriş alanına hazır metin koymak yerine kullanıcı istediği normal mesajı da yazabilsin
+                      ref.read(pendingChatInputTextProvider.notifier).state = '';
+
+                      // Sohbet sayfasına geçiş yap
+                      if (widget.onOpenChat != null) {
+                        widget.onOpenChat!();
+                      } else {
+                        ref.read(activeNavigationIndexProvider.notifier).state = 2;
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -720,6 +1719,8 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final partner = ref.watch(partnerProvider);
     final currentUser = ref.watch(currentUserProvider);
+    final providerPlaces = ref.watch(savedPlacesProvider);
+    final currentSavedPlaces = _savedPlaces.isNotEmpty ? _savedPlaces : providerPlaces;
 
     final LatLng? myLatLng = (currentUser?.lat != null && currentUser?.lng != null)
         ? LatLng(currentUser!.lat!, currentUser.lng!)
@@ -740,9 +1741,9 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     final effectiveMyPos = _animatedMyPos ?? myLatLng;
     final effectivePartnerPos = _animatedPartnerPos ?? partnerLatLng;
 
-    final bool isPartnerOnline = partner?.isAppOpen == true ||
-        (partner?.lastActive != null &&
-            DateTime.now().toUtc().difference(partner!.lastActive!.toUtc()).abs().inMinutes < 4);
+    final bool isPartnerOnline = partner?.isAppOpen == true &&
+        (partner?.lastActive == null ||
+            DateTime.now().toUtc().difference(partner!.lastActive!.toUtc()).abs().inMinutes < 5);
 
     // Yol mesafesi sorgusunu UI döngüsünden bağımsız post-frame olarak tetikle
     if (myLatLng != null && partnerLatLng != null) {
@@ -770,18 +1771,18 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     final double? displayDistance = _roadDistanceMeters ??
         (straightDist != null ? straightDist * 1.25 : null);
 
-    final initialCenter = effectiveMyPos ?? effectivePartnerPos ?? const LatLng(39.0, 35.0);
-    final initialZoom = (effectiveMyPos != null || effectivePartnerPos != null) ? 14.5 : 6.0;
+    final initialCenter = effectivePartnerPos ?? effectiveMyPos ?? const LatLng(39.0, 35.0);
+    final initialZoom = (effectivePartnerPos != null || effectiveMyPos != null) ? 15.0 : 6.0;
 
     final mapBgColor = isDark ? const Color(0xFF141620) : const Color(0xFFE8EEF3);
 
-    // Kayıtlı bir yerde bulunma kontrolü (150m içi ise yer rozeti avatar rozetiyle birleşir)
+    // Kayıtlı bir yerde bulunma kontrolü (45m içi ise yer rozeti avatar rozetiyle birleşir)
     SavedPlace? myCurrentPlace;
     SavedPlace? partnerCurrentPlace;
 
     if (effectiveMyPos != null) {
-      for (final p in _savedPlaces) {
-        if (Geolocator.distanceBetween(effectiveMyPos.latitude, effectiveMyPos.longitude, p.lat, p.lng) <= 150) {
+      for (final p in currentSavedPlaces) {
+        if (Geolocator.distanceBetween(effectiveMyPos.latitude, effectiveMyPos.longitude, p.lat, p.lng) <= 45) {
           myCurrentPlace = p;
           break;
         }
@@ -789,8 +1790,8 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     }
 
     if (effectivePartnerPos != null) {
-      for (final p in _savedPlaces) {
-        if (Geolocator.distanceBetween(effectivePartnerPos.latitude, effectivePartnerPos.longitude, p.lat, p.lng) <= 150) {
+      for (final p in currentSavedPlaces) {
+        if (Geolocator.distanceBetween(effectivePartnerPos.latitude, effectivePartnerPos.longitude, p.lat, p.lng) <= 45) {
           partnerCurrentPlace = p;
           break;
         }
@@ -798,7 +1799,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     }
 
     // Avatar ile birleşen yerleri bağımsız yer pinleri katmanından çıkar (çift pin oluşmasın)
-    final standalonePlaces = _savedPlaces.where((p) =>
+    final standalonePlaces = currentSavedPlaces.where((p) =>
       p.id != myCurrentPlace?.id && p.id != partnerCurrentPlace?.id
     ).toList();
 
@@ -814,7 +1815,41 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
               minZoom: 3.0,
               maxZoom: 20.0,
               backgroundColor: mapBgColor,
-              onLongPress: (tapPosition, point) => _showAddPlaceDialog(point),
+              onLongPress: (tapPosition, point) {
+                // Eğer dokunulan yer partnerin avatarının üzerindeyse partner menüsünü aç
+                if (effectivePartnerPos != null) {
+                  final distMeters = Geolocator.distanceBetween(
+                    point.latitude,
+                    point.longitude,
+                    effectivePartnerPos.latitude,
+                    effectivePartnerPos.longitude,
+                  );
+                  // Ekran koordinatları veya coğrafi mesafe kontrolü (ekranda ~80px veya haritada ~250m)
+                  final partnerScreenPoint = _mapController.camera.latLngToScreenPoint(effectivePartnerPos);
+                  final tapOffset = tapPosition.relative ?? tapPosition.global;
+                  final tapPoint = math.Point(tapOffset.dx, tapOffset.dy);
+                  final screenDistance = partnerScreenPoint.distanceTo(tapPoint);
+
+                  if (screenDistance <= 80 || distMeters <= 250) {
+                    _showPartnerLocationOptionsSheet(
+                      partner: partner,
+                      partnerPos: effectivePartnerPos,
+                      currentPlace: partnerCurrentPlace,
+                      distanceMeters: displayDistance,
+                    );
+                    return;
+                  }
+                }
+                _showAddPlaceDialog(point);
+              },
+              onPositionChanged: (position, hasGesture) {
+                // Kullanıcı haritayı parmağıyla sürüklediğinde / kaydırdığında takipten (fokustan) çık!
+                if (hasGesture && _followTarget != _FollowTarget.none) {
+                  setState(() {
+                    _followTarget = _FollowTarget.none;
+                  });
+                }
+              },
               interactionOptions: const InteractionOptions(
                 flags: InteractiveFlag.all & ~InteractiveFlag.rotate, // Silah gibi akıcı 60fps pan/pinch
               ),
@@ -858,7 +1893,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                   if (effectiveMyPos != null)
                     Marker(
                       point: effectiveMyPos,
-                      width: 160,
+                      width: 220,
                       height: 120,
                       alignment: Alignment.topCenter,
                       child: _SnapAvatarMarker(
@@ -871,13 +1906,16 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                         isOnline: true,
                         isDark: isDark,
                         currentPlace: myCurrentPlace,
-                        onTap: () => _animatedFlightMove(effectiveMyPos, 16.0),
+                        onTap: () {
+                          setState(() => _followTarget = _FollowTarget.me);
+                          _animatedFlightMove(effectiveMyPos, 16.0);
+                        },
                       ),
                     ),
                   if (effectivePartnerPos != null)
                     Marker(
                       point: effectivePartnerPos,
-                      width: 160,
+                      width: 220,
                       height: 120,
                       alignment: Alignment.topCenter,
                       child: _SnapAvatarMarker(
@@ -894,7 +1932,60 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                         isOnline: isPartnerOnline,
                         isDark: isDark,
                         currentPlace: partnerCurrentPlace,
-                        onTap: () => _animatedFlightMove(effectivePartnerPos, 16.0),
+                        onTap: () {
+                          setState(() => _followTarget = _FollowTarget.partner);
+                          _animatedFlightMove(effectivePartnerPos, 16.0);
+                        },
+                        onLongPress: () {
+                          _showPartnerLocationOptionsSheet(
+                            partner: partner,
+                            partnerPos: effectivePartnerPos,
+                            currentPlace: partnerCurrentPlace,
+                            distanceMeters: displayDistance,
+                          );
+                        },
+                      ),
+                    ),
+                  if (_highlightedTargetLocation != null)
+                    Marker(
+                      point: LatLng(_highlightedTargetLocation!.lat, _highlightedTargetLocation!.lng),
+                      width: 140,
+                      height: 80,
+                      alignment: Alignment.topCenter,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF3B82F6),
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF3B82F6).withValues(alpha: 0.4),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: Text(
+                              _highlightedTargetLocation!.title,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          const Icon(
+                            Icons.location_on_rounded,
+                            color: Color(0xFF3B82F6),
+                            size: 32,
+                          ),
+                        ],
                       ),
                     ),
                 ],
@@ -943,6 +2034,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                           tooltip: 'İkimizi Göster',
                           isDark: isDark,
                           onTap: () {
+                            setState(() => _followTarget = _FollowTarget.none);
                             final bounds = LatLngBounds.fromPoints([myLatLng, partnerLatLng]);
                             _mapController.fitCamera(
                               CameraFit.bounds(
@@ -968,42 +2060,150 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Snap Tarzı Hızlı Işınlanma Yüzen Butonları (Sol: Partner, Sağ: Ben)
+                // Snap Tarzı Hızlı Işınlanma Yüzen Butonları (Sadece Simgeler: Sol Eda Kalp, Yanında Ben Konum, Yanlarında Kayıtlı Yerler)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 12, left: 2, right: 2),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      // Partnerin Yanına Uç Butonu
-                      if (partnerLatLng != null)
-                        _SnapQuickActionButton(
-                          title: '${partner?.name ?? "Partner"}\'a Uç',
-                          subtitle: partner?.city ?? 'Konuma Git',
-                          avatarUrl: partner?.avatarUrl,
-                          fallbackIcon: Icons.favorite_rounded,
-                          accentColor: LoveraColors.primary,
-                          isDark: isDark,
-                          onTap: () => _animatedFlightMove(partnerLatLng, 16.0),
-                        )
-                      else
-                        const SizedBox.shrink(),
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // 1. Partnerin Yanına Uç Butonu (Mor Daire + Beyaz Kalp İkonu)
+                        if (partnerLatLng != null)
+                          _QuickCircleActionButton(
+                            iconWidget: const Icon(Icons.favorite_rounded, color: Colors.white, size: 25),
+                            bgColor: LoveraColors.primary,
+                            borderColor: Colors.white.withValues(alpha: 0.25),
+                            shadowColor: LoveraColors.primary.withValues(alpha: 0.35),
+                            isDark: isDark,
+                            label: partner?.name ?? 'Partner',
+                            tooltip: '${partner?.name ?? "Partner"}\'a Uç',
+                            onTap: () {
+                              setState(() => _followTarget = _FollowTarget.partner);
+                              _animatedFlightMove(partnerLatLng, 16.0);
+                            },
+                            onLongPress: () {
+                              _showPartnerLocationOptionsSheet(
+                                partner: partner,
+                                partnerPos: effectivePartnerPos,
+                                currentPlace: partnerCurrentPlace,
+                                distanceMeters: displayDistance,
+                              );
+                            },
+                          ),
 
-                      // Kendi Konumuma Uç Butonu
-                      if (myLatLng != null)
-                        _SnapQuickActionButton(
-                          title: 'Bana Dön',
-                          subtitle: 'Konumum',
-                          fallbackIcon: Icons.my_location_rounded,
-                          accentColor: const Color(0xFF388AF6),
-                          isDark: isDark,
-                          onTap: () async {
-                            DeviceService().syncStatusToFirebase();
-                            _animatedFlightMove(myLatLng, 16.0);
-                          },
-                        )
-                      else
-                        const SizedBox.shrink(),
-                    ],
+                        // 2. Kendi Konumuma Uç Butonu (Mavi Daire + Konum İkonu)
+                        if (myLatLng != null) ...[
+                          const SizedBox(width: 12),
+                          _QuickCircleActionButton(
+                            iconWidget: const Icon(Icons.my_location_rounded, color: Colors.white, size: 25),
+                            bgColor: const Color(0xFF388AF6),
+                            borderColor: Colors.white.withValues(alpha: 0.25),
+                            shadowColor: const Color(0xFF388AF6).withValues(alpha: 0.35),
+                            isDark: isDark,
+                            label: 'Ben',
+                            tooltip: 'Bana Dön',
+                            onTap: () async {
+                              setState(() => _followTarget = _FollowTarget.me);
+                              DeviceService().syncStatusToFirebase();
+                              _animatedFlightMove(myLatLng, 16.0);
+                            },
+                          ),
+                        ],
+
+                        // 3+. Kayıtlı Mekanlar (Büyük Emoji Butonları + Net Görünen Rozet + 'Ev' Etiketi)
+                        ...currentSavedPlaces.map((place) {
+                          // Bu mekan kullanıcıya mı yoksa partnere mi ait / kim eklemiş?
+                          final currentUserId = currentUser?.id ?? DatabaseService().uid;
+                          final bool isCreatedByMe = place.createdBy.isNotEmpty && place.createdBy == currentUserId;
+                          final bool isPartnerPlace = (partner != null && place.createdBy == partner.id) ||
+                              (!isCreatedByMe && place.createdByName != null && place.createdByName!.isNotEmpty);
+
+                          // 'Evim' yazıyorsa doğrudan kullanıcının istediği gibi 'Ev' olarak göster
+                          String displayLabel = place.title;
+                          if (displayLabel.trim().toLowerCase() == 'evim') {
+                            displayLabel = 'Ev';
+                          }
+
+                          // Kimin yeri olduğunu gösteren net ve belirgin köşe rozeti (Partner: Mor Kalp 💜, Ben: Mavi Kullanıcı 👤)
+                          final Widget? cornerBadge = isPartnerPlace
+                              ? Container(
+                                  width: 18,
+                                  height: 18,
+                                  decoration: BoxDecoration(
+                                    color: LoveraColors.primary,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: isDark ? const Color(0xFF1E212B) : Colors.white,
+                                      width: 2,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: LoveraColors.primary.withValues(alpha: 0.5),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 1),
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Center(
+                                    child: Icon(Icons.favorite_rounded, color: Colors.white, size: 10),
+                                  ),
+                                )
+                              : (isCreatedByMe
+                                  ? Container(
+                                      width: 18,
+                                      height: 18,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF388AF6),
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: isDark ? const Color(0xFF1E212B) : Colors.white,
+                                          width: 2,
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(0xFF388AF6).withValues(alpha: 0.5),
+                                            blurRadius: 4,
+                                            offset: const Offset(0, 1),
+                                          ),
+                                        ],
+                                      ),
+                                      child: const Center(
+                                        child: Icon(Icons.person_rounded, color: Colors.white, size: 10),
+                                      ),
+                                    )
+                                  : null);
+
+                          return Padding(
+                            padding: const EdgeInsets.only(left: 12),
+                            child: _QuickCircleActionButton(
+                              iconWidget: Text(
+                                place.iconEmoji,
+                                style: const TextStyle(fontSize: 25),
+                              ),
+                              bgColor: isDark ? const Color(0xFF232734) : Colors.white,
+                              borderColor: isPartnerPlace
+                                  ? LoveraColors.primary.withValues(alpha: 0.55)
+                                  : const Color(0xFF388AF6).withValues(alpha: 0.45),
+                              shadowColor: isDark
+                                  ? Colors.black.withValues(alpha: 0.4)
+                                  : LoveraColors.primary.withValues(alpha: 0.18),
+                              isDark: isDark,
+                              label: displayLabel,
+                              badgeWidget: cornerBadge,
+                              tooltip: '${place.title}${place.createdByName != null ? " (${place.createdByName})" : ""}',
+                              onTap: () {
+                                setState(() => _followTarget = _FollowTarget.none);
+                                _animatedFlightMove(LatLng(place.lat, place.lng), 16.5);
+                                _showPlaceDetailsDialog(place);
+                              },
+                              onLongPress: () => _showPlaceDetailsDialog(place),
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
                   ),
                 ),
 
@@ -1015,6 +2215,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                   isDark: isDark,
                   onTap: () {
                     if (partnerLatLng != null) {
+                      setState(() => _followTarget = _FollowTarget.partner);
                       _animatedFlightMove(partnerLatLng, 16.0);
                     }
                   },
@@ -1039,6 +2240,7 @@ class _SnapAvatarMarker extends StatelessWidget {
   final bool isOnline;
   final bool isDark;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
   final SavedPlace? currentPlace;
 
   const _SnapAvatarMarker({
@@ -1051,6 +2253,7 @@ class _SnapAvatarMarker extends StatelessWidget {
     this.isOnline = false,
     required this.isDark,
     required this.onTap,
+    this.onLongPress,
     this.currentPlace,
   });
 
@@ -1070,6 +2273,8 @@ class _SnapAvatarMarker extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
+      behavior: HitTestBehavior.opaque,
       child: Align(
         alignment: Alignment.bottomCenter,
         child: Column(
@@ -1133,7 +2338,7 @@ class _SnapAvatarMarker extends StatelessWidget {
                     const SizedBox(width: 5),
                   ],
                   ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 110),
+                    constraints: const BoxConstraints(maxWidth: 125),
                     child: Text(
                       currentPlace != null
                           ? (currentPlace!.category == 'home' || currentPlace!.title.toLowerCase().contains('ev')
@@ -1259,26 +2464,33 @@ class _SnapAvatarMarker extends StatelessWidget {
                   ),
                 ),
 
-                // 4. Alt köşe minik rozet (Kalp veya Ben simgesi)
+                // 4. Alt köşe minik rozet (Mor zeminli beyaz kalp simgesi)
                 Positioned(
                   bottom: 0,
                   right: 0,
                   child: Container(
-                    width: 17,
-                    height: 17,
+                    width: 18,
+                    height: 18,
                     decoration: BoxDecoration(
-                      color: isOnline ? const Color(0xFF10B981) : borderColor,
+                      color: isMe ? const Color(0xFF388AF6) : LoveraColors.primary,
                       shape: BoxShape.circle,
                       border: Border.all(
                         color: isDark ? const Color(0xFF22252E) : Colors.white,
                         width: 1.5,
                       ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: (isMe ? const Color(0xFF388AF6) : LoveraColors.primary).withValues(alpha: 0.4),
+                          blurRadius: 4,
+                          offset: const Offset(0, 1),
+                        ),
+                      ],
                     ),
                     child: Center(
                       child: Icon(
                         isMe ? Icons.near_me_rounded : Icons.favorite_rounded,
                         color: Colors.white,
-                        size: 9.5,
+                        size: 10,
                       ),
                     ),
                   ),
@@ -1352,92 +2564,105 @@ class _TrianglePainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-/// Snap Hızlı Işınlanma Düğmesi
-class _SnapQuickActionButton extends StatelessWidget {
-  const _SnapQuickActionButton({
-    required this.title,
-    required this.subtitle,
-    this.avatarUrl,
-    required this.fallbackIcon,
-    required this.accentColor,
+/// Snap Hızlı Işınlanma Düğmesi (Dairesel İkon Buton + Altta Şık Minik İsim Etiketi - Tıkla Uç, Basılı Tut Düzenle/Sil)
+class _QuickCircleActionButton extends StatelessWidget {
+  const _QuickCircleActionButton({
+    required this.iconWidget,
+    required this.bgColor,
+    required this.borderColor,
+    required this.shadowColor,
     required this.isDark,
+    required this.tooltip,
+    this.label,
+    this.badgeWidget,
     required this.onTap,
+    this.onLongPress,
   });
 
-  final String title;
-  final String subtitle;
-  final String? avatarUrl;
-  final IconData fallbackIcon;
-  final Color accentColor;
+  final Widget iconWidget;
+  final Color bgColor;
+  final Color borderColor;
+  final Color shadowColor;
   final bool isDark;
+  final String tooltip;
+  final String? label;
+  final Widget? badgeWidget;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
-    final cardBg = isDark ? const Color(0xFF1E212A) : Colors.white;
-    final textColor = isDark ? Colors.white : const Color(0xFF1E2022);
+    final textThemeColor = isDark ? Colors.white70 : const Color(0xFF2C303E);
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(30),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-        decoration: BoxDecoration(
-          color: cardBg,
-          borderRadius: BorderRadius.circular(30),
-          border: Border.all(
-            color: isDark ? Colors.white.withValues(alpha: 0.1) : accentColor.withValues(alpha: 0.25),
-            width: 1.2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: isDark ? Colors.black.withValues(alpha: 0.4) : accentColor.withValues(alpha: 0.2),
-              blurRadius: 14,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: accentColor.withValues(alpha: 0.15),
-                shape: BoxShape.circle,
-                border: Border.all(color: accentColor, width: 2),
-              ),
-              child: ClipOval(
-                child: avatarUrl != null && avatarUrl!.isNotEmpty
-                    ? Image.network(avatarUrl!, fit: BoxFit.cover)
-                    : Icon(fallbackIcon, color: accentColor, size: 16),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: textColor,
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTap: onTap,
+          onLongPress: onLongPress,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: bgColor,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: borderColor,
+                        width: 1.8,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: shadowColor,
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Center(child: iconWidget),
                   ),
-                ),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: accentColor,
+                  if (badgeWidget != null)
+                    Positioned(
+                      bottom: -1,
+                      right: -1,
+                      child: badgeWidget!,
+                    ),
+                ],
+              ),
+              if (label != null && label!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 62),
+                  child: Text(
+                    label!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: textThemeColor,
+                      letterSpacing: -0.2,
+                      shadows: [
+                        Shadow(
+                          color: isDark ? Colors.black87 : Colors.white70,
+                          blurRadius: 3,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

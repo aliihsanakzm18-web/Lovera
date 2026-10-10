@@ -16,8 +16,9 @@ import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
 
 class ChatView extends ConsumerStatefulWidget {
-  const ChatView({super.key, this.onBackToHome});
+  const ChatView({super.key, this.onBackToHome, this.onOpenMap});
   final VoidCallback? onBackToHome;
+  final VoidCallback? onOpenMap;
 
   @override
   ConsumerState<ChatView> createState() => _ChatViewState();
@@ -29,7 +30,39 @@ class _ChatViewState extends ConsumerState<ChatView> {
   final ImagePicker _picker = ImagePicker();
 
   ChatMessage? _replyingTo;
+  AttachedLocation? _attachedLocation;
   bool _isSending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final pendingText = ref.read(pendingChatInputTextProvider);
+      if (pendingText != null && pendingText.isNotEmpty) {
+        _textController.text = pendingText;
+        _textController.selection = TextSelection.fromPosition(
+          TextPosition(offset: pendingText.length),
+        );
+        ref.read(pendingChatInputTextProvider.notifier).state = null;
+      }
+      final pendingLoc = ref.read(pendingChatLocationAttachmentProvider);
+      if (pendingLoc != null) {
+        setState(() {
+          _attachedLocation = pendingLoc;
+        });
+        ref.read(pendingChatLocationAttachmentProvider.notifier).state = null;
+      }
+    });
+
+    ref.listenManual(pendingChatLocationAttachmentProvider, (prev, next) {
+      if (next != null) {
+        setState(() {
+          _attachedLocation = next;
+        });
+        ref.read(pendingChatLocationAttachmentProvider.notifier).state = null;
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -54,8 +87,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
     final coupleId = ref.read(coupleIdProvider) ??
         ref.read(currentUserProvider)?.coupleId;
     final partnerUid = ref.read(partnerUidProvider) ??
-        ref.read(partnerProvider)?.id ??
-        ref.read(currentUserProvider)?.partnerUid;
+        ref.read(partnerProvider)?.id;
     final myName = ref.read(userNameProvider);
 
     if (coupleId == null || coupleId.isEmpty) {
@@ -69,7 +101,8 @@ class _ChatViewState extends ConsumerState<ChatView> {
     }
 
     final text = _textController.text.trim();
-    if (text.isEmpty && mediaBase64 == null && type != 'heart') return;
+    final sendingLoc = _attachedLocation;
+    if (text.isEmpty && mediaBase64 == null && type != 'heart' && sendingLoc == null) return;
 
     final replyText = _replyingTo?.text;
     final replySender = _replyingTo != null
@@ -79,24 +112,40 @@ class _ChatViewState extends ConsumerState<ChatView> {
     _textController.clear();
     setState(() {
       _replyingTo = null;
+      _attachedLocation = null;
       _isSending = true;
     });
 
     DatabaseService().setTypingStatus(coupleId, false);
 
     try {
+      final msgType = sendingLoc != null ? 'location' : (type ?? (mediaBase64 != null ? 'image' : 'text'));
       final msgId = await DatabaseService().sendMessage(
         coupleId: coupleId,
         text: type == 'heart' ? '❤️' : text,
         mediaBase64: mediaBase64,
-        type: type ?? (mediaBase64 != null ? 'image' : 'text'),
+        type: msgType,
         replyToText: replyText,
         replyToSender: replySender,
+        locationLat: sendingLoc?.lat,
+        locationLng: sendingLoc?.lng,
+        locationTitle: sendingLoc?.title,
       );
 
       // Partnerin telefonuna bildirim gönder
       if (partnerUid != null && partnerUid.isNotEmpty) {
-        String pushBody = text.isNotEmpty ? text : (type == 'heart' ? 'Sana bir kalp gönderdi ❤️' : 'Bir fotoğraf gönderdi 📸');
+        String pushBody;
+        if (text.isNotEmpty) {
+          pushBody = sendingLoc != null ? '📍 ${sendingLoc.title}: $text' : text;
+        } else if (sendingLoc != null) {
+          pushBody = '📍 Konum paylaştı: ${sendingLoc.title}';
+        } else if (type == 'heart') {
+          pushBody = 'Sana bir kalp gönderdi ❤️';
+        } else if (mediaBase64 != null || type == 'image') {
+          pushBody = 'Bir fotoğraf gönderdi 📸';
+        } else {
+          pushBody = 'Yeni bir mesaj gönderdi 💬';
+        }
         final dataPayload = <String, String>{
           'type': 'chat_message',
           'coupleId': coupleId,
@@ -169,17 +218,146 @@ class _ChatViewState extends ConsumerState<ChatView> {
     }
   }
 
+  void _openChatOptionsSheet(String coupleId) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: theme.colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEF4444).withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.delete_sweep_rounded, color: Color(0xFFEF4444), size: 22),
+                  ),
+                  title: const Text(
+                    'Sohbeti Temizle',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFFEF4444),
+                      fontSize: 16,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Tüm mesaj geçmişini iki taraf için de siler',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
+                    ),
+                  ),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (dCtx) => AlertDialog(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        title: const Text('Sohbeti Temizle'),
+                        content: const Text(
+                          'Bu sohbetteki tüm mesajlar kalıcı olarak silinecek. Emin misiniz?',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(dCtx, false),
+                            child: const Text('Vazgeç'),
+                          ),
+                          FilledButton(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFFEF4444),
+                              foregroundColor: Colors.white,
+                            ),
+                            onPressed: () => Navigator.pop(dCtx, true),
+                            child: const Text('Temizle'),
+                          ),
+                        ],
+                      ),
+                    );
+
+                    if (confirm == true && mounted) {
+                      try {
+                        await DatabaseService().clearChat(coupleId);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Sohbet başarıyla temizlendi 🧹'),
+                              backgroundColor: Color(0xFF10B981),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Sohbet temizlenirken hata oluştu: $e'),
+                              backgroundColor: const Color(0xFFEF4444),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      }
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final partner = ref.watch(partnerProvider);
     final partnerUid = ref.watch(partnerUidProvider) ??
-        partner?.id ??
-        ref.watch(currentUserProvider)?.partnerUid;
+        partner?.id;
     final coupleId = ref.watch(coupleIdProvider) ??
         ref.watch(currentUserProvider)?.coupleId;
     final myUid = DatabaseService().uid;
+
+    ref.listen<String?>(pendingChatInputTextProvider, (prev, next) {
+      if (next != null && next.isNotEmpty) {
+        _textController.text = next;
+        _textController.selection = TextSelection.fromPosition(
+          TextPosition(offset: next.length),
+        );
+        ref.read(pendingChatInputTextProvider.notifier).state = null;
+      }
+    });
+
+    ref.listen<AttachedLocation?>(pendingChatLocationAttachmentProvider, (prev, next) {
+      if (next != null) {
+        setState(() {
+          _attachedLocation = next;
+        });
+        ref.read(pendingChatLocationAttachmentProvider.notifier).state = null;
+      }
+    });
 
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
@@ -201,6 +379,14 @@ class _ChatViewState extends ConsumerState<ChatView> {
               }
             },
           ),
+          actions: [
+            if (coupleId != null && coupleId.isNotEmpty)
+              IconButton(
+                icon: const Icon(Icons.more_vert_rounded),
+                tooltip: 'Seçenekler',
+                onPressed: () => _openChatOptionsSheet(coupleId),
+              ),
+          ],
           title: partnerUid != null && partnerUid.isNotEmpty
               ? StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
                   stream: DatabaseService().partnerStream(partnerUid),
@@ -424,6 +610,19 @@ class _ChatViewState extends ConsumerState<ChatView> {
                               onDelete: isMe
                                   ? () => DatabaseService().deleteMessage(coupleId, msg.id)
                                   : null,
+                              onLocationTap: (lat, lng, title) {
+                                HapticFeedback.mediumImpact();
+                                ref.read(targetMapFocusLocationProvider.notifier).state = AttachedLocation(
+                                  lat: lat,
+                                  lng: lng,
+                                  title: title,
+                                );
+                                if (widget.onOpenMap != null) {
+                                  widget.onOpenMap!();
+                                } else {
+                                  ref.read(activeNavigationIndexProvider.notifier).state = 0;
+                                }
+                              },
                             );
                           },
                         );
@@ -480,6 +679,64 @@ class _ChatViewState extends ConsumerState<ChatView> {
                 ),
               ).animate().slideY(begin: 0.2, duration: 200.ms).fadeIn(),
 
+            // Konum İliştirme Önizleme Barı
+            if (_attachedLocation != null)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E2130) : const Color(0xFFEFF6FF),
+                  border: Border(
+                    bottom: BorderSide(
+                      color: const Color(0xFF3B82F6).withValues(alpha: 0.3),
+                      width: 1,
+                    ),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF3B82F6).withValues(alpha: 0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.location_on_rounded, color: Color(0xFF3B82F6), size: 18),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'İliştirilen Konum',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF3B82F6),
+                            ),
+                          ),
+                          const SizedBox(height: 1),
+                          Text(
+                            _attachedLocation!.title,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: isDark ? Colors.white : const Color(0xFF1E293B),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, size: 20),
+                      onPressed: () => setState(() => _attachedLocation = null),
+                    ),
+                  ],
+                ),
+              ).animate().slideY(begin: 0.2, duration: 200.ms).fadeIn(),
+
             // Giriş Alanı (Input Bar)
             Container(
               padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
@@ -516,12 +773,12 @@ class _ChatViewState extends ConsumerState<ChatView> {
                         textCapitalization: TextCapitalization.sentences,
                         maxLines: 4,
                         minLines: 1,
-                        decoration: const InputDecoration(
-                          hintText: 'Mesaj yaz...',
-                          hintStyle: TextStyle(color: LoveraColors.textMuted, fontSize: 14),
+                        decoration: InputDecoration(
+                          hintText: _attachedLocation != null ? 'Konum hakkında mesaj yaz...' : 'Mesaj yaz...',
+                          hintStyle: const TextStyle(color: LoveraColors.textMuted, fontSize: 14),
                           border: InputBorder.none,
                           isDense: true,
-                          contentPadding: EdgeInsets.symmetric(vertical: 10),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 10),
                         ),
                       ),
                     ),
@@ -529,11 +786,11 @@ class _ChatViewState extends ConsumerState<ChatView> {
 
                   const SizedBox(width: 8),
 
-                  // Gönder Butonu (ValueListenableBuilder ile sadece buton dinlenir, tüm sayfa rebuild olmaz)
+                  // Gönder Butonu (ValueListenableBuilder ile dinlenir)
                   ValueListenableBuilder<TextEditingValue>(
                     valueListenable: _textController,
                     builder: (context, val, _) {
-                      final hasText = val.text.trim().isNotEmpty;
+                      final hasText = val.text.trim().isNotEmpty || _attachedLocation != null;
                       return GestureDetector(
                         onTap: (hasText && !_isSending) ? () => _send() : null,
                         child: AnimatedOpacity(
@@ -580,12 +837,14 @@ class _ChatBubble extends StatelessWidget {
     required this.isMe,
     required this.onReply,
     this.onDelete,
+    this.onLocationTap,
   });
 
   final ChatMessage message;
   final bool isMe;
   final VoidCallback onReply;
   final VoidCallback? onDelete;
+  final void Function(double lat, double lng, String title)? onLocationTap;
 
   @override
   Widget build(BuildContext context) {
@@ -600,6 +859,9 @@ class _ChatBubble extends StatelessWidget {
     final textColor = isMe
         ? Colors.white
         : (isDark ? Colors.white : const Color(0xFF1E2024));
+
+    final bool hasLocation = (message.locationLat != null && message.locationLng != null) ||
+        (message.type == 'location');
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -698,6 +960,98 @@ class _ChatBubble extends StatelessWidget {
                           ],
                         ),
                       ),
+
+                    // Tıklanabilir Konum Kartı (Haritayı açıp oraya uçurur)
+                    if (hasLocation) ...[
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: () {
+                            if (message.locationLat != null && message.locationLng != null) {
+                              onLocationTap?.call(
+                                message.locationLat!,
+                                message.locationLng!,
+                                message.locationTitle ?? 'Konum',
+                              );
+                            }
+                          },
+                          child: Ink(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: isMe
+                                  ? Colors.white.withValues(alpha: 0.18)
+                                  : (isDark ? const Color(0xFF181A24) : Colors.white),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: isMe
+                                    ? Colors.white.withValues(alpha: 0.25)
+                                    : (isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.06)),
+                                width: 1,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: (isMe ? Colors.white : LoveraColors.primary).withValues(alpha: 0.18),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.map_rounded,
+                                    size: 20,
+                                    color: isMe ? Colors.white : LoveraColors.primary,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Flexible(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Flexible(
+                                            child: Text(
+                                              message.locationTitle ?? 'Konum Paylaşımı',
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w800,
+                                                color: textColor,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Icon(
+                                            Icons.open_in_new_rounded,
+                                            size: 13,
+                                            color: textColor.withValues(alpha: 0.7),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Haritada Gör 📍',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: textColor.withValues(alpha: 0.8),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (message.text.isNotEmpty) const SizedBox(height: 8),
+                    ],
 
                     // Mesaj İçeriği: Görsel veya Metin
                     if (message.type == 'image' && message.mediaBase64 != null) ...[
