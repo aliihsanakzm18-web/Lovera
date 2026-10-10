@@ -961,22 +961,32 @@ class _ChatBubble extends StatelessWidget {
                         ),
                       ),
 
-                    // Tıklanabilir Konum Kartı (Haritayı açıp oraya uçurur)
                     if (hasLocation) ...[
-                      Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(14),
-                          onTap: () {
-                            if (message.locationLat != null && message.locationLng != null) {
-                              onLocationTap?.call(
-                                message.locationLat!,
-                                message.locationLng!,
-                                message.locationTitle ?? 'Konum',
-                              );
-                            }
-                          },
-                          child: Ink(
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          if (message.locationLat != null && message.locationLng != null) {
+                            onLocationTap?.call(
+                              message.locationLat!,
+                              message.locationLng!,
+                              message.locationTitle ?? 'Konum',
+                            );
+                          }
+                        },
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(14),
+                            onTap: () {
+                              if (message.locationLat != null && message.locationLng != null) {
+                                onLocationTap?.call(
+                                  message.locationLat!,
+                                  message.locationLng!,
+                                  message.locationTitle ?? 'Konum',
+                                );
+                              }
+                            },
+                            child: Ink(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                             decoration: BoxDecoration(
                               color: isMe
@@ -1050,8 +1060,9 @@ class _ChatBubble extends StatelessWidget {
                           ),
                         ),
                       ),
-                      if (message.text.isNotEmpty) const SizedBox(height: 8),
-                    ],
+                    ),
+                    if (message.text.isNotEmpty) const SizedBox(height: 8),
+                  ],
 
                     // Mesaj İçeriği: Görsel veya Metin
                     if (message.type == 'image' && message.mediaBase64 != null) ...[
