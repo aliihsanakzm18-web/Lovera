@@ -2223,7 +2223,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                               onTap: () {
                                 setState(() => _followTarget = _FollowTarget.none);
                                 _animatedFlightMove(LatLng(place.lat, place.lng), 16.5);
-                                _showPlaceDetailsDialog(place);
+                                // Menü sadece uzun basınca açılır.
                               },
                               onLongPress: () => _showPlaceDetailsDialog(place),
                             ),
