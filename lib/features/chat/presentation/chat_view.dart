@@ -874,6 +874,17 @@ class _ChatBubble extends StatelessWidget {
               maxWidth: MediaQuery.of(context).size.width * 0.76,
             ),
             child: GestureDetector(
+              onTap: hasLocation
+                  ? () {
+                      if (message.locationLat != null && message.locationLng != null) {
+                        onLocationTap?.call(
+                          message.locationLat!,
+                          message.locationLng!,
+                          message.locationTitle ?? 'Konum',
+                        );
+                      }
+                    }
+                  : null,
               onLongPress: () {
                 showModalBottomSheet(
                   context: context,
