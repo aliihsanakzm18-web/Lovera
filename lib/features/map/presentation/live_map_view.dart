@@ -173,7 +173,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
       if (newLat != null && newLng != null) {
         final newPartnerLatLng = LatLng(newLat, newLng);
         _smoothAnimatePartnerPos(newPartnerLatLng);
-        if (!_hasInitialPartnerFocused) {
+        if (!_hasInitialPartnerFocused && _highlightedTargetLocation == null) {
           _hasInitialPartnerFocused = true;
           _animatedFlightMove(newPartnerLatLng, 16.0);
         }
@@ -318,6 +318,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
   }
 
   void _onTargetLocationRequested(AttachedLocation targetLoc) {
+    debugPrint('[TARGET-FOCUS] istek: ${targetLoc.lat}, ${targetLoc.lng} (${targetLoc.title})');
     setState(() {
       _hasInitialPartnerFocused = true;
       _followTarget = _FollowTarget.none;
@@ -329,7 +330,21 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
         setState(() => _highlightedTargetLocation = null);
       }
     });
-    _animatedFlightMove(LatLng(targetLoc.lat, targetLoc.lng), 17.0);
+    final dest = LatLng(targetLoc.lat, targetLoc.lng);
+    // Sayfa geçiş animasyonu (380ms) bittikten sonra hedefe uç; partner takibi bu sırada kapalı
+    _flightController?.stop();
+    Future.delayed(const Duration(milliseconds: 450), () {
+      if (!mounted || _highlightedTargetLocation?.lat != targetLoc.lat) return;
+      _followTarget = _FollowTarget.none;
+      _animatedFlightMove(dest, 17.0);
+      // Uçuş sonunda kesin olarak hedefe sabitle
+      Future.delayed(const Duration(milliseconds: 750), () {
+        if (!mounted || _highlightedTargetLocation?.lat != targetLoc.lat) return;
+        if (_followTarget == _FollowTarget.none) {
+          _mapController.move(dest, 17.0);
+        }
+      });
+    });
   }
 
   @override
@@ -348,13 +363,25 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
 
   /// Snap Map Akıcı Uçuş Animasyonu:
   /// Havalanır, tepe irtifasına çıkar, hedefe süzülür ve yumuşakça iniş yapar (60 FPS)
-  void _animatedFlightMove(LatLng destLocation, double targetZoom) {
+  void _animatedFlightMove(LatLng destLocation, double targetZoom, [int attempt = 0]) {
     _flightController?.stop();
     _flightController?.dispose();
     _flightController = null;
 
-    final startLoc = _mapController.camera.center;
-    final startZoom = _mapController.camera.zoom;
+    final LatLng startLoc;
+    final double startZoom;
+    try {
+      startLoc = _mapController.camera.center;
+      startZoom = _mapController.camera.zoom;
+    } catch (_) {
+      // FlutterMap henüz ilk kez çizilmedi: hazır olana kadar bekle ve tekrar dene
+      if (attempt < 30 && mounted) {
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) _animatedFlightMove(destLocation, targetZoom, attempt + 1);
+        });
+      }
+      return;
+    }
 
     final distMeters = Geolocator.distanceBetween(
       startLoc.latitude,
