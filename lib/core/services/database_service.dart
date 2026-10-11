@@ -380,6 +380,9 @@ class DatabaseService {
     required bool accepted,
     required String placeTitle,
     required String responderName,
+    String? coupleId,
+    double? lat,
+    double? lng,
   }) async {
     if (uid == null) return;
     final batch = _db.batch();
@@ -391,10 +394,44 @@ class DatabaseService {
         'status': accepted ? 'accepted' : 'rejected',
         'title': placeTitle,
         'byName': responderName,
+        'lat': lat,
+        'lng': lng,
         'at': DateTime.now().millisecondsSinceEpoch,
       }
     }, SetOptions(merge: true));
+    if (accepted && coupleId != null && coupleId.isNotEmpty && lat != null && lng != null) {
+      batch.set(_db.collection('couples').doc(coupleId), {
+        'activeMeeting': {
+          'title': placeTitle,
+          'lat': lat,
+          'lng': lng,
+          'acceptedAt': FieldValue.serverTimestamp(),
+        }
+      }, SetOptions(merge: true));
+    }
     await batch.commit();
+    if (accepted && coupleId != null && coupleId.isNotEmpty && lat != null && lng != null) {
+      try {
+        await addSavedPlace(
+          coupleId: coupleId,
+          title: placeTitle,
+          category: 'favorite',
+          iconEmoji: '💖',
+          lat: lat,
+          lng: lng,
+          createdByName: responderName,
+        );
+      } catch (_) {}
+    }
+  }
+
+  /// Aktif buluşmayı temizler / sonlandırır
+  Future<void> clearActiveMeeting(String coupleId) async {
+    try {
+      await _db.collection('couples').doc(coupleId).update({
+        'activeMeeting': FieldValue.delete(),
+      });
+    } catch (_) {}
   }
 
   /// Buluşma talebi yanıtı gösterildikten sonra temizler.

@@ -52,6 +52,9 @@ final pendingChatLocationAttachmentProvider = StateProvider<AttachedLocation?>((
 /// Sohbetteki konuma tıklandığında haritanın odaklanacağı hedef koordinat
 final targetMapFocusLocationProvider = StateProvider<AttachedLocation?>((ref) => null);
 
+/// Onaylanmış aktif buluşma konumu (haritada buluşma rotası çizmek için)
+final activeMeetingLocationProvider = StateProvider<AttachedLocation?>((ref) => null);
+
 /// Kullanıcı şu an sohbet sayfasında mı?
 final isChatActiveProvider = Provider<bool>((ref) {
   return ref.watch(activeNavigationIndexProvider) == 2;

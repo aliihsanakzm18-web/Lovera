@@ -37,8 +37,10 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
   AppLifecycleListener? _lifecycleListener;
   StreamSubscription? _deliverySub;
   StreamSubscription? _meetingSub;
+  StreamSubscription? _coupleSub;
   String? _shownMeetingId;
   bool _meetingSheetOpen = false;
+  Map<String, dynamic>? _activeReviewMeetingRequest;
 
   @override
   void initState() {
@@ -90,11 +92,38 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
         }
       }
 
+      void setupCoupleListener(String? coupleId) {
+        _coupleSub?.cancel();
+        if (coupleId != null && coupleId.isNotEmpty) {
+          final cStream = DatabaseService().coupleStream(coupleId);
+          if (cStream != null) {
+            _coupleSub = cStream.listen((snap) {
+              if (!mounted) return;
+              final data = snap.data();
+              if (data != null && data['activeMeeting'] is Map) {
+                final m = Map<String, dynamic>.from(data['activeMeeting'] as Map);
+                final lat = (m['lat'] as num?)?.toDouble();
+                final lng = (m['lng'] as num?)?.toDouble();
+                final title = m['title']?.toString() ?? 'Buluşma Noktası';
+                if (lat != null && lng != null) {
+                  ref.read(activeMeetingLocationProvider.notifier).state =
+                      AttachedLocation(lat: lat, lng: lng, title: title);
+                }
+              } else {
+                ref.read(activeMeetingLocationProvider.notifier).state = null;
+              }
+            });
+          }
+        }
+      }
+
       setupDeliveryListener(ref.read(coupleIdProvider));
+      setupCoupleListener(ref.read(coupleIdProvider));
       // coupleId sonradan yüklenirse de dinleyiciyi başlat
       ref.listenManual(coupleIdProvider, (prev, next) {
         if (next != prev && next != null) {
           setupDeliveryListener(next);
+          setupCoupleListener(next);
         }
       });
 
@@ -112,6 +141,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
     NotificationService().isChatScreenActive = null;
     NotificationService().onNotificationTap = null;
     _deliverySub?.cancel();
+    _coupleSub?.cancel();
     _meetingSub?.cancel();
     _heartbeatTimer?.cancel();
     _lifecycleListener?.dispose();
@@ -150,7 +180,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
       final req = data['pendingMeetingRequest'];
       if (req is Map && req['status'] == 'pending') {
         final id = req['id']?.toString();
-        if (id != null && id != _shownMeetingId && !_meetingSheetOpen) {
+        if (id != null && id != _shownMeetingId && !_meetingSheetOpen && _activeReviewMeetingRequest == null) {
           _shownMeetingId = id;
           _showMeetingRequestSheet(Map<String, dynamic>.from(req));
         }
@@ -161,8 +191,12 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
   Future<void> _answerMeeting(Map<String, dynamic> req, bool accepted) async {
     final fromUid = req['fromUid']?.toString() ?? '';
     final title = req['title']?.toString() ?? 'konum';
+    final lat = (req['lat'] as num?)?.toDouble();
+    final lng = (req['lng'] as num?)?.toDouble();
+    final coupleId = ref.read(coupleIdProvider);
     final myName = ref.read(userNameProvider);
     final name = myName.isNotEmpty ? myName : 'Partnerin';
+    setState(() => _activeReviewMeetingRequest = null);
     try {
       if (fromUid.isNotEmpty) {
         await DatabaseService().respondMeetingRequest(
@@ -170,6 +204,9 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
           accepted: accepted,
           placeTitle: title,
           responderName: name,
+          coupleId: coupleId,
+          lat: lat,
+          lng: lng,
         );
         NotificationService().sendPushToPartner(
           partnerUid: fromUid,
@@ -244,6 +281,9 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                     ),
                     onPressed: () {
                       Navigator.pop(ctx);
+                      setState(() {
+                        _activeReviewMeetingRequest = req;
+                      });
                       ref.read(targetMapFocusLocationProvider.notifier).state =
                           AttachedLocation(lat: lat, lng: lng, title: title);
                       _goToPage(0);
@@ -311,37 +351,149 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      body: PageView(
-        controller: _pageController,
-        physics: const BouncingScrollPhysics(),
-        onPageChanged: (idx) {
-          FocusManager.instance.primaryFocus?.unfocus();
-          setState(() => _currentIndex = idx);
-          ref.read(activeNavigationIndexProvider.notifier).state = idx;
-        },
+      body: Stack(
         children: [
-          // Sayfa 0: Canlı Harita
-          LiveMapView(
-            onBackToHome: () => _goToPage(1),
-            onOpenChat: () => _goToPage(2),
+          PageView(
+            controller: _pageController,
+            physics: const BouncingScrollPhysics(),
+            onPageChanged: (idx) {
+              FocusManager.instance.primaryFocus?.unfocus();
+              setState(() => _currentIndex = idx);
+              ref.read(activeNavigationIndexProvider.notifier).state = idx;
+            },
+            children: [
+              // Sayfa 0: Canlı Harita
+              LiveMapView(
+                onBackToHome: () => _goToPage(1),
+                onOpenChat: () => _goToPage(2),
+              ),
+
+              // Sayfa 1: Ana Sayfa (Dashboard)
+              DashboardView(
+                onOpenMap: () => _goToPage(0),
+                onOpenChat: () => _goToPage(2),
+              ),
+
+              // Sayfa 2: Mesajlaşma (Chat)
+              ChatView(
+                onBackToHome: () => _goToPage(1),
+                onOpenMap: () => _goToPage(0),
+              ),
+
+              // Sayfa 3: Oyun & Eğlence Odası (Games)
+              GamesView(
+                onBackToHome: () => _goToPage(1),
+              ),
+            ],
           ),
 
-          // Sayfa 1: Ana Sayfa (Dashboard)
-          DashboardView(
-            onOpenMap: () => _goToPage(0),
-            onOpenChat: () => _goToPage(2),
-          ),
-
-          // Sayfa 2: Mesajlaşma (Chat)
-          ChatView(
-            onBackToHome: () => _goToPage(1),
-            onOpenMap: () => _goToPage(0),
-          ),
-
-          // Sayfa 3: Oyun & Eğlence Odası (Games)
-          GamesView(
-            onBackToHome: () => _goToPage(1),
-          ),
+          // Haritada incelerken kaybolmayan Şık Yüzen Buluşma Karar Kartı (Top Floating Banner)
+          if (_activeReviewMeetingRequest != null)
+            SafeArea(
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF1E212B) : Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.25),
+                          blurRadius: 18,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                      border: Border.all(
+                        color: LoveraColors.primary.withValues(alpha: 0.4),
+                        width: 1.5,
+                      ),
+                    ),
+                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(7),
+                              decoration: BoxDecoration(
+                                color: LoveraColors.primary.withValues(alpha: 0.15),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Text('💕', style: TextStyle(fontSize: 18)),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    '${_activeReviewMeetingRequest!['fromName'] ?? "Partnerin"} Buluşmaya Çağırıyor',
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Text(
+                                    _activeReviewMeetingRequest!['title']?.toString() ?? 'Seçilen Konum',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: isDark ? Colors.white70 : LoveraColors.textMuted,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                onPressed: () {
+                                  _answerMeeting(_activeReviewMeetingRequest!, false);
+                                },
+                                child: const Text('Reddet', style: TextStyle(fontSize: 12)),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: LoveraColors.primary,
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                onPressed: () {
+                                  _answerMeeting(_activeReviewMeetingRequest!, true);
+                                },
+                                child: const Text('Kabul Et', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
 

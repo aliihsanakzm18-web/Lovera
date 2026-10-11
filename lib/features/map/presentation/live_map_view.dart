@@ -66,6 +66,10 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
   LatLng? _pressedPoint;
   Timer? _highlightClearTimer;
 
+  // Buluşma rotaları (Ben -> Buluşma Noktası ve Partner -> Buluşma Noktası)
+  List<LatLng> _myMeetingRoute = [];
+  List<LatLng> _partnerMeetingRoute = [];
+
   @override
   void initState() {
     super.initState();
@@ -101,6 +105,20 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
       if (next != null) {
         _onTargetLocationRequested(next);
         ref.read(targetMapFocusLocationProvider.notifier).state = null;
+      }
+    });
+
+    // Buluşma noktasını dinle ve rotaları hesapla
+    ref.listenManual(activeMeetingLocationProvider, (prev, next) {
+      if (next != null) {
+        _fetchMeetingRoutes(next);
+      } else {
+        if (mounted) {
+          setState(() {
+            _myMeetingRoute = [];
+            _partnerMeetingRoute = [];
+          });
+        }
       }
     });
 
@@ -425,6 +443,52 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     });
 
     controller.forward();
+  }
+
+  Future<void> _fetchMeetingRoutes(AttachedLocation meetingLoc) async {
+    final dest = LatLng(meetingLoc.lat, meetingLoc.lng);
+    final my = _animatedMyPos ?? (ref.read(currentUserProvider)?.lat != null && ref.read(currentUserProvider)?.lng != null
+        ? LatLng(ref.read(currentUserProvider)!.lat!, ref.read(currentUserProvider)!.lng!)
+        : null);
+    final partner = _animatedPartnerPos ?? (ref.read(partnerProvider)?.lat != null && ref.read(partnerProvider)?.lng != null
+        ? LatLng(ref.read(partnerProvider)!.lat!, ref.read(partnerProvider)!.lng!)
+        : null);
+
+    if (my != null) {
+      final myRoute = await _fetchPolyline(my, dest);
+      if (mounted) {
+        setState(() => _myMeetingRoute = myRoute);
+      }
+    }
+    if (partner != null) {
+      final partnerRoute = await _fetchPolyline(partner, dest);
+      if (mounted) {
+        setState(() => _partnerMeetingRoute = partnerRoute);
+      }
+    }
+  }
+
+  Future<List<LatLng>> _fetchPolyline(LatLng start, LatLng end) async {
+    try {
+      final url = Uri.parse(
+        'https://router.project-osrm.org/route/v1/driving/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?overview=full&geometries=geojson',
+      );
+      final res = await http.get(url).timeout(const Duration(seconds: 4));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final routes = data['routes'] as List?;
+        if (routes != null && routes.isNotEmpty) {
+          final geometry = routes[0]['geometry'];
+          if (geometry is Map && geometry['coordinates'] is List) {
+            final coords = geometry['coordinates'] as List;
+            return coords
+                .map((c) => LatLng((c[1] as num).toDouble(), (c[0] as num).toDouble()))
+                .toList();
+          }
+        }
+      }
+    } catch (_) {}
+    return [start, end]; // Fallback düz çizgi
   }
 
   void _checkAndFetchRoute(LatLng my, LatLng partner) {
@@ -1120,6 +1184,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
   void _showPlaceDetailsDialog(SavedPlace place) {
     final coupleId = ref.read(coupleIdProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    setState(() => _pressedPoint = LatLng(place.lat, place.lng));
 
     showModalBottomSheet(
       context: context,
@@ -1540,7 +1605,9 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
         ),
       ),
     ),
-  );
+  ).whenComplete(() {
+    if (mounted) setState(() => _pressedPoint = null);
+  });
 }
 
   /// Partnerin konum ikonuna basılı tutunca açılan şık alt menü (Mevcut konum, Kopyalama, Mesajla Yanıtlama)
@@ -1838,6 +1905,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     final partner = ref.watch(partnerProvider);
     final currentUser = ref.watch(currentUserProvider);
     final providerPlaces = ref.watch(savedPlacesProvider);
+    final activeMeeting = ref.watch(activeMeetingLocationProvider);
     final currentSavedPlaces = _savedPlaces.isNotEmpty ? _savedPlaces : providerPlaces;
 
     final LatLng? myLatLng = (currentUser?.lat != null && currentUser?.lng != null)
@@ -1986,6 +2054,29 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                 tileBuilder: isDark ? _snapMapDarkTileBuilder : null,
               ),
 
+              // Buluşma Rotaları (Her iki kullanıcı için en yakın yol çizgileri)
+              if (_myMeetingRoute.isNotEmpty || _partnerMeetingRoute.isNotEmpty)
+                PolylineLayer(
+                  polylines: [
+                    if (_myMeetingRoute.isNotEmpty)
+                      Polyline(
+                        points: _myMeetingRoute,
+                        strokeWidth: 5.0,
+                        color: const Color(0xFF388AF6).withValues(alpha: 0.85),
+                        borderStrokeWidth: 2.0,
+                        borderColor: Colors.white.withValues(alpha: 0.9),
+                      ),
+                    if (_partnerMeetingRoute.isNotEmpty)
+                      Polyline(
+                        points: _partnerMeetingRoute,
+                        strokeWidth: 5.0,
+                        color: LoveraColors.primary.withValues(alpha: 0.85),
+                        borderStrokeWidth: 2.0,
+                        borderColor: Colors.white.withValues(alpha: 0.9),
+                      ),
+                  ],
+                ),
+
               // Kalıcı Kayıtlı Özel Konumlar Katmanı (Ev, İş, Okul vb.)
               MarkerLayer(
                 markers: standalonePlaces.map((place) {
@@ -2068,27 +2159,97 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                   if (_pressedPoint != null)
                     Marker(
                       point: _pressedPoint!,
-                      width: 64,
-                      height: 52,
+                      width: 70,
+                      height: 70,
                       alignment: Alignment.topCenter,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: LoveraColors.primary.withValues(alpha: 0.5),
-                              blurRadius: 14,
-                              spreadRadius: 1,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: LoveraColors.primary,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2.5),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: LoveraColors.primary.withValues(alpha: 0.6),
+                                  blurRadius: 16,
+                                  spreadRadius: 2,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                        child: Icon(
-                          Icons.location_on_rounded,
-                          color: LoveraColors.primary,
-                          size: 52,
-                        ),
+                            child: const Icon(
+                              Icons.location_on_rounded,
+                              color: Colors.white,
+                              size: 28,
+                            ),
+                          ),
+                          CustomPaint(
+                            size: const Size(10, 6),
+                            painter: _TrianglePainter(color: LoveraColors.primary),
+                          ),
+                        ],
                       ),
-                    ),                  if (_highlightedTargetLocation != null)
+                    ),
+                  if (activeMeeting != null)
+                    Marker(
+                      point: LatLng(activeMeeting.lat, activeMeeting.lng),
+                      width: 140,
+                      height: 90,
+                      alignment: Alignment.topCenter,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              gradient: LoveraColors.primaryGradient,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: Colors.white, width: 2),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: LoveraColors.primary.withValues(alpha: 0.5),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text('💖', style: TextStyle(fontSize: 13)),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(
+                                    activeMeeting.title,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Container(
+                            padding: const EdgeInsets.all(5),
+                            decoration: BoxDecoration(
+                              color: LoveraColors.primary,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2),
+                            ),
+                            child: const Icon(Icons.favorite_rounded, color: Colors.white, size: 16),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (_highlightedTargetLocation != null && activeMeeting == null)
                     Marker(
                       point: LatLng(_highlightedTargetLocation!.lat, _highlightedTargetLocation!.lng),
                       width: 140,
@@ -2193,6 +2354,106 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
               ),
             ),
           ),
+
+          // Aktif Buluşma Bilgi Kartı & Buluşmayı Bitir Butonu
+          if (activeMeeting != null)
+            SafeArea(
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 60, left: 16, right: 16),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF1E212B) : Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(
+                          color: LoveraColors.primary.withValues(alpha: 0.25),
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                      border: Border.all(
+                        color: LoveraColors.primary.withValues(alpha: 0.4),
+                        width: 1.5,
+                      ),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            gradient: LoveraColors.primaryGradient,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.favorite_rounded, color: Colors.white, size: 16),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                'Buluşma Noktası',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: LoveraColors.primary,
+                                ),
+                              ),
+                              Text(
+                                activeMeeting.title,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        InkWell(
+                          borderRadius: BorderRadius.circular(10),
+                          onTap: () {
+                            _animatedFlightMove(LatLng(activeMeeting.lat, activeMeeting.lng), 16.5);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: LoveraColors.primary.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(Icons.flight_takeoff_rounded, color: LoveraColors.primary, size: 18),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        InkWell(
+                          borderRadius: BorderRadius.circular(10),
+                          onTap: () async {
+                            final coupleId = ref.read(coupleIdProvider);
+                            if (coupleId != null) {
+                              await DatabaseService().clearActiveMeeting(coupleId);
+                            }
+                            ref.read(activeMeetingLocationProvider.notifier).state = null;
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: Colors.redAccent.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(Icons.close_rounded, color: Colors.redAccent, size: 18),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
 
           // Alt Bölüm: Snap Map Tarzı Hızlı Işınlanma Butonları & Canlı Bilgi Kartı
           Positioned(

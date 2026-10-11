@@ -131,6 +131,23 @@ class FcmV1Service {
               'notification_priority': 'PRIORITY_MAX',
             },
           },
+          'apns': {
+            'headers': {
+              'apns-priority': '10',
+              'apns-push-type': 'alert',
+            },
+            'payload': {
+              'aps': {
+                'alert': {
+                  'title': title,
+                  'body': body,
+                },
+                'sound': 'default',
+                'badge': 1,
+                'content-available': 1,
+              },
+            },
+          },
         },
       };
 
