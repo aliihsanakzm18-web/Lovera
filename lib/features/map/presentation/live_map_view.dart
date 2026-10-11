@@ -62,6 +62,8 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
 
   // Sohbette veya dışarıdan tıklanarak haritada odaklanılan geçici konum pini
   AttachedLocation? _highlightedTargetLocation;
+  /// Haritada basılı tutulan (menü açıkken gösterilen) geçici konum
+  LatLng? _pressedPoint;
   Timer? _highlightClearTimer;
 
   @override
@@ -476,6 +478,50 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     }
   }
 
+  /// Partnere belirli bir konum için buluşma talebi gönderir (kapalı olsa da bildirim düşer).
+  Future<void> _sendMeetingRequest(LatLng point, String title) async {
+    final partnerUid = ref.read(partnerUidProvider);
+    if (partnerUid == null || partnerUid.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Buluşma talebi için partnerinizle eşleşmiş olmanız gerekir.'),
+          backgroundColor: LoveraColors.primary,
+        ),
+      );
+      return;
+    }
+    final myName = ref.read(userNameProvider);
+    final name = myName.isNotEmpty ? myName : 'Partnerin';
+    try {
+      await DatabaseService().sendMeetingRequest(
+        partnerUid: partnerUid,
+        fromName: name,
+        lat: point.latitude,
+        lng: point.longitude,
+        placeTitle: title,
+      );
+      NotificationService().sendPushToPartner(
+        partnerUid: partnerUid,
+        title: 'Buluşma talebi 💕',
+        body: '$name seni "$title" konumunda buluşmaya çağırıyor.',
+        data: {'type': 'meeting_request'},
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Buluşma talebi gönderildi 💌'),
+            backgroundColor: Color(0xFF10B981),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Buluşma talebi gönderilemedi, tekrar dene.')),
+        );
+      }
+    }
+  }
   // Yeni Konum Etiketleme / Kaydetme Diyaloğu
   void _showAddPlaceDialog(LatLng point) {
     final coupleId = ref.read(coupleIdProvider);
@@ -824,13 +870,38 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                       ),
                     ),
                   ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        side: BorderSide(color: LoveraColors.primary.withValues(alpha: 0.5)),
+                      ),
+                      icon: Icon(Icons.favorite_rounded, color: LoveraColors.primary, size: 18),
+                      label: Text(
+                        'Buluşma Talebi Gönder',
+                        style: TextStyle(color: LoveraColors.primary, fontSize: 14, fontWeight: FontWeight.w800),
+                      ),
+                      onPressed: () {
+                        final typed = titleController.text.trim();
+                        final meetTitle = typed.isNotEmpty ? '$selectedEmoji $typed' : '$selectedEmoji Seçilen konum';
+                        Navigator.pop(ctx);
+                        HapticFeedback.selectionClick();
+                        _sendMeetingRequest(point, meetTitle);
+                      },
+                    ),
+                  ),
                 ],
               ),
             );
           },
         );
       },
-    );
+    ).whenComplete(() {
+      if (mounted) setState(() => _pressedPoint = null);
+    });
   }
 
   // Kayıtlı Konumu Düzenleme Penceresi
@@ -1444,7 +1515,27 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                 },
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  side: BorderSide(color: LoveraColors.primary.withValues(alpha: 0.5)),
+                ),
+                icon: Icon(Icons.favorite_rounded, color: LoveraColors.primary, size: 18),
+                label: Text(
+                  'Buluşma Talebi Gönder',
+                  style: TextStyle(color: LoveraColors.primary, fontWeight: FontWeight.w800, fontSize: 13),
+                ),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  HapticFeedback.selectionClick();
+                  _sendMeetingRequest(LatLng(place.lat, place.lng), '${place.iconEmoji} ${place.title}');
+                },
+              ),
+            ),            const SizedBox(height: 8),
           ],
         ),
       ),
@@ -1867,6 +1958,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                     return;
                   }
                 }
+                setState(() => _pressedPoint = point);
                 _showAddPlaceDialog(point);
               },
               onPositionChanged: (position, hasGesture) {
@@ -1973,7 +2065,30 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                         },
                       ),
                     ),
-                  if (_highlightedTargetLocation != null)
+                  if (_pressedPoint != null)
+                    Marker(
+                      point: _pressedPoint!,
+                      width: 64,
+                      height: 52,
+                      alignment: Alignment.topCenter,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: LoveraColors.primary.withValues(alpha: 0.5),
+                              blurRadius: 14,
+                              spreadRadius: 1,
+                            ),
+                          ],
+                        ),
+                        child: Icon(
+                          Icons.location_on_rounded,
+                          color: LoveraColors.primary,
+                          size: 52,
+                        ),
+                      ),
+                    ),                  if (_highlightedTargetLocation != null)
                     Marker(
                       point: LatLng(_highlightedTargetLocation!.lat, _highlightedTargetLocation!.lng),
                       width: 140,

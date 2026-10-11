@@ -36,6 +36,9 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
   Timer? _heartbeatTimer;
   AppLifecycleListener? _lifecycleListener;
   StreamSubscription? _deliverySub;
+  StreamSubscription? _meetingSub;
+  String? _shownMeetingId;
+  bool _meetingSheetOpen = false;
 
   @override
   void initState() {
@@ -70,6 +73,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
     // "İletildi (Çift gri tik)" olarak işaretle!
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(activeNavigationIndexProvider.notifier).state = _currentIndex;
+      _listenMeetingRequests();
       void setupDeliveryListener(String? coupleId) {
         _deliverySub?.cancel();
         final myUid = DatabaseService().uid;
@@ -108,12 +112,185 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
     NotificationService().isChatScreenActive = null;
     NotificationService().onNotificationTap = null;
     _deliverySub?.cancel();
+    _meetingSub?.cancel();
     _heartbeatTimer?.cancel();
     _lifecycleListener?.dispose();
     _pageController.dispose();
     super.dispose();
   }
 
+  /// Partnerden gelen buluşma taleplerini ve verdiğimiz taleplerin yanıtlarını dinler.
+  /// Uygulama kapalıyken gelen talep, uygulama açılınca (veya bildirime dokununca) burada yakalanır.
+  void _listenMeetingRequests() {
+    _meetingSub?.cancel();
+    final stream = DatabaseService().userStream();
+    if (stream == null) return;
+    _meetingSub = stream.listen((snap) {
+      if (!mounted) return;
+      final data = snap.data();
+      if (data == null) return;
+
+      final res = data['meetingResult'];
+      if (res is Map) {
+        DatabaseService().clearMeetingResult();
+        final accepted = res['status'] == 'accepted';
+        final title = res['title']?.toString() ?? 'konum';
+        final by = res['byName']?.toString() ?? 'Partnerin';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(accepted
+                ? '$by "$title" buluşmasını kabul etti 💕'
+                : '$by bu sefer buluşamayacağını söyledi.'),
+            backgroundColor: accepted ? const Color(0xFF10B981) : null,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+
+      final req = data['pendingMeetingRequest'];
+      if (req is Map && req['status'] == 'pending') {
+        final id = req['id']?.toString();
+        if (id != null && id != _shownMeetingId && !_meetingSheetOpen) {
+          _shownMeetingId = id;
+          _showMeetingRequestSheet(Map<String, dynamic>.from(req));
+        }
+      }
+    });
+  }
+
+  Future<void> _answerMeeting(Map<String, dynamic> req, bool accepted) async {
+    final fromUid = req['fromUid']?.toString() ?? '';
+    final title = req['title']?.toString() ?? 'konum';
+    final myName = ref.read(userNameProvider);
+    final name = myName.isNotEmpty ? myName : 'Partnerin';
+    try {
+      if (fromUid.isNotEmpty) {
+        await DatabaseService().respondMeetingRequest(
+          fromUid: fromUid,
+          accepted: accepted,
+          placeTitle: title,
+          responderName: name,
+        );
+        NotificationService().sendPushToPartner(
+          partnerUid: fromUid,
+          title: accepted ? 'Buluşma kabul edildi 💕' : 'Buluşma talebi',
+          body: accepted
+              ? '$name "$title" buluşmasını kabul etti!'
+              : '$name bu sefer buluşamayacağını söyledi.',
+          data: {'type': 'meeting_result'},
+        );
+      }
+    } catch (_) {}
+  }
+
+  void _showMeetingRequestSheet(Map<String, dynamic> req) {
+    final fromName = req['fromName']?.toString() ?? 'Partnerin';
+    final title = req['title']?.toString() ?? 'Seçilen konum';
+    final lat = (req['lat'] as num?)?.toDouble();
+    final lng = (req['lng'] as num?)?.toDouble();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    _meetingSheetOpen = true;
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.fromLTRB(22, 14, 22, 28),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E212B) : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Text('💕', style: TextStyle(fontSize: 40)),
+              const SizedBox(height: 8),
+              const Text(
+                'Buluşma Talebi',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '$fromName seni "$title" konumunda buluşmaya çağırıyor.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  height: 1.4,
+                  color: isDark ? Colors.white70 : LoveraColors.textMuted,
+                ),
+              ),
+              const SizedBox(height: 18),
+              if (lat != null && lng != null)
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.map_rounded),
+                    label: const Text('Haritada Göster'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      ref.read(targetMapFocusLocationProvider.notifier).state =
+                          AttachedLocation(lat: lat, lng: lng, title: title);
+                      _goToPage(0);
+                    },
+                  ),
+                ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _answerMeeting(req, false);
+                      },
+                      child: const Text('Şimdilik Olmaz'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: LoveraColors.primary,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _answerMeeting(req, true);
+                      },
+                      child: const Text('Kabul Et'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    ).whenComplete(() => _meetingSheetOpen = false);
+  }
   void _goToPage(int index) {
     if (index == _currentIndex) return;
     FocusManager.instance.primaryFocus?.unfocus();

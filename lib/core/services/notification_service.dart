@@ -170,6 +170,7 @@ class NotificationService {
     try {
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
         debugPrint('[FCM-OPEN] Bildirime tıklanarak açıldı: ${message.data}');
+        if (message.data['type'] == 'meeting_request') return; // Buluşma talebi: sohbete değil, talep penceresine düşer
         hasPendingNotificationTap = true;
         onNotificationTap?.call();
       });
@@ -177,6 +178,7 @@ class NotificationService {
       _fcm.getInitialMessage().then((RemoteMessage? message) {
         if (message != null) {
           debugPrint('[FCM-INITIAL] Uygulama bildirimle başlatıldı: ${message.data}');
+          if (message.data['type'] == 'meeting_request') return;
           hasPendingNotificationTap = true;
           onNotificationTap?.call();
         }

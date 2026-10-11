@@ -39,6 +39,11 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     if (!_page.hasClients) return;
     // Eğer sıradaki adım PermissionsPage ise ve tüm izinler zaten verilmişse doğrudan _finish() çağır
     final nextPageIndex = (_page.page?.round() ?? 0) + 1;
+    // Son adımdaysak (ör. eşleşmeyi 'Şimdilik atla' ile geçmek) doğrudan ana ekrana geç.
+    if (nextPageIndex >= _steps.length) {
+      await _finish();
+      return;
+    }
     if (nextPageIndex < _steps.length && _steps[nextPageIndex] is PermissionsPage) {
       final locWhenInUse = await Permission.locationWhenInUse.isGranted;
       final locAlways = await Permission.locationAlways.isGranted;

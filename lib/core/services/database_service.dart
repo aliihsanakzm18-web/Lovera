@@ -347,6 +347,63 @@ class DatabaseService {
     }).catchError((_) {});
   }
 
+  // ---------------------------------------------------------------------------
+  // BULUŞMA TALEBİ (Partnerin kullanıcı belgesi üzerinden, tarih değişikliği ile aynı kanıtlanmış yöntem)
+  // ---------------------------------------------------------------------------
+
+  /// Partnere belirli bir konum için buluşma talebi gönderir.
+  Future<void> sendMeetingRequest({
+    required String partnerUid,
+    required String fromName,
+    required double lat,
+    required double lng,
+    required String placeTitle,
+  }) async {
+    if (uid == null) return;
+    await _db.collection('users').doc(partnerUid).set({
+      'pendingMeetingRequest': {
+        'id': DateTime.now().millisecondsSinceEpoch.toString(),
+        'fromUid': uid,
+        'fromName': fromName,
+        'lat': lat,
+        'lng': lng,
+        'title': placeTitle,
+        'status': 'pending',
+        'createdAt': FieldValue.serverTimestamp(),
+      }
+    }, SetOptions(merge: true));
+  }
+
+  /// Gelen buluşma talebini yanıtlar; talebi temizler ve gönderene sonucu bildirir.
+  Future<void> respondMeetingRequest({
+    required String fromUid,
+    required bool accepted,
+    required String placeTitle,
+    required String responderName,
+  }) async {
+    if (uid == null) return;
+    final batch = _db.batch();
+    batch.set(_db.collection('users').doc(uid), {
+      'pendingMeetingRequest': FieldValue.delete(),
+    }, SetOptions(merge: true));
+    batch.set(_db.collection('users').doc(fromUid), {
+      'meetingResult': {
+        'status': accepted ? 'accepted' : 'rejected',
+        'title': placeTitle,
+        'byName': responderName,
+        'at': DateTime.now().millisecondsSinceEpoch,
+      }
+    }, SetOptions(merge: true));
+    await batch.commit();
+  }
+
+  /// Buluşma talebi yanıtı gösterildikten sonra temizler.
+  Future<void> clearMeetingResult() async {
+    if (uid == null) return;
+    await _db.collection('users').doc(uid).update({
+      'meetingResult': FieldValue.delete(),
+    }).catchError((_) {});
+  }
   // 4. "SENİ DÜŞÜNÜYORUM" KALBİ GÖNDERME
   Future<void> sendHeart(String? partnerUid) async {
     if (uid == null || partnerUid == null) return;
