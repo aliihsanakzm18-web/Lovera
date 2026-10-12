@@ -32,6 +32,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
   ChatMessage? _replyingTo;
   AttachedLocation? _attachedLocation;
   bool _isSending = false;
+  final Set<String> _alreadyMarkedReadIds = {};
 
   @override
   void initState() {
@@ -177,9 +178,9 @@ class _ChatViewState extends ConsumerState<ChatView> {
     try {
       final picked = await _picker.pickImage(
         source: ImageSource.gallery,
-        maxWidth: 900,
-        maxHeight: 900,
-        imageQuality: 65,
+        maxWidth: 720,
+        maxHeight: 720,
+        imageQuality: 50,
       );
       if (picked != null) {
         setState(() => _isSending = true);
@@ -559,12 +560,13 @@ class _ChatViewState extends ConsumerState<ChatView> {
 
                         final messages = snapshot.data ?? [];
 
-                        // Karşı tarafın gönderdiği okunmamış mesajlar varsa hemen okundu olarak işaretle
+                        // Karşı tarafın gönderdiği okunmamış mesajlar varsa hemen okundu olarak işaretle (Tekrarlayan çağrıları engelle)
                         final unreadIds = messages
-                            .where((m) => m.senderId != myUid && !m.isRead)
+                            .where((m) => m.senderId != myUid && !m.isRead && !_alreadyMarkedReadIds.contains(m.id))
                             .map((m) => m.id)
                             .toList();
                         if (unreadIds.isNotEmpty) {
+                          _alreadyMarkedReadIds.addAll(unreadIds);
                           WidgetsBinding.instance.addPostFrameCallback((_) {
                             DatabaseService().markMessagesAsRead(coupleId, unreadIds);
                           });

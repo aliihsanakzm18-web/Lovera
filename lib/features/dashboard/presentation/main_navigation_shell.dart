@@ -222,7 +222,10 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
 
   void _showMeetingRequestSheet(Map<String, dynamic> req) {
     final fromName = req['fromName']?.toString() ?? 'Partnerin';
-    final title = req['title']?.toString() ?? 'Seçilen konum';
+    String title = req['title']?.toString() ?? 'Buluşma Noktası';
+    if (title.toLowerCase().contains('seçilen')) {
+      title = 'Buluşma Noktası';
+    }
     final lat = (req['lat'] as num?)?.toDouble();
     final lng = (req['lng'] as num?)?.toDouble();
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -439,14 +442,22 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
-                                  Text(
-                                    _activeReviewMeetingRequest!['title']?.toString() ?? 'Seçilen Konum',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: isDark ? Colors.white70 : LoveraColors.textMuted,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                                  Builder(
+                                    builder: (context) {
+                                      String cardTitle = _activeReviewMeetingRequest!['title']?.toString() ?? 'Buluşma Noktası';
+                                      if (cardTitle.toLowerCase().contains('seçilen')) {
+                                        cardTitle = 'Buluşma Noktası';
+                                      }
+                                      return Text(
+                                        cardTitle,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: isDark ? Colors.white70 : LoveraColors.textMuted,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      );
+                                    },
                                   ),
                                 ],
                               ),

@@ -69,6 +69,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
   // Buluşma rotaları (Ben -> Buluşma Noktası ve Partner -> Buluşma Noktası)
   List<LatLng> _myMeetingRoute = [];
   List<LatLng> _partnerMeetingRoute = [];
+  bool _isMeetingTopBannerVisible = true;
 
   @override
   void initState() {
@@ -111,12 +112,18 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     // Buluşma noktasını dinle ve rotaları hesapla
     ref.listenManual(activeMeetingLocationProvider, (prev, next) {
       if (next != null) {
+        if (mounted) {
+          setState(() {
+            _isMeetingTopBannerVisible = true;
+          });
+        }
         _fetchMeetingRoutes(next);
       } else {
         if (mounted) {
           setState(() {
             _myMeetingRoute = [];
             _partnerMeetingRoute = [];
+            _isMeetingTopBannerVisible = true;
           });
         }
       }
@@ -450,21 +457,46 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     final my = _animatedMyPos ?? (ref.read(currentUserProvider)?.lat != null && ref.read(currentUserProvider)?.lng != null
         ? LatLng(ref.read(currentUserProvider)!.lat!, ref.read(currentUserProvider)!.lng!)
         : null);
-    final partner = _animatedPartnerPos ?? (ref.read(partnerProvider)?.lat != null && ref.read(partnerProvider)?.lng != null
-        ? LatLng(ref.read(partnerProvider)!.lat!, ref.read(partnerProvider)!.lng!)
-        : null);
 
     if (my != null) {
       final myRoute = await _fetchPolyline(my, dest);
       if (mounted) {
-        setState(() => _myMeetingRoute = myRoute);
+        setState(() {
+          _myMeetingRoute = myRoute;
+          _partnerMeetingRoute = [];
+        });
       }
     }
-    if (partner != null) {
-      final partnerRoute = await _fetchPolyline(partner, dest);
-      if (mounted) {
-        setState(() => _partnerMeetingRoute = partnerRoute);
-      }
+  }
+
+  /// Kullanıcının kendi konumundan buluşma noktasına olan rotasını ekrana sığdırıp yakınlaştırır
+  void _fitBothMeetingRoutes(AttachedLocation meetingLoc) {
+    HapticFeedback.selectionClick();
+    _fetchMeetingRoutes(meetingLoc);
+
+    final dest = LatLng(meetingLoc.lat, meetingLoc.lng);
+    final my = _animatedMyPos ?? (ref.read(currentUserProvider)?.lat != null && ref.read(currentUserProvider)?.lng != null
+        ? LatLng(ref.read(currentUserProvider)!.lat!, ref.read(currentUserProvider)!.lng!)
+        : null);
+
+    final List<LatLng> pointsToFit = [];
+    if (_myMeetingRoute.isNotEmpty) {
+      pointsToFit.addAll(_myMeetingRoute);
+    } else {
+      pointsToFit.add(dest);
+      if (my != null) pointsToFit.add(my);
+    }
+
+    if (pointsToFit.length > 1) {
+      final bounds = LatLngBounds.fromPoints(pointsToFit);
+      _mapController.fitCamera(
+        CameraFit.bounds(
+          bounds: bounds,
+          padding: const EdgeInsets.only(left: 45, right: 45, top: 150, bottom: 200),
+        ),
+      );
+    } else {
+      _animatedFlightMove(dest, 16.5);
     }
   }
 
@@ -950,7 +982,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                       ),
                       onPressed: () {
                         final typed = titleController.text.trim();
-                        final meetTitle = typed.isNotEmpty ? '$selectedEmoji $typed' : '$selectedEmoji Seçilen konum';
+                        final meetTitle = typed.isNotEmpty ? '$selectedEmoji $typed' : '💖 Buluşma Noktası';
                         Navigator.pop(ctx);
                         HapticFeedback.selectionClick();
                         _sendMeetingRequest(point, meetTitle);
@@ -1148,13 +1180,21 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                         final finalTitle = title.isNotEmpty ? title : place.title;
 
                         Navigator.pop(ctx);
-                        await DatabaseService().updateSavedPlace(
-                          coupleId: coupleId,
-                          placeId: place.id,
-                          title: finalTitle,
-                          category: selectedCategory,
-                          iconEmoji: selectedEmoji,
-                        );
+                        if (place.id == 'active_meeting') {
+                          await DatabaseService().updateActiveMeeting(
+                            coupleId: coupleId,
+                            title: finalTitle,
+                            iconEmoji: selectedEmoji,
+                          );
+                        } else {
+                          await DatabaseService().updateSavedPlace(
+                            coupleId: coupleId,
+                            placeId: place.id,
+                            title: finalTitle,
+                            category: selectedCategory,
+                            iconEmoji: selectedEmoji,
+                          );
+                        }
 
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -1247,20 +1287,27 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                 final partnerName = ref.watch(partnerProvider)?.name ?? 'Partnerim';
                 final coupleId = ref.read(coupleIdProvider);
 
+                final isMeeting = place.id == 'active_meeting';
                 return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
                   stream: coupleId != null
-                      ? FirebaseFirestore.instance
-                          .collection('couples')
-                          .doc(coupleId)
-                          .collection('saved_places')
-                          .doc(place.id)
-                          .snapshots()
+                      ? (isMeeting
+                          ? FirebaseFirestore.instance.collection('couples').doc(coupleId).snapshots()
+                          : FirebaseFirestore.instance
+                              .collection('couples')
+                              .doc(coupleId)
+                              .collection('saved_places')
+                              .doc(place.id)
+                              .snapshots())
                       : null,
                   builder: (context, docSnapshot) {
-                    final placeData = docSnapshot.data?.data();
-                    final Map<String, dynamic> remoteNotifs = placeData?['notifications'] != null
-                        ? Map<String, dynamic>.from(placeData!['notifications'] as Map)
-                        : (place.notifications ?? {});
+                    final rawData = docSnapshot.data?.data();
+                    final Map<String, dynamic> remoteNotifs = isMeeting
+                        ? (rawData?['activeMeeting'] != null && rawData!['activeMeeting'] is Map && rawData['activeMeeting']['notifications'] != null
+                            ? Map<String, dynamic>.from(rawData['activeMeeting']['notifications'] as Map)
+                            : (place.notifications ?? {}))
+                        : (rawData?['notifications'] != null
+                            ? Map<String, dynamic>.from(rawData!['notifications'] as Map)
+                            : (place.notifications ?? {}));
 
                     final myUid = DatabaseService().uid ?? '';
                     final partnerUid = ref.watch(partnerProvider)?.id ?? '';
@@ -1337,14 +1384,24 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                                   await prefs.setBool('partner_notify_enter_${place.id}', val);
                                   await prefs.setBool('notify_enter_${place.id}', val);
                                   if (coupleId != null) {
-                                    DatabaseService().updatePlaceNotificationSettings(
-                                      coupleId: coupleId,
-                                      placeId: place.id,
-                                      notificationUpdates: {
-                                        if (partnerUid.isNotEmpty) '${partnerUid}_enter': val,
-                                        'partner_enter': val,
-                                      },
-                                    );
+                                    if (isMeeting) {
+                                      DatabaseService().updateActiveMeetingNotificationSettings(
+                                        coupleId: coupleId,
+                                        notificationUpdates: {
+                                          if (partnerUid.isNotEmpty) '${partnerUid}_enter': val,
+                                          'partner_enter': val,
+                                        },
+                                      );
+                                    } else {
+                                      DatabaseService().updatePlaceNotificationSettings(
+                                        coupleId: coupleId,
+                                        placeId: place.id,
+                                        notificationUpdates: {
+                                          if (partnerUid.isNotEmpty) '${partnerUid}_enter': val,
+                                          'partner_enter': val,
+                                        },
+                                      );
+                                    }
                                   }
                                 },
                               ),
@@ -1370,14 +1427,24 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                                   await prefs.setBool('partner_notify_exit_${place.id}', val);
                                   await prefs.setBool('notify_exit_${place.id}', val);
                                   if (coupleId != null) {
-                                    DatabaseService().updatePlaceNotificationSettings(
-                                      coupleId: coupleId,
-                                      placeId: place.id,
-                                      notificationUpdates: {
-                                        if (partnerUid.isNotEmpty) '${partnerUid}_exit': val,
-                                        'partner_exit': val,
-                                      },
-                                    );
+                                    if (isMeeting) {
+                                      DatabaseService().updateActiveMeetingNotificationSettings(
+                                        coupleId: coupleId,
+                                        notificationUpdates: {
+                                          if (partnerUid.isNotEmpty) '${partnerUid}_exit': val,
+                                          'partner_exit': val,
+                                        },
+                                      );
+                                    } else {
+                                      DatabaseService().updatePlaceNotificationSettings(
+                                        coupleId: coupleId,
+                                        placeId: place.id,
+                                        notificationUpdates: {
+                                          if (partnerUid.isNotEmpty) '${partnerUid}_exit': val,
+                                          'partner_exit': val,
+                                        },
+                                      );
+                                    }
                                   }
                                 },
                               ),
@@ -1434,14 +1501,24 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                                 onChanged: (val) async {
                                   await prefs.setBool('my_notify_enter_${place.id}', val);
                                   if (coupleId != null) {
-                                    DatabaseService().updatePlaceNotificationSettings(
-                                      coupleId: coupleId,
-                                      placeId: place.id,
-                                      notificationUpdates: {
-                                        if (myUid.isNotEmpty) '${myUid}_enter': val,
-                                        'my_enter': val,
-                                      },
-                                    );
+                                    if (isMeeting) {
+                                      DatabaseService().updateActiveMeetingNotificationSettings(
+                                        coupleId: coupleId,
+                                        notificationUpdates: {
+                                          if (myUid.isNotEmpty) '${myUid}_enter': val,
+                                          'my_enter': val,
+                                        },
+                                      );
+                                    } else {
+                                      DatabaseService().updatePlaceNotificationSettings(
+                                        coupleId: coupleId,
+                                        placeId: place.id,
+                                        notificationUpdates: {
+                                          if (myUid.isNotEmpty) '${myUid}_enter': val,
+                                          'my_enter': val,
+                                        },
+                                      );
+                                    }
                                   }
                                 },
                               ),
@@ -1466,14 +1543,24 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                                 onChanged: (val) async {
                                   await prefs.setBool('my_notify_exit_${place.id}', val);
                                   if (coupleId != null) {
-                                    DatabaseService().updatePlaceNotificationSettings(
-                                      coupleId: coupleId,
-                                      placeId: place.id,
-                                      notificationUpdates: {
-                                        if (myUid.isNotEmpty) '${myUid}_exit': val,
-                                        'my_exit': val,
-                                      },
-                                    );
+                                    if (isMeeting) {
+                                      DatabaseService().updateActiveMeetingNotificationSettings(
+                                        coupleId: coupleId,
+                                        notificationUpdates: {
+                                          if (myUid.isNotEmpty) '${myUid}_exit': val,
+                                          'my_exit': val,
+                                        },
+                                      );
+                                    } else {
+                                      DatabaseService().updatePlaceNotificationSettings(
+                                        coupleId: coupleId,
+                                        placeId: place.id,
+                                        notificationUpdates: {
+                                          if (myUid.isNotEmpty) '${myUid}_exit': val,
+                                          'my_exit': val,
+                                        },
+                                      );
+                                    }
                                   }
                                 },
                               ),
@@ -1500,12 +1587,30 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                     label: const Text('Sil', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w700, fontSize: 13)),
                     onPressed: () async {
                       Navigator.pop(ctx);
-                      if (coupleId != null) {
-                        await DatabaseService().deleteSavedPlace(coupleId, place.id);
+                      HapticFeedback.mediumImpact();
+                      if (place.id == 'active_meeting') {
+                        if (coupleId != null) {
+                          await DatabaseService().clearActiveMeeting(coupleId);
+                        }
+                        ref.read(activeMeetingLocationProvider.notifier).state = null;
                         if (mounted) {
+                          setState(() {
+                            _myMeetingRoute = [];
+                            _partnerMeetingRoute = [];
+                            _isMeetingTopBannerVisible = false;
+                          });
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('"${place.title}" konumu silindi.')),
+                            const SnackBar(content: Text('Buluşma noktası silindi.')),
                           );
+                        }
+                      } else {
+                        if (coupleId != null) {
+                          await DatabaseService().deleteSavedPlace(coupleId, place.id);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('"${place.title}" konumu silindi.')),
+                            );
+                          }
                         }
                       }
                     },
@@ -1580,27 +1685,30 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                 },
               ),
             ),
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  side: BorderSide(color: LoveraColors.primary.withValues(alpha: 0.5)),
+            if (place.id != 'active_meeting') ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    side: BorderSide(color: LoveraColors.primary.withValues(alpha: 0.5)),
+                  ),
+                  icon: Icon(Icons.favorite_rounded, color: LoveraColors.primary, size: 18),
+                  label: Text(
+                    'Buluşma Talebi Gönder',
+                    style: TextStyle(color: LoveraColors.primary, fontWeight: FontWeight.w800, fontSize: 13),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    HapticFeedback.selectionClick();
+                    _sendMeetingRequest(LatLng(place.lat, place.lng), '${place.iconEmoji} ${place.title}');
+                  },
                 ),
-                icon: Icon(Icons.favorite_rounded, color: LoveraColors.primary, size: 18),
-                label: Text(
-                  'Buluşma Talebi Gönder',
-                  style: TextStyle(color: LoveraColors.primary, fontWeight: FontWeight.w800, fontSize: 13),
-                ),
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  HapticFeedback.selectionClick();
-                  _sendMeetingRequest(LatLng(place.lat, place.lng), '${place.iconEmoji} ${place.title}');
-                },
               ),
-            ),            const SizedBox(height: 8),
+            ],
+            const SizedBox(height: 8),
           ],
         ),
       ),
@@ -1986,6 +2094,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
 
     // Avatar veya Aktif Buluşma ile birleşen yerleri bağımsız yer pinleri katmanından çıkar (çift pin oluşmasın)
     final standalonePlaces = currentSavedPlaces.where((p) {
+      if (p.title.toLowerCase().contains('seçilen')) return false;
       if (p.id == myCurrentPlace?.id || p.id == partnerCurrentPlace?.id) return false;
       if (activeMeeting != null) {
         final distToMeeting = Geolocator.distanceBetween(activeMeeting.lat, activeMeeting.lng, p.lat, p.lng);
@@ -2087,7 +2196,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                 markers: standalonePlaces.map((place) {
                   return Marker(
                     point: LatLng(place.lat, place.lng),
-                    width: 100,
+                    width: 140,
                     height: 64,
                     alignment: Alignment.topCenter,
                     child: Align(
@@ -2201,53 +2310,61 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                   if (activeMeeting != null)
                     Marker(
                       point: LatLng(activeMeeting.lat, activeMeeting.lng),
-                      width: 170,
-                      height: 75,
+                      width: 150,
+                      height: 70,
                       alignment: Alignment.topCenter,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            constraints: const BoxConstraints(maxWidth: 160),
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(
-                              gradient: LoveraColors.primaryGradient,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: Colors.white, width: 2),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: LoveraColors.primary.withValues(alpha: 0.45),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Text('💖', style: TextStyle(fontSize: 13)),
-                                const SizedBox(width: 4),
-                                Flexible(
-                                  child: Text(
-                                    activeMeeting.title,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _isMeetingTopBannerVisible = true;
+                          });
+                          _fitBothMeetingRoutes(activeMeeting);
+                        },
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              constraints: const BoxConstraints(maxWidth: 140),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                gradient: LoveraColors.primaryGradient,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Colors.white, width: 2),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: LoveraColors.primary.withValues(alpha: 0.45),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 3),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Text('💖', style: TextStyle(fontSize: 13)),
+                                  const SizedBox(width: 4),
+                                  const Flexible(
+                                    child: Text(
+                                      'Buluşma',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          const CustomPaint(
-                            size: Size(10, 6),
-                            painter: _TrianglePainter(color: LoveraColors.primary),
-                          ),
-                        ],
+                            const SizedBox(height: 2),
+                            const CustomPaint(
+                              size: Size(10, 6),
+                              painter: _TrianglePainter(color: LoveraColors.primary),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   if (_highlightedTargetLocation != null && activeMeeting == null)
@@ -2356,100 +2473,126 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
             ),
           ),
 
-          // Aktif Buluşma Bilgi Kartı & Buluşmayı Bitir Butonu
-          if (activeMeeting != null)
+          // Aktif Buluşma Bilgi Kartı & Buluşmayı Gizle / Göster Butonu
+          if (activeMeeting != null && _isMeetingTopBannerVisible)
             SafeArea(
               child: Align(
                 alignment: Alignment.topCenter,
                 child: Padding(
                   padding: const EdgeInsets.only(top: 60, left: 16, right: 16),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E212B) : Colors.white,
-                      borderRadius: BorderRadius.circular(18),
-                      boxShadow: [
-                        BoxShadow(
-                          color: LoveraColors.primary.withValues(alpha: 0.25),
-                          blurRadius: 16,
-                          offset: const Offset(0, 4),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(18),
+                    onTap: () => _fitBothMeetingRoutes(activeMeeting),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1E212B) : Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: [
+                          BoxShadow(
+                            color: LoveraColors.primary.withValues(alpha: 0.25),
+                            blurRadius: 16,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                        border: Border.all(
+                          color: LoveraColors.primary.withValues(alpha: 0.4),
+                          width: 1.5,
                         ),
-                      ],
-                      border: Border.all(
-                        color: LoveraColors.primary.withValues(alpha: 0.4),
-                        width: 1.5,
                       ),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            gradient: LoveraColors.primaryGradient,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(Icons.favorite_rounded, color: Colors.white, size: 16),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text(
-                                'Buluşma Noktası',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: LoveraColors.primary,
-                                ),
-                              ),
-                              Text(
-                                activeMeeting.title,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                        InkWell(
-                          borderRadius: BorderRadius.circular(10),
-                          onTap: () {
-                            _animatedFlightMove(LatLng(activeMeeting.lat, activeMeeting.lng), 16.5);
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: LoveraColors.primary.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(10),
+                              gradient: LoveraColors.primaryGradient,
+                              shape: BoxShape.circle,
                             ),
-                            child: const Icon(Icons.flight_takeoff_rounded, color: LoveraColors.primary, size: 18),
+                            child: const Icon(Icons.favorite_rounded, color: Colors.white, size: 16),
                           ),
-                        ),
-                        const SizedBox(width: 6),
-                        InkWell(
-                          borderRadius: BorderRadius.circular(10),
-                          onTap: () async {
-                            final coupleId = ref.read(coupleIdProvider);
-                            if (coupleId != null) {
-                              await DatabaseService().clearActiveMeeting(coupleId);
-                            }
-                            ref.read(activeMeetingLocationProvider.notifier).state = null;
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: Colors.redAccent.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(10),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text(
+                                  'Buluşma Noktası',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: LoveraColors.primary,
+                                  ),
+                                ),
+                                Builder(
+                                  builder: (context) {
+                                    String meetTitle = activeMeeting.title.trim();
+                                    if (meetTitle.toLowerCase().contains('seçilen') || meetTitle.isEmpty) {
+                                      meetTitle = 'Buluşma';
+                                    }
+                                    return Text(
+                                      meetTitle,
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    );
+                                  },
+                                ),
+                              ],
                             ),
-                            child: const Icon(Icons.close_rounded, color: Colors.redAccent, size: 18),
                           ),
-                        ),
-                      ],
+                          // Yola Odaklan Butonu (Basınca yolu ekrana sığdırıp yakınlaştırır)
+                          InkWell(
+                            borderRadius: BorderRadius.circular(10),
+                            onTap: () => _fitBothMeetingRoutes(activeMeeting),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: LoveraColors.primary.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.alt_route_rounded, color: LoveraColors.primary, size: 16),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'Yola Odaklan',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                      color: LoveraColors.primary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          InkWell(
+                            borderRadius: BorderRadius.circular(10),
+                            onTap: () {
+                              HapticFeedback.lightImpact();
+                              setState(() {
+                                _isMeetingTopBannerVisible = false;
+                                _myMeetingRoute = [];
+                                _partnerMeetingRoute = [];
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: Colors.redAccent.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(Icons.close_rounded, color: Colors.redAccent, size: 18),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -2516,8 +2659,51 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                           ),
                         ],
 
-                        // 3+. Kayıtlı Mekanlar (Büyük Emoji Butonları + Net Görünen Rozet + 'Ev' Etiketi)
-                        ...currentSavedPlaces.map((place) {
+                        // 3. Aktif Buluşma Butonu (Buluşma İkonu - Tıklanınca üst menüyü açar ve rotayı çizer, Basılı tutunca seçenekler menüsü)
+                        if (activeMeeting != null) ...[
+                          const SizedBox(width: 12),
+                          _QuickCircleActionButton(
+                            iconWidget: const Text('💖', style: TextStyle(fontSize: 24)),
+                            bgColor: LoveraColors.primary,
+                            borderColor: Colors.white.withValues(alpha: 0.4),
+                            shadowColor: LoveraColors.primary.withValues(alpha: 0.45),
+                            isDark: isDark,
+                            label: 'Buluşma',
+                            tooltip: 'Buluşma Noktası',
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              setState(() {
+                                _isMeetingTopBannerVisible = true;
+                              });
+                              _fitBothMeetingRoutes(activeMeeting);
+                            },
+                            onLongPress: () {
+                              HapticFeedback.mediumImpact();
+                              final meetingPlace = SavedPlace(
+                                id: 'active_meeting',
+                                title: activeMeeting.title.isNotEmpty ? activeMeeting.title : 'Buluşma Noktası',
+                                iconEmoji: '💖',
+                                lat: activeMeeting.lat,
+                                lng: activeMeeting.lng,
+                                category: 'meeting',
+                                createdBy: currentUser?.id ?? '',
+                                createdByName: 'Buluşma Noktası',
+                                createdAt: DateTime.now(),
+                              );
+                              _showPlaceDetailsDialog(meetingPlace);
+                            },
+                          ),
+                        ],
+
+                        // 4+. Kayıtlı Mekanlar (Büyük Emoji Butonları + Net Görünen Rozet + 'Ev' Etiketi)
+                        ...currentSavedPlaces.where((place) {
+                          if (place.title.toLowerCase().contains('seçilen')) return false;
+                          if (activeMeeting != null) {
+                            final distToMeeting = Geolocator.distanceBetween(activeMeeting.lat, activeMeeting.lng, place.lat, place.lng);
+                            if (distToMeeting <= 30) return false;
+                          }
+                          return true;
+                        }).map((place) {
                           // Bu mekan kullanıcıya mı yoksa partnere mi ait / kim eklemiş?
                           final currentUserId = currentUser?.id ?? DatabaseService().uid;
                           final bool isCreatedByMe = place.createdBy.isNotEmpty && place.createdBy == currentUserId;
@@ -3317,7 +3503,7 @@ class _SavedPlaceMarker extends StatelessWidget {
                 ),
                 const SizedBox(width: 4),
                 ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 68),
+                  constraints: const BoxConstraints(maxWidth: 85),
                   child: Text(
                     place.title,
                     maxLines: 1,

@@ -5,6 +5,7 @@ import 'package:battery_plus/battery_plus.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -79,6 +80,59 @@ class BackgroundTrackingService {
 Future<bool> onIosBackground(ServiceInstance service) async {
   WidgetsFlutterBinding.ensureInitialized();
   DartPluginRegistrant.ensureInitialized();
+
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (_) {}
+
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    final uid = prefs.getString('saved_uid') ?? FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null && uid.isNotEmpty) {
+      int? batteryLevel;
+      try {
+        batteryLevel = await Battery().batteryLevel;
+      } catch (_) {}
+
+      Position? pos;
+      try {
+        pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.medium,
+          timeLimit: const Duration(seconds: 4),
+        );
+      } catch (_) {
+        try {
+          pos = await Geolocator.getLastKnownPosition();
+        } catch (_) {}
+      }
+
+      final Map<String, dynamic> updateData = {};
+      if (batteryLevel != null) updateData['batteryLevel'] = batteryLevel;
+      if (pos != null) {
+        updateData['lat'] = pos.latitude;
+        updateData['lng'] = pos.longitude;
+        updateData['speed'] = (pos.speed >= 0) ? pos.speed : 0.0;
+        final city = await DeviceService().getCityForLocation(pos.latitude, pos.longitude);
+        final weather = await DeviceService().getWeatherForLocation(pos.latitude, pos.longitude);
+        if (city != null) updateData['city'] = city;
+        if (weather != null) updateData['weather'] = weather;
+      }
+
+      if (updateData.isNotEmpty) {
+        await FirebaseFirestore.instance.collection('users').doc(uid).set(
+          updateData,
+          SetOptions(merge: true),
+        );
+        debugPrint('[IOS-BG-SYNC-SUCCESS] Pil: $batteryLevel, Konum: ${pos?.latitude}, ${pos?.longitude}');
+      }
+    }
+  } catch (e) {
+    debugPrint('[IOS-BG-SYNC-ERR] $e');
+  }
+
   return true;
 }
 
@@ -258,6 +312,16 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
                   .collection('saved_places')
                   .get();
               placesList = placesSnap.docs.map((d) => SavedPlace.fromJson(d.data(), d.id)).toList();
+              if (placesList.isNotEmpty) {
+                try {
+                  final placesJsonList = placesList.map((p) {
+                    final m = p.toJson();
+                    m['id'] = p.id;
+                    return m;
+                  }).toList();
+                  await prefs.setString('cached_saved_places_json', jsonEncode(placesJsonList));
+                } catch (_) {}
+              }
             }
 
             SavedPlace? currentMatchedPlace;
@@ -373,11 +437,21 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
 
   // 2. Anlık GPS Hareket Dinleyicisi (Snapchat / Zenly Tarzı):
   try {
+    final LocationSettings locationSettings = defaultTargetPlatform == TargetPlatform.iOS
+        ? AppleSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 15,
+            pauseLocationUpdatesAutomatically: false,
+            showBackgroundLocationIndicator: false,
+            activityType: ActivityType.fitness,
+          )
+        : const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 15, // 15 metre: Canlı rota ve yürüyüş hareketlerinde anında tetiklenme
+          );
+
     Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 15, // 15 metre: Canlı rota ve yürüyüş hareketlerinde anında tetiklenme
-      ),
+      locationSettings: locationSettings,
     ).listen(
       (newPosition) async {
         final prefs = await SharedPreferences.getInstance();

@@ -141,6 +141,12 @@ class NotificationService {
   /// Bildirime tıklandığında sohbet ekranına yönlendirme callback'i
   void Function()? onNotificationTap;
 
+  /// Doğrudan gelen kalp (özledim) push mesajını UI'da canlandırmak için callback
+  void Function()? onHeartPingReceived;
+
+  /// Doğrudan gelen şarj hatırlatma push mesajını UI'da canlandırmak için callback
+  void Function(String fromName)? onChargePingReceived;
+
   /// Soğuk başlatmada (Cold start) bildirime tıklandığında uygulamanın doğrudan sohbete geçmesini sağlayan bayrak
   bool hasPendingNotificationTap = false;
 
@@ -233,6 +239,17 @@ class NotificationService {
         if (message.data['type'] == 'ping_request') {
           DeviceService().syncStatusToFirebase();
           return;
+        }
+
+        // Anlık Kalp (Özledim) push bildirimi geldiyse doğrudan ekranda patlat
+        if (message.data['type'] == 'heart_ping') {
+          onHeartPingReceived?.call();
+        }
+
+        // Anlık Şarj hatırlatması push bildirimi geldiyse UI'da göster
+        if (message.data['type'] == 'charge_ping') {
+          final senderName = message.data['fromName']?.toString() ?? 'Partnerin';
+          onChargePingReceived?.call(senderName);
         }
 
         // Eğer kullanıcı şu an zaten sohbet ekranındaysa sohbet bildirimini gösterme (Zaten görüyor!)

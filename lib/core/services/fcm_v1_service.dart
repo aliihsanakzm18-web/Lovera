@@ -189,6 +189,17 @@ class FcmV1Service {
           'android': {
             'priority': 'HIGH',
           },
+          'apns': {
+            'headers': {
+              'apns-priority': '5',
+              'apns-push-type': 'background',
+            },
+            'payload': {
+              'aps': {
+                'content-available': 1,
+              },
+            },
+          },
         },
       };
 

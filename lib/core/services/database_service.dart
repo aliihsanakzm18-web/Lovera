@@ -421,6 +421,37 @@ class DatabaseService {
     } catch (_) {}
   }
 
+  /// Aktif buluşmanın başlığını veya ikonunu günceller
+  Future<void> updateActiveMeeting({
+    required String coupleId,
+    required String title,
+    String? iconEmoji,
+  }) async {
+    try {
+      final Map<String, dynamic> updates = {
+        'activeMeeting.title': title,
+      };
+      if (iconEmoji != null) {
+        updates['activeMeeting.iconEmoji'] = iconEmoji;
+      }
+      await _db.collection('couples').doc(coupleId).update(updates);
+    } catch (_) {}
+  }
+
+  /// Aktif buluşmanın bildirim ayarlarını günceller
+  Future<void> updateActiveMeetingNotificationSettings({
+    required String coupleId,
+    required Map<String, dynamic> notificationUpdates,
+  }) async {
+    try {
+      final Map<String, dynamic> updates = {};
+      notificationUpdates.forEach((key, value) {
+        updates['activeMeeting.notifications.$key'] = value;
+      });
+      await _db.collection('couples').doc(coupleId).update(updates);
+    } catch (_) {}
+  }
+
   /// Buluşma talebi yanıtı gösterildikten sonra temizler.
   Future<void> clearMeetingResult() async {
     if (uid == null) return;

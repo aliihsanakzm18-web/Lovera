@@ -119,7 +119,6 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
 
     // Periyodik olarak durumu kontrol et (yalnızca pil/konum değiştiyse yazılır)
     _statusSyncTimer = Timer.periodic(const Duration(seconds: 120), (_) {
-      DatabaseService().setAppPresence(true);
       DeviceService().syncStatusToFirebase();
     });
 
@@ -138,11 +137,18 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
         DeviceService().syncStatusToFirebase();
         _statusSyncTimer?.cancel();
         _statusSyncTimer = Timer.periodic(const Duration(seconds: 120), (_) {
-          DatabaseService().setAppPresence(true);
           DeviceService().syncStatusToFirebase();
         });
       },
     );
+
+    // FCM üzerinden gelen doğrudan sıfır-maliyetli kalp ve şarj bildirimlerini UI'a bağla
+    NotificationService().onHeartPingReceived = () {
+      if (mounted) _receiveHeartPulse();
+    };
+    NotificationService().onChargePingReceived = (senderName) {
+      if (mounted) _receiveChargeReminder(senderName);
+    };
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       NotificationService().updateFcmTokenInFirestore();
@@ -576,6 +582,10 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                         partnerUid: partnerUid,
                         title: '🔋 Şarj Hatırlatması!',
                         body: '$senderName şarjını doldurmanı hatırlatıyor 💕',
+                        data: {
+                          'type': 'charge_ping',
+                          'fromName': senderName,
+                        },
                       );
                     }
                     if (!mounted) return;
@@ -1170,6 +1180,10 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
         partnerUid: partnerUid,
         title: '🥺 Seni Çok Özledim!',
         body: '${myName.isEmpty ? 'Partnerin' : myName} şu an seni çok özlediğini hissettirdi 💕',
+        data: {
+          'type': 'heart_ping',
+          'fromName': myName.isEmpty ? 'Partnerin' : myName,
+        },
       );
     }
     setState(() => _showHeart = true);
