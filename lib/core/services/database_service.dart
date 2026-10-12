@@ -410,19 +410,6 @@ class DatabaseService {
       }, SetOptions(merge: true));
     }
     await batch.commit();
-    if (accepted && coupleId != null && coupleId.isNotEmpty && lat != null && lng != null) {
-      try {
-        await addSavedPlace(
-          coupleId: coupleId,
-          title: placeTitle,
-          category: 'favorite',
-          iconEmoji: '💖',
-          lat: lat,
-          lng: lng,
-          createdByName: responderName,
-        );
-      } catch (_) {}
-    }
   }
 
   /// Aktif buluşmayı temizler / sonlandırır

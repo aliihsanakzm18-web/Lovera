@@ -1984,10 +1984,15 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
       }
     }
 
-    // Avatar ile birleşen yerleri bağımsız yer pinleri katmanından çıkar (çift pin oluşmasın)
-    final standalonePlaces = currentSavedPlaces.where((p) =>
-      p.id != myCurrentPlace?.id && p.id != partnerCurrentPlace?.id
-    ).toList();
+    // Avatar veya Aktif Buluşma ile birleşen yerleri bağımsız yer pinleri katmanından çıkar (çift pin oluşmasın)
+    final standalonePlaces = currentSavedPlaces.where((p) {
+      if (p.id == myCurrentPlace?.id || p.id == partnerCurrentPlace?.id) return false;
+      if (activeMeeting != null) {
+        final distToMeeting = Geolocator.distanceBetween(activeMeeting.lat, activeMeeting.lng, p.lat, p.lng);
+        if (distToMeeting <= 30) return false;
+      }
+      return true;
+    }).toList();
 
     return Scaffold(
       backgroundColor: mapBgColor,
@@ -2196,21 +2201,22 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                   if (activeMeeting != null)
                     Marker(
                       point: LatLng(activeMeeting.lat, activeMeeting.lng),
-                      width: 140,
-                      height: 90,
+                      width: 170,
+                      height: 75,
                       alignment: Alignment.topCenter,
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Container(
+                            constraints: const BoxConstraints(maxWidth: 160),
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                             decoration: BoxDecoration(
                               gradient: LoveraColors.primaryGradient,
-                              borderRadius: BorderRadius.circular(14),
+                              borderRadius: BorderRadius.circular(16),
                               border: Border.all(color: Colors.white, width: 2),
                               boxShadow: [
                                 BoxShadow(
-                                  color: LoveraColors.primary.withValues(alpha: 0.5),
+                                  color: LoveraColors.primary.withValues(alpha: 0.45),
                                   blurRadius: 12,
                                   offset: const Offset(0, 3),
                                 ),
@@ -2237,14 +2243,9 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                             ),
                           ),
                           const SizedBox(height: 2),
-                          Container(
-                            padding: const EdgeInsets.all(5),
-                            decoration: BoxDecoration(
-                              color: LoveraColors.primary,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 2),
-                            ),
-                            child: const Icon(Icons.favorite_rounded, color: Colors.white, size: 16),
+                          const CustomPaint(
+                            size: Size(10, 6),
+                            painter: _TrianglePainter(color: LoveraColors.primary),
                           ),
                         ],
                       ),
