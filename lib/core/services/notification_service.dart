@@ -364,24 +364,26 @@ class NotificationService {
       final prefs = await SharedPreferences.getInstance();
       String? fcmToken = prefs.getString('cached_partner_fcm_token_$partnerUid');
 
-      // 1. Eğer yerelde token önbelleği yoksa Firestore'dan oku
+      // 1. Önce yerel bellekteki token'a bak
       if (fcmToken == null || fcmToken.isEmpty) {
         try {
           final partnerDoc = await FirebaseFirestore.instance
               .collection('users')
               .doc(partnerUid)
-              .get()
-              .timeout(const Duration(seconds: 4));
+              .get(const GetOptions(source: Source.serverAndCache))
+              .timeout(const Duration(seconds: 5));
           fcmToken = partnerDoc.data()?['fcmToken'] as String?;
           if (fcmToken != null && fcmToken.isNotEmpty) {
             await prefs.setString('cached_partner_fcm_token_$partnerUid', fcmToken);
           }
-        } catch (_) {}
+        } catch (e) {
+          debugPrint('[FCM-SEND] Partner dokümanı okunurken hata oluştu: $e');
+        }
       }
 
       debugPrint('[FCM-SEND] Bulunan partner token: $fcmToken');
       if (fcmToken == null || fcmToken.isEmpty) {
-        debugPrint('[FCM-SEND] HATA: Partner FCM token bulunamadı: $partnerUid');
+        debugPrint('[FCM-SEND] HATA: Partner ($partnerUid) kullanıcısının fcmToken alanı boş veya henüz oluşturulmamış!');
         return;
       }
 
