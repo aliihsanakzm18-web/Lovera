@@ -31,11 +31,6 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get
 
-      - name: Register WidgetKit Target in Xcode Project
-        run: |
-          gem install xcodeproj --no-document || true
-          ruby ios/scripts/add_widget_target.rb
-
       - name: Build iOS Application & Widget Extension (Release, Unsigned)
         run: |
           flutter build ios --release --no-codesign
