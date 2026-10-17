@@ -4,6 +4,18 @@ import SwiftUI
 // MARK: - App Group Tanımı
 let loveraAppGroupId = "group.com.lovera.app.lovera"
 
+// MARK: - iOS 17+ containerBackground uyumlu arka plan
+extension View {
+    @ViewBuilder
+    func loveraWidgetBackground<S: ShapeStyle>(_ style: S) -> some View {
+        if #available(iOS 17.0, *) {
+            self.containerBackground(for: .widget) { Rectangle().fill(style) }
+        } else {
+            self.background(Rectangle().fill(style))
+        }
+    }
+}
+
 // MARK: - 1. PARTNER BİLGİ & DURUM WİDGET'I
 struct LoveraPartnerEntry: TimelineEntry {
     let date: Date
@@ -64,16 +76,7 @@ struct LoveraPartnerEntryView: View {
     var entry: LoveraPartnerProvider.Entry
 
     var body: some View {
-        ZStack {
-            LinearGradient(
-                gradient: Gradient(colors: [
-                    Color(red: 0.10, green: 0.11, blue: 0.15),
-                    Color(red: 0.05, green: 0.05, blue: 0.07)
-                ]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
+        Group {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text("💜")
@@ -142,6 +145,16 @@ struct LoveraPartnerEntryView: View {
             }
             .padding(12)
         }
+        .loveraWidgetBackground(
+            LinearGradient(
+                gradient: Gradient(colors: [
+                    Color(red: 0.10, green: 0.11, blue: 0.15),
+                    Color(red: 0.05, green: 0.05, blue: 0.07)
+                ]),
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
         .widgetURL(URL(string: "lovera://home"))
     }
 
@@ -222,8 +235,6 @@ struct LoveraDrawingEntryView: View {
 
     var body: some View {
         ZStack {
-            Color(red: 0.09, green: 0.08, blue: 0.15) // Tuval arka planı
-
             if let path = entry.imagePath, let uiImage = UIImage(contentsOfFile: path) {
                 Image(uiImage: uiImage)
                     .resizable()
@@ -281,6 +292,7 @@ struct LoveraDrawingEntryView: View {
                 .padding(8)
             }
         }
+        .loveraWidgetBackground(Color(red: 0.09, green: 0.08, blue: 0.15))
         .widgetURL(URL(string: "lovera://drawing"))
     }
 }
