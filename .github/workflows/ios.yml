@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    name: Build iOS IPA
+    name: Build iOS IPA with Widgets
     runs-on: macos-14
     steps:
       - name: Checkout Repository
@@ -34,6 +34,41 @@ jobs:
       - name: Build iOS Application (Release, Unsigned)
         run: |
           flutter build ios --release --no-codesign
+
+      - name: Compile and Embed WidgetKit Extension
+        run: |
+          echo "=== Compiling LoveraWidgets WidgetKit Extension ==="
+          SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+          echo "Using iPhoneOS SDK: $SDK_PATH"
+          
+          mkdir -p build/widget_build
+          
+          # Compile Swift WidgetBundle to ARM64 iOS executable
+          xcrun -sdk iphoneos swiftc \
+            -target arm64-apple-ios15.0 \
+            -sdk "$SDK_PATH" \
+            -O \
+            -parse-as-library \
+            -emit-executable \
+            -framework WidgetKit \
+            -framework SwiftUI \
+            -framework Foundation \
+            ios/LoveraWidgets/LoveraWidgetsBundle.swift \
+            -o build/widget_build/LoveraWidgets
+            
+          # Prepare PlugIns directory inside Runner.app
+          PLUGINS_DIR="build/ios/iphoneos/Runner.app/PlugIns"
+          WIDGET_APPEX="$PLUGINS_DIR/LoveraWidgets.appex"
+          mkdir -p "$WIDGET_APPEX"
+          
+          # Copy executable and plist
+          cp build/widget_build/LoveraWidgets "$WIDGET_APPEX/LoveraWidgets"
+          cp ios/LoveraWidgets/Info.plist "$WIDGET_APPEX/Info.plist"
+          
+          # Verify structure
+          echo "=== Widget Extension Contents ==="
+          ls -la "$WIDGET_APPEX"
+          file "$WIDGET_APPEX/LoveraWidgets"
 
       - name: Package Payload as IPA
         run: |
