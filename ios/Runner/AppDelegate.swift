@@ -16,17 +16,6 @@ enum LoveraNativeWidgetHelper {
       return
     }
 
-    // App Group varsa oraya da kopyala
-    if let groupDefaults = UserDefaults(suiteName: "group.com.lovera.app.lovera") {
-      groupDefaults.set(savedUid, forKey: "saved_uid")
-      if let pUid = stdDefaults.string(forKey: "flutter.saved_partner_uid") {
-        groupDefaults.set(pUid, forKey: "saved_partner_uid")
-      }
-      if let cId = stdDefaults.string(forKey: "flutter.saved_couple_id") {
-        groupDefaults.set(cId, forKey: "saved_couple_id")
-      }
-    }
-
     // Firestore'daki kullanıcı belgesine iosVendorId yaz (Widget'ın cihazı otomatik tanıması için)
     let urlStr = "https://firestore.googleapis.com/v1/projects/sevgili-app-fb6f4/databases/(default)/documents/users/\(savedUid)?updateMask.fieldPaths=iosVendorId"
     guard let url = URL(string: urlStr) else { return }
@@ -41,8 +30,10 @@ enum LoveraNativeWidgetHelper {
     ]
     req.httpBody = try? JSONSerialization.data(withJSONObject: body)
     URLSession.shared.dataTask(with: req) { _, _, _ in
-      if #available(iOS 14.0, *) {
-        WidgetCenter.shared.reloadAllTimelines()
+      DispatchQueue.main.async {
+        if #available(iOS 14.0, *) {
+          WidgetCenter.shared.reloadAllTimelines()
+        }
       }
     }.resume()
   }

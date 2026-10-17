@@ -48,11 +48,6 @@ jobs:
           file "$WIDGET_APPEX/LoveraWidgets"
           otool -hv "$WIDGET_APPEX/LoveraWidgets"
 
-      - name: Embed App Group Entitlements into Binaries
-        run: |
-          codesign --force --sign - --entitlements ios/LoveraWidgets/LoveraWidgets.entitlements build/ios/iphoneos/Runner.app/PlugIns/LoveraWidgets.appex
-          codesign --force --sign - --entitlements ios/Runner/Runner.entitlements build/ios/iphoneos/Runner.app
-
       - name: Package Payload as IPA
         run: |
           mkdir -p build/ios/iphoneos/Payload
