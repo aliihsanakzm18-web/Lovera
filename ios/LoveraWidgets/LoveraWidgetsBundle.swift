@@ -52,13 +52,13 @@ struct LoveraPartnerProvider: TimelineProvider {
     }
 
     private func fetchCurrentEntry() -> LoveraPartnerEntry {
-        let sharedDefaults = UserDefaults(suiteName: loveraAppGroupId)
-        let partnerName = sharedDefaults?.string(forKey: "partner_name") ?? "Sevgilim"
-        let daysCount = sharedDefaults?.string(forKey: "days_count") ?? "0"
-        let batteryLevel = sharedDefaults?.string(forKey: "battery_level") ?? "%--"
-        let statusText = sharedDefaults?.string(forKey: "status_text") ?? "Dışarıda"
-        let statusEmoji = sharedDefaults?.string(forKey: "status_emoji") ?? "📍"
-        let lastSeen = sharedDefaults?.string(forKey: "last_seen") ?? "Şimdi aktif"
+        let sharedDefaults = UserDefaults(suiteName: loveraAppGroupId) ?? UserDefaults.standard
+        let partnerName = sharedDefaults.string(forKey: "partner_name") ?? "Sevgilim"
+        let daysCount = sharedDefaults.string(forKey: "days_count") ?? "0"
+        let batteryLevel = sharedDefaults.string(forKey: "battery_level") ?? "%--"
+        let statusText = sharedDefaults.string(forKey: "status_text") ?? "Dışarıda"
+        let statusEmoji = sharedDefaults.string(forKey: "status_emoji") ?? "📍"
+        let lastSeen = sharedDefaults.string(forKey: "last_seen") ?? "Şimdi aktif"
 
         return LoveraPartnerEntry(
             date: Date(),
@@ -73,47 +73,127 @@ struct LoveraPartnerProvider: TimelineProvider {
 }
 
 struct LoveraPartnerEntryView: View {
+    @Environment(\.widgetFamily) var family
     var entry: LoveraPartnerProvider.Entry
 
     var body: some View {
         Group {
-            VStack(alignment: .leading, spacing: 6) {
+            switch family {
+            case .systemMedium:
+                mediumView
+            case .systemLarge:
+                largeView
+            default:
+                smallView
+            }
+        }
+        .loveraWidgetBackground(
+            LinearGradient(
+                gradient: Gradient(colors: [
+                    Color(red: 0.12, green: 0.13, blue: 0.19),
+                    Color(red: 0.06, green: 0.07, blue: 0.10)
+                ]),
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .widgetURL(URL(string: "lovera://home"))
+    }
+
+    // KÜÇÜK KARE GÖRÜNÜMÜ (.systemSmall)
+    var smallView: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("💜")
+                    .font(.system(size: 12))
+
+                Text(entry.partnerName)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(Color.white)
+                    .lineLimit(1)
+
+                Spacer()
+            }
+
+            VStack(alignment: .leading, spacing: -2) {
+                HStack(alignment: .lastTextBaseline, spacing: 3) {
+                    Text(entry.daysCount)
+                        .font(.system(size: 30, weight: .black, design: .rounded))
+                        .foregroundColor(Color(red: 0.72, green: 0.62, blue: 1.0))
+                    Text("gün")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(Color.white.opacity(0.85))
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: 5) {
+                HStack(spacing: 3) {
+                    Text("🔋")
+                        .font(.system(size: 10))
+                    Text(entry.batteryLevel)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(batteryColor(for: entry.batteryLevel))
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .background(Color.white.opacity(0.12))
+                .cornerRadius(8)
+
+                HStack(spacing: 3) {
+                    Text(entry.statusEmoji)
+                        .font(.system(size: 10))
+                    Text(entry.statusText)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(Color.white)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .background(Color.white.opacity(0.12))
+                .cornerRadius(8)
+            }
+        }
+        .padding(10)
+    }
+
+    // ORTA DİKDÖRTGEN GÖRÜNÜMÜ (.systemMedium)
+    var mediumView: some View {
+        HStack(spacing: 12) {
+            // Sol Taraf: Gün Sayacı
+            VStack(alignment: .leading, spacing: 2) {
                 HStack {
                     Text("💜")
                         .font(.system(size: 13))
-
                     Text(entry.partnerName)
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(Color(red: 0.95, green: 0.96, blue: 0.97))
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.white)
                         .lineLimit(1)
-
-                    Spacer()
-
-                    Text(entry.lastSeen)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(
-                            (entry.lastSeen.contains("Şimdi") || entry.lastSeen.contains("Canlı"))
-                                ? Color(red: 0.20, green: 0.83, blue: 0.60)
-                                : Color(red: 0.80, green: 0.84, blue: 0.88)
-                        )
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.white.opacity(0.08))
-                        .clipShape(Capsule())
                 }
+                Spacer()
+                Text(entry.daysCount)
+                    .font(.system(size: 38, weight: .black, design: .rounded))
+                    .foregroundColor(Color(red: 0.72, green: 0.62, blue: 1.0))
+                Text("birlikte geçen gün")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(Color.white.opacity(0.7))
+            }
 
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(alignment: .lastTextBaseline, spacing: 4) {
-                        Text(entry.daysCount)
-                            .font(.system(size: 32, weight: .black, design: .rounded))
-                            .foregroundColor(Color(red: 0.65, green: 0.55, blue: 0.98))
-                        Text("gün")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(Color(red: 0.89, green: 0.91, blue: 0.94))
-                    }
-                }
+            Spacer()
 
-                Spacer(minLength: 0)
+            // Sağ Taraf: Durum Kartları
+            VStack(alignment: .trailing, spacing: 8) {
+                Text(entry.lastSeen)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(Color(red: 0.20, green: 0.83, blue: 0.60))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.white.opacity(0.10))
+                    .clipShape(Capsule())
+
+                Spacer()
 
                 HStack(spacing: 6) {
                     HStack(spacing: 4) {
@@ -122,11 +202,10 @@ struct LoveraPartnerEntryView: View {
                         Text(entry.batteryLevel)
                             .font(.system(size: 11, weight: .bold))
                             .foregroundColor(batteryColor(for: entry.batteryLevel))
-                            .lineLimit(1)
                     }
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 5)
-                    .background(Color.white.opacity(0.08))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(Color.white.opacity(0.10))
                     .cornerRadius(10)
 
                     HStack(spacing: 4) {
@@ -134,28 +213,78 @@ struct LoveraPartnerEntryView: View {
                             .font(.system(size: 11))
                         Text(entry.statusText)
                             .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(Color(red: 0.95, green: 0.96, blue: 0.97))
-                            .lineLimit(1)
+                            .foregroundColor(.white)
                     }
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 5)
-                    .background(Color.white.opacity(0.08))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(Color.white.opacity(0.10))
                     .cornerRadius(10)
                 }
             }
-            .padding(12)
         }
-        .loveraWidgetBackground(
-            LinearGradient(
-                gradient: Gradient(colors: [
-                    Color(red: 0.10, green: 0.11, blue: 0.15),
-                    Color(red: 0.05, green: 0.05, blue: 0.07)
-                ]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
-        .widgetURL(URL(string: "lovera://home"))
+        .padding(14)
+    }
+
+    // BÜYÜK KARE GÖRÜNÜMÜ (.systemLarge)
+    var largeView: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("💜")
+                    .font(.system(size: 18))
+                Text(entry.partnerName)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.white)
+                Spacer()
+                Text(entry.lastSeen)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(Color(red: 0.20, green: 0.83, blue: 0.60))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.white.opacity(0.10))
+                    .clipShape(Capsule())
+            }
+
+            Spacer()
+
+            VStack(alignment: .center, spacing: 4) {
+                Text(entry.daysCount)
+                    .font(.system(size: 58, weight: .black, design: .rounded))
+                    .foregroundColor(Color(red: 0.72, green: 0.62, blue: 1.0))
+                Text("Gündür Birlikteyiz 💕")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Color.white.opacity(0.8))
+            }
+            .frame(maxWidth: .infinity)
+
+            Spacer()
+
+            HStack(spacing: 10) {
+                HStack(spacing: 6) {
+                    Text("🔋")
+                        .font(.system(size: 14))
+                    Text(entry.batteryLevel)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(batteryColor(for: entry.batteryLevel))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(Color.white.opacity(0.10))
+                .cornerRadius(12)
+
+                HStack(spacing: 6) {
+                    Text(entry.statusEmoji)
+                        .font(.system(size: 14))
+                    Text(entry.statusText)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.white)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(Color.white.opacity(0.10))
+                .cornerRadius(12)
+            }
+        }
+        .padding(16)
     }
 
     private func batteryColor(for text: String) -> Color {
@@ -181,8 +310,8 @@ struct LoveraPartnerWidget: Widget {
             LoveraPartnerEntryView(entry: entry)
         }
         .configurationDisplayName("Lovera Partner Durumu")
-        .description("Sevgilinizin şarjını, anlık durumunu ve aşk gün sayacınızı kare widget olarak ana ekranınızda görün.")
-        .supportedFamilies([.systemSmall])
+        .description("Sevgilinizin şarjını, anlık durumunu ve aşk gün sayacınızı ana ekranınızda görün.")
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
 
@@ -218,13 +347,13 @@ struct LoveraDrawingProvider: TimelineProvider {
     }
 
     private func fetchCurrentEntry() -> LoveraDrawingEntry {
-        let sharedDefaults = UserDefaults(suiteName: loveraAppGroupId)
-        let senderName = sharedDefaults?.string(forKey: "drawing_sender") 
-            ?? sharedDefaults?.string(forKey: "drawing_sender_name") 
+        let sharedDefaults = UserDefaults(suiteName: loveraAppGroupId) ?? UserDefaults.standard
+        let senderName = sharedDefaults.string(forKey: "drawing_sender") 
+            ?? sharedDefaults.string(forKey: "drawing_sender_name") 
             ?? "Sevgilim"
-        let timeAgo = sharedDefaults?.string(forKey: "drawing_time_ago") ?? "Şimdi"
-        let imagePath = sharedDefaults?.string(forKey: "drawing_image_path")
-        let imageBase64 = sharedDefaults?.string(forKey: "drawing_image_base64")
+        let timeAgo = sharedDefaults.string(forKey: "drawing_time_ago") ?? "Şimdi"
+        let imagePath = sharedDefaults.string(forKey: "drawing_image_path")
+        let imageBase64 = sharedDefaults.string(forKey: "drawing_image_base64")
 
         return LoveraDrawingEntry(
             date: Date(),
