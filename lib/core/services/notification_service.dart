@@ -216,11 +216,12 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
             await WidgetSyncService.syncDrawingWidget(
               imagePath: drawingPath,
+              imageBase64: imageBase64,
               senderName: senderName,
               timeAgo: 'Şimdi',
               timestampMillis: tsMillis,
             );
-            debugPrint('[FCM-BG-DRAWING-SYNC] Uygulama kapalıyken yeni çizim widget\'a başarıyla yazıldı: $senderName');
+            debugPrint('[FCM-BG-DRAWING-SYNC] Uygulama kapalıyken yeni çizim widget\'a başarıyla yazıldı: $senderName (base64 dahil)');
           }
         }
       }

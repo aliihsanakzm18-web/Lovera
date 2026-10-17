@@ -242,6 +242,7 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
         final nowMs = DateTime.now().millisecondsSinceEpoch;
         await WidgetSyncService.syncDrawingWidget(
           imagePath: localPath,
+          imageBase64: base64Image,
           senderName: 'Sen',
           timeAgo: 'Şimdi',
           timestampMillis: nowMs,

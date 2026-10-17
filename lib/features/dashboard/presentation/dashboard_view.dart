@@ -400,11 +400,12 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
 
           await WidgetSyncService.syncDrawingWidget(
             imagePath: drawingPath,
+            imageBase64: imageBase64,
             senderName: isMe ? 'Sen' : senderName,
             timeAgo: timeAgo,
             timestampMillis: tsMillis,
           );
-          debugPrint('[DashboardView] Çizim widget senkronize edildi: sender=$senderName, isMe=$isMe, timeAgo=$timeAgo');
+          debugPrint('[DashboardView] Çizim widget senkronize edildi: sender=$senderName, isMe=$isMe, timeAgo=$timeAgo, hasBase64=${imageBase64.isNotEmpty}');
         } catch (e) {
           debugPrint('[DashboardView] Çizim widget sync error: $e');
         }

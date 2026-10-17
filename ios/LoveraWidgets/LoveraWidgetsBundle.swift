@@ -181,8 +181,8 @@ struct LoveraPartnerWidget: Widget {
             LoveraPartnerEntryView(entry: entry)
         }
         .configurationDisplayName("Lovera Partner Durumu")
-        .description("Sevgilinin şarjını, anlık durumunu ve aşk gün sayacınızı ana ekranınızda görün.")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .description("Sevgilinizin şarjını, anlık durumunu ve aşk gün sayacınızı kare widget olarak ana ekranınızda görün.")
+        .supportedFamilies([.systemSmall])
     }
 }
 
@@ -192,6 +192,7 @@ struct LoveraDrawingEntry: TimelineEntry {
     let senderName: String
     let timeAgo: String
     let imagePath: String?
+    let imageBase64: String?
 }
 
 struct LoveraDrawingProvider: TimelineProvider {
@@ -200,7 +201,8 @@ struct LoveraDrawingProvider: TimelineProvider {
             date: Date(),
             senderName: "Sevgilim",
             timeAgo: "Şimdi",
-            imagePath: nil
+            imagePath: nil,
+            imageBase64: nil
         )
     }
 
@@ -217,15 +219,19 @@ struct LoveraDrawingProvider: TimelineProvider {
 
     private func fetchCurrentEntry() -> LoveraDrawingEntry {
         let sharedDefaults = UserDefaults(suiteName: loveraAppGroupId)
-        let senderName = sharedDefaults?.string(forKey: "drawing_sender") ?? "Sevgilim"
+        let senderName = sharedDefaults?.string(forKey: "drawing_sender") 
+            ?? sharedDefaults?.string(forKey: "drawing_sender_name") 
+            ?? "Sevgilim"
         let timeAgo = sharedDefaults?.string(forKey: "drawing_time_ago") ?? "Şimdi"
         let imagePath = sharedDefaults?.string(forKey: "drawing_image_path")
+        let imageBase64 = sharedDefaults?.string(forKey: "drawing_image_base64")
 
         return LoveraDrawingEntry(
             date: Date(),
             senderName: senderName,
             timeAgo: timeAgo,
-            imagePath: imagePath
+            imagePath: imagePath,
+            imageBase64: imageBase64
         )
     }
 }
@@ -233,9 +239,37 @@ struct LoveraDrawingProvider: TimelineProvider {
 struct LoveraDrawingEntryView: View {
     var entry: LoveraDrawingProvider.Entry
 
+    private var drawingImage: UIImage? {
+        // 1. Önce doğrudan UserDefaults App Group'a yazılan Base64 kontrolü (Kum havuzu sınırını aşar)
+        if let b64 = entry.imageBase64, !b64.isEmpty {
+            let clean = b64.contains(",") ? String(b64.split(separator: ",").last ?? "") : b64
+            if let data = Data(base64Encoded: clean, options: .ignoreUnknownCharacters),
+               let img = UIImage(data: data) {
+                return img
+            }
+        }
+
+        // 2. Eğer dosya yolu verilmişse doğrudan oku
+        if let path = entry.imagePath, !path.isEmpty {
+            if let img = UIImage(contentsOfFile: path) {
+                return img
+            }
+            // App Group paylaşımlı klasöründe mi kontrol et
+            if let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: loveraAppGroupId) {
+                let fileName = (path as NSString).lastPathComponent
+                let groupFile = containerURL.appendingPathComponent(fileName).path
+                if let img = UIImage(contentsOfFile: groupFile) {
+                    return img
+                }
+            }
+        }
+
+        return nil
+    }
+
     var body: some View {
         ZStack {
-            if let path = entry.imagePath, let uiImage = UIImage(contentsOfFile: path) {
+            if let uiImage = drawingImage {
                 Image(uiImage: uiImage)
                     .resizable()
                     .aspectRatio(contentMode: .fit)

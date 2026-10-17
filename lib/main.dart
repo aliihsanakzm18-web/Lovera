@@ -7,10 +7,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'dart:convert';
 
+import 'package:home_widget/home_widget.dart';
+
 import 'core/models/models.dart';
 import 'core/services/background_tracking_service.dart';
 import 'core/services/connectivity_service.dart';
 import 'core/services/notification_service.dart';
+import 'core/services/widget_sync_service.dart';
 import 'core/state/app_state.dart';
 import 'core/theme/app_theme.dart';
 import 'features/splash/presentation/splash_view.dart';
@@ -74,6 +77,28 @@ Future<void> main() async {
     } catch (e) {
       debugPrint('Partner cache decode error: $e');
     }
+  }
+
+  // iOS App Group'u hemen bağla ve hafızadaki son partner verisini anında Widget'a aktar
+  try {
+    await HomeWidget.setAppGroupId(WidgetSyncService.appGroupId);
+    if (initialPartner != null || initialStartDate != null) {
+      List<SavedPlace> cachedPlaces = [];
+      final cachedPlacesJson = prefs.getString('cached_saved_places_json');
+      if (cachedPlacesJson != null && cachedPlacesJson.isNotEmpty) {
+        try {
+          final List decoded = jsonDecode(cachedPlacesJson);
+          cachedPlaces = decoded.map((e) => SavedPlace.fromJson(Map<String, dynamic>.from(e), e['id']?.toString() ?? '')).toList();
+        } catch (_) {}
+      }
+      WidgetSyncService.syncWidget(
+        partner: initialPartner,
+        startDate: initialStartDate,
+        savedPlaces: cachedPlaces,
+      );
+    }
+  } catch (e) {
+    debugPrint('[Main] Widget early sync error: $e');
   }
 
   runApp(ProviderScope(

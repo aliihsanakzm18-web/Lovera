@@ -199,6 +199,7 @@ class WidgetSyncService {
   static Future<void> syncDrawingWidget({
     required String imagePath,
     required String senderName,
+    String? imageBase64,
     String timeAgo = 'Şimdi',
     int? timestampMillis,
   }) async {
@@ -208,6 +209,11 @@ class WidgetSyncService {
       } catch (_) {}
 
       await HomeWidget.saveWidgetData<String>('drawing_image_path', imagePath);
+      if (imageBase64 != null && imageBase64.isNotEmpty) {
+        // Base64 doğrudan App Group UserDefaults'a kaydedilerek iOS sandbox sınırı aşılır
+        await HomeWidget.saveWidgetData<String>('drawing_image_base64', imageBase64);
+      }
+      await HomeWidget.saveWidgetData<String>('drawing_sender', senderName);
       await HomeWidget.saveWidgetData<String>('drawing_sender_name', senderName);
       await HomeWidget.saveWidgetData<String>('drawing_time_ago', timeAgo);
       if (timestampMillis != null) {
@@ -221,10 +227,11 @@ class WidgetSyncService {
         androidName: androidDrawingWidgetName,
         iOSName: iOSDrawingWidgetName,
       );
-      debugPrint('[WidgetSyncService] Drawing widget updated: path=$imagePath, sender=$senderName, ts=$timestampMillis');
+      debugPrint('[WidgetSyncService] Drawing widget updated: path=$imagePath, sender=$senderName, hasBase64=${imageBase64 != null}, ts=$timestampMillis');
     } catch (e) {
       debugPrint('[WidgetSyncService] syncDrawingWidget error: $e');
     }
   }
 }
+
 

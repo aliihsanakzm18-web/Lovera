@@ -196,6 +196,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
 
                   await WidgetSyncService.syncDrawingWidget(
                     imagePath: drawingPath,
+                    imageBase64: imageBase64,
                     senderName: isMe ? 'Sen' : senderName,
                     timeAgo: timeAgo,
                     timestampMillis: tsMillis,
