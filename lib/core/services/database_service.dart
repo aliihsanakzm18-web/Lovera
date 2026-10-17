@@ -358,6 +358,8 @@ class DatabaseService {
     required double lat,
     required double lng,
     required String placeTitle,
+    String? meetingTime,
+    String? note,
   }) async {
     if (uid == null) return;
     await _db.collection('users').doc(partnerUid).set({
@@ -369,6 +371,8 @@ class DatabaseService {
         'lng': lng,
         'title': placeTitle,
         'status': 'pending',
+        if (meetingTime != null && meetingTime.isNotEmpty) 'meetingTime': meetingTime,
+        if (note != null && note.isNotEmpty) 'note': note,
         'createdAt': FieldValue.serverTimestamp(),
       }
     }, SetOptions(merge: true));
@@ -383,6 +387,8 @@ class DatabaseService {
     String? coupleId,
     double? lat,
     double? lng,
+    String? meetingTime,
+    String? note,
   }) async {
     if (uid == null) return;
     final batch = _db.batch();
@@ -396,6 +402,8 @@ class DatabaseService {
         'byName': responderName,
         'lat': lat,
         'lng': lng,
+        if (meetingTime != null && meetingTime.isNotEmpty) 'meetingTime': meetingTime,
+        if (note != null && note.isNotEmpty) 'note': note,
         'at': DateTime.now().millisecondsSinceEpoch,
       }
     }, SetOptions(merge: true));
@@ -405,6 +413,8 @@ class DatabaseService {
           'title': placeTitle,
           'lat': lat,
           'lng': lng,
+          if (meetingTime != null && meetingTime.isNotEmpty) 'meetingTime': meetingTime,
+          if (note != null && note.isNotEmpty) 'note': note,
           'acceptedAt': FieldValue.serverTimestamp(),
         }
       }, SetOptions(merge: true));
@@ -978,5 +988,730 @@ class DatabaseService {
           .timeout(const Duration(seconds: 4));
     } catch (_) {}
   }
+
+  // ==========================================
+  // CANLI SATRANÇ METOTLARI
+  // ==========================================
+
+  /// Satranç oyunu canlı veri akışı (Stream)
+  Stream<DocumentSnapshot<Map<String, dynamic>>> chessGameStream(String coupleId) {
+    return _db.collection('couples').doc(coupleId).collection('games').doc('chess').snapshots();
+  }
+
+  /// Satranç oyununu başlat (veya yeniden başlat)
+  Future<void> startChessGame({
+    required String coupleId,
+    required String whitePlayerUid,
+    required String whitePlayerName,
+    required String blackPlayerUid,
+    required String blackPlayerName,
+  }) async {
+    try {
+      await _db.collection('couples').doc(coupleId).collection('games').doc('chess').set({
+        'status': 'active', // active, checkmate, stalemate, resigned, draw, ended
+        'fen': 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        'whitePlayerUid': whitePlayerUid,
+        'whitePlayerName': whitePlayerName,
+        'blackPlayerUid': blackPlayerUid,
+        'blackPlayerName': blackPlayerName,
+        'turn': 'w', // 'w' (Beyaz) veya 'b' (Siyah)
+        'lastMove': null,
+        'winnerUid': null,
+        'winnerReason': null,
+        'moveHistory': [],
+        'whiteReady': false,
+        'blackReady': false,
+        'whiteOnline': true,
+        'blackOnline': true,
+        'whiteRematch': false,
+        'blackRematch': false,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('[CHESS] startChessGame error: $e');
+      rethrow;
+    }
+  }
+
+  /// Satranç hamlesini kaydet
+  Future<void> makeChessMove({
+    required String coupleId,
+    required String newFen,
+    required String nextTurn,
+    required Map<String, dynamic> moveData,
+    String? status,
+    String? winnerUid,
+    String? winnerReason,
+  }) async {
+    try {
+      final updates = <String, dynamic>{
+        'fen': newFen,
+        'turn': nextTurn,
+        'lastMove': moveData,
+        'moveHistory': FieldValue.arrayUnion([moveData]),
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+      if (status != null) updates['status'] = status;
+      if (winnerUid != null) updates['winnerUid'] = winnerUid;
+      if (winnerReason != null) updates['winnerReason'] = winnerReason;
+
+      await _db.collection('couples').doc(coupleId).collection('games').doc('chess').update(updates);
+    } catch (e) {
+      debugPrint('[CHESS] makeChessMove error: $e');
+      rethrow;
+    }
+  }
+
+  /// Satranç oyun ekranında olup olmadığını günceller (presence)
+  Future<void> setChessOnlineStatus({
+    required String coupleId,
+    required bool isWhite,
+    required bool isOnline,
+  }) async {
+    try {
+      final docRef = _db.collection('couples').doc(coupleId).collection('games').doc('chess');
+      final field = isWhite ? 'whiteOnline' : 'blackOnline';
+      await docRef.set({
+        field: isOnline,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('[CHESS] setChessOnlineStatus error: $e');
+    }
+  }
+
+  /// Satranç oyununu duraklat
+  Future<void> pauseChessGame({
+    required String coupleId,
+    required String pausedByUid,
+    required String pausedByName,
+  }) async {
+    try {
+      final docRef = _db.collection('couples').doc(coupleId).collection('games').doc('chess');
+      final snap = await docRef.get();
+      if (!snap.exists) return;
+      final currentStatus = snap.data()?['status'] as String?;
+      if (currentStatus == 'active') {
+        await docRef.update({
+          'status': 'paused',
+          'pausedByUid': pausedByUid,
+          'pausedByName': pausedByName,
+          'pausedAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+    } catch (e) {
+      debugPrint('[CHESS] pauseChessGame error: $e');
+    }
+  }
+
+  /// Satranç oyununu devam ettir
+  Future<bool> resumeChessGame({
+    required String coupleId,
+  }) async {
+    try {
+      final docRef = _db.collection('couples').doc(coupleId).collection('games').doc('chess');
+      final snap = await docRef.get();
+      if (!snap.exists) return false;
+      final data = snap.data();
+      if (data == null) return false;
+
+      final currentStatus = data['status'] as String?;
+      final whiteOnline = data['whiteOnline'] == true;
+      final blackOnline = data['blackOnline'] == true;
+
+      if (!whiteOnline || !blackOnline) {
+        return false;
+      }
+
+      if (currentStatus == 'paused') {
+        await docRef.update({
+          'status': 'active',
+          'pausedByUid': null,
+          'pausedByName': null,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('[CHESS] resumeChessGame error: $e');
+      return false;
+    }
+  }
+
+  /// Oyundan tamamen çıkınca oyunu sonlandır ve sıfırla
+  Future<void> exitChessGame({
+    required String coupleId,
+    required String exitUid,
+    String? exitReason,
+  }) async {
+    try {
+      final docRef = _db.collection('couples').doc(coupleId).collection('games').doc('chess');
+      final snap = await docRef.get();
+      if (!snap.exists) return;
+      final currentStatus = snap.data()?['status'] as String?;
+      if (currentStatus == 'active' || currentStatus == 'waiting_ready' || currentStatus == 'paused') {
+        await docRef.update({
+          'status': 'ended',
+          'exitReason': exitReason ?? 'Partnerin oyundan çıktı',
+          'exitUid': exitUid,
+          'whiteOnline': false,
+          'blackOnline': false,
+          'whiteRematch': false,
+          'blackRematch': false,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+    } catch (e) {
+      debugPrint('[CHESS] exitChessGame error: $e');
+    }
+  }
+
+  /// Satranç oyununu sıfırla (Tekrar 'Oyna' ekranına dönmek için)
+  Future<void> resetChessGame({
+    required String coupleId,
+    String? exitReason,
+    String? exitUid,
+  }) async {
+    try {
+      await _db.collection('couples').doc(coupleId).collection('games').doc('chess').set({
+        'status': 'ended',
+        'exitReason': exitReason ?? 'Partnerin oyundan çıktı',
+        'exitUid': exitUid ?? uid,
+        'whiteOnline': false,
+        'blackOnline': false,
+        'whiteRematch': false,
+        'blackRematch': false,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('[CHESS] resetChessGame error: $e');
+    }
+  }
+
+  /// Oyun bittikten sonra 'Tekrar Oyna' isteği
+  /// Her iki taraf da bastığında oyun waiting_ready aşamasına geçer
+  Future<void> requestChessRematch({
+    required String coupleId,
+    required bool isWhite,
+  }) async {
+    try {
+      final docRef = _db.collection('couples').doc(coupleId).collection('games').doc('chess');
+      await _db.runTransaction((transaction) async {
+        final snap = await transaction.get(docRef);
+        if (!snap.exists) return;
+        final data = snap.data();
+        if (data == null) return;
+
+        final myKey = isWhite ? 'whiteRematch' : 'blackRematch';
+        final otherKey = isWhite ? 'blackRematch' : 'whiteRematch';
+        final otherWantsRematch = data[otherKey] == true;
+
+        if (otherWantsRematch) {
+          transaction.update(docRef, {
+            'status': 'waiting_ready',
+            'fen': 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+            'turn': 'w',
+            'lastMove': null,
+            'winnerUid': null,
+            'winnerReason': null,
+            'moveHistory': [],
+            'whiteReady': false,
+            'blackReady': false,
+            'whiteRematch': false,
+            'blackRematch': false,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        } else {
+          transaction.update(docRef, {
+            myKey: true,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
+      });
+    } catch (e) {
+      debugPrint('[CHESS] requestChessRematch error: $e');
+    }
+  }
+
+  /// Oyundan çekil / Pes et
+  Future<void> resignChessGame({
+    required String coupleId,
+    required String resignedUid,
+    required String winnerUid,
+  }) async {
+    try {
+      await _db.collection('couples').doc(coupleId).collection('games').doc('chess').update({
+        'status': 'resigned',
+        'winnerUid': winnerUid,
+        'winnerReason': 'Partner oyundan çekildi',
+        'whiteRematch': false,
+        'blackRematch': false,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('[CHESS] resignChessGame error: $e');
+    }
+  }
+
+  /// Partnere satranç oynama isteği gönderir
+  Future<void> sendChessRequest({
+    required String partnerUid,
+    required String fromName,
+    required String coupleId,
+  }) async {
+    final myUid = uid;
+    if (myUid == null) return;
+    try {
+      final reqId = 'chess_${DateTime.now().millisecondsSinceEpoch}';
+      await _db.collection('users').doc(partnerUid).set({
+        'pendingGameRequest': {
+          'id': reqId,
+          'game': 'chess',
+          'gameTitle': 'Satranç',
+          'fromUid': myUid,
+          'fromName': fromName,
+          'status': 'pending',
+          'createdAt': FieldValue.serverTimestamp(),
+        },
+      }, SetOptions(merge: true));
+
+      await _db.collection('couples').doc(coupleId).collection('games').doc('chess').set({
+        'status': 'invitation_pending',
+        'fromUid': myUid,
+        'toUid': partnerUid,
+        'whitePlayerUid': myUid,
+        'whitePlayerName': fromName,
+        'blackPlayerUid': partnerUid,
+        'whiteReady': false,
+        'blackReady': false,
+        'fen': 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        'turn': 'w',
+        'lastMove': null,
+        'winnerUid': null,
+        'winnerReason': null,
+        'moveHistory': [],
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('[CHESS] sendChessRequest error: $e');
+      rethrow;
+    }
+  }
+
+  /// Partnere giden oyun isteğini yanıtla (kabul / ret)
+  Future<void> respondChessRequest({
+    required String coupleId,
+    required String fromUid,
+    required bool accepted,
+    required String responderName,
+  }) async {
+    final myUid = uid;
+    if (myUid == null) return;
+    try {
+      await _db.collection('users').doc(myUid).set({
+        'pendingGameRequest': FieldValue.delete(),
+      }, SetOptions(merge: true));
+
+      await _db.collection('users').doc(fromUid).set({
+        'gameResult': {
+          'game': 'chess',
+          'status': accepted ? 'accepted' : 'rejected',
+          'byName': responderName,
+          'timestamp': FieldValue.serverTimestamp(),
+        },
+      }, SetOptions(merge: true));
+
+      if (accepted) {
+        await _db.collection('couples').doc(coupleId).collection('games').doc('chess').update({
+          'status': 'waiting_ready',
+          'blackPlayerName': responderName,
+          'whiteReady': false,
+          'blackReady': false,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      } else {
+        await _db.collection('couples').doc(coupleId).collection('games').doc('chess').update({
+          'status': 'rejected',
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+    } catch (e) {
+      debugPrint('[CHESS] respondChessRequest error: $e');
+    }
+  }
+
+  /// Oyun sonuç bildirimini temizle
+  Future<void> clearGameResult() async {
+    final myUid = uid;
+    if (myUid == null) return;
+    try {
+      await _db.collection('users').doc(myUid).update({'gameResult': FieldValue.delete()});
+    } catch (_) {}
+  }
+
+  /// Oyuncu hazır durumunu ayarla (whiteReady veya blackReady)
+  Future<void> setChessPlayerReady({
+    required String coupleId,
+    required bool isWhite,
+    required bool isReady,
+  }) async {
+    try {
+      final docRef = _db.collection('couples').doc(coupleId).collection('games').doc('chess');
+      await _db.runTransaction((transaction) async {
+        final snapshot = await transaction.get(docRef);
+        if (!snapshot.exists) return;
+        final data = snapshot.data();
+        if (data == null) return;
+
+        final myKey = isWhite ? 'whiteReady' : 'blackReady';
+        final otherKey = isWhite ? 'blackReady' : 'whiteReady';
+        final otherReady = data[otherKey] == true;
+
+        final updates = <String, dynamic>{
+          myKey: isReady,
+          'updatedAt': FieldValue.serverTimestamp(),
+        };
+
+        if (isReady && otherReady) {
+          updates['status'] = 'active';
+        }
+
+        transaction.update(docRef, updates);
+      });
+    } catch (e) {
+      debugPrint('[CHESS] setChessPlayerReady error: $e');
+    }
+  }
+
+  // ==========================================
+  // GENEL ÇOKLU OYUN METOTLARI (BİLARDO & TAVLA)
+  // ==========================================
+
+  /// Belirtilen oyun için canlı veri akışı ('billiards', 'backgammon', 'chess')
+  Stream<DocumentSnapshot<Map<String, dynamic>>> gameStream(String coupleId, String gameType) {
+    return _db.collection('couples').doc(coupleId).collection('games').doc(gameType).snapshots();
+  }
+
+  /// Oyuncu ekran içi online durumunu günceller
+  Future<void> setGameOnlineStatus({
+    required String coupleId,
+    required String gameType,
+    required bool isPlayer1,
+    required bool isOnline,
+  }) async {
+    try {
+      final docRef = _db.collection('couples').doc(coupleId).collection('games').doc(gameType);
+      final field = isPlayer1 ? 'whiteOnline' : 'blackOnline';
+      await docRef.set({
+        field: isOnline,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('[$gameType] setGameOnlineStatus error: $e');
+    }
+  }
+
+  /// Oyundan tamamen çıkınca oyunu sonlandır
+  Future<void> exitGame({
+    required String coupleId,
+    required String gameType,
+    required String exitUid,
+    String? exitReason,
+  }) async {
+    try {
+      final docRef = _db.collection('couples').doc(coupleId).collection('games').doc(gameType);
+      final snap = await docRef.get();
+      if (!snap.exists) return;
+      final currentStatus = snap.data()?['status'] as String?;
+      if (currentStatus == 'active' || currentStatus == 'waiting_ready' || currentStatus == 'paused') {
+        await docRef.update({
+          'status': 'ended',
+          'exitReason': exitReason ?? 'Partnerin oyundan çıktı',
+          'exitUid': exitUid,
+          'whiteOnline': false,
+          'blackOnline': false,
+          'whiteRematch': false,
+          'blackRematch': false,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+    } catch (e) {
+      debugPrint('[$gameType] exitGame error: $e');
+    }
+  }
+
+  /// Oyunu sıfırla ('Oyna' ekranına dönmek için)
+  Future<void> resetGame({
+    required String coupleId,
+    required String gameType,
+    String? exitReason,
+    String? exitUid,
+  }) async {
+    try {
+      await _db.collection('couples').doc(coupleId).collection('games').doc(gameType).set({
+        'status': 'ended',
+        'exitReason': exitReason ?? 'Partnerin oyundan çıktı',
+        'exitUid': exitUid ?? uid,
+        'whiteOnline': false,
+        'blackOnline': false,
+        'whiteRematch': false,
+        'blackRematch': false,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('[$gameType] resetGame error: $e');
+    }
+  }
+
+  /// Oyundan çekil / Pes et
+  Future<void> resignGame({
+    required String coupleId,
+    required String gameType,
+    required String resignedUid,
+    required String winnerUid,
+  }) async {
+    try {
+      await _db.collection('couples').doc(coupleId).collection('games').doc(gameType).update({
+        'status': 'resigned',
+        'winnerUid': winnerUid,
+        'winnerReason': 'Partner oyundan çekildi',
+        'whiteRematch': false,
+        'blackRematch': false,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('[$gameType] resignGame error: $e');
+    }
+  }
+
+  /// Oyuncu hazır durumunu ayarla
+  Future<void> setGamePlayerReady({
+    required String coupleId,
+    required String gameType,
+    required bool isPlayer1,
+    required bool isReady,
+  }) async {
+    try {
+      final docRef = _db.collection('couples').doc(coupleId).collection('games').doc(gameType);
+      await _db.runTransaction((transaction) async {
+        final snapshot = await transaction.get(docRef);
+        if (!snapshot.exists) return;
+        final data = snapshot.data();
+        if (data == null) return;
+
+        final myKey = isPlayer1 ? 'whiteReady' : 'blackReady';
+        final otherKey = isPlayer1 ? 'blackReady' : 'whiteReady';
+        final otherReady = data[otherKey] == true;
+
+        final updates = <String, dynamic>{
+          myKey: isReady,
+          'updatedAt': FieldValue.serverTimestamp(),
+        };
+
+        if (isReady && otherReady) {
+          updates['status'] = 'active';
+        }
+
+        transaction.update(docRef, updates);
+      });
+    } catch (e) {
+      debugPrint('[$gameType] setGamePlayerReady error: $e');
+    }
+  }
+
+  /// Partnere oyun oynama isteği gönderir (chess, billiards, backgammon)
+  Future<void> sendGameRequest({
+    required String gameType,
+    required String gameTitle,
+    required String partnerUid,
+    required String fromName,
+    required String coupleId,
+    required Map<String, dynamic> initialGameData,
+  }) async {
+    final myUid = uid;
+    if (myUid == null) return;
+    try {
+      final reqId = '${gameType}_${DateTime.now().millisecondsSinceEpoch}';
+      await _db.collection('users').doc(partnerUid).set({
+        'pendingGameRequest': {
+          'id': reqId,
+          'game': gameType,
+          'gameTitle': gameTitle,
+          'fromUid': myUid,
+          'fromName': fromName,
+          'status': 'pending',
+          'createdAt': FieldValue.serverTimestamp(),
+        },
+      }, SetOptions(merge: true));
+
+      await _db.collection('couples').doc(coupleId).collection('games').doc(gameType).set({
+        'status': 'invitation_pending',
+        'fromUid': myUid,
+        'toUid': partnerUid,
+        'whitePlayerUid': myUid,
+        'whitePlayerName': fromName,
+        'blackPlayerUid': partnerUid,
+        'whiteReady': false,
+        'blackReady': false,
+        'whiteOnline': true,
+        'blackOnline': false,
+        'whiteRematch': false,
+        'blackRematch': false,
+        'winnerUid': null,
+        'winnerReason': null,
+        ...initialGameData,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('[$gameType] sendGameRequest error: $e');
+      rethrow;
+    }
+  }
+
+  /// Partnere giden genel oyun isteğini yanıtla (kabul / ret)
+  Future<void> respondGameRequest({
+    required String coupleId,
+    required String gameType,
+    required String fromUid,
+    required bool accepted,
+    required String responderName,
+  }) async {
+    final myUid = uid;
+    if (myUid == null) return;
+    try {
+      await _db.collection('users').doc(myUid).set({
+        'pendingGameRequest': FieldValue.delete(),
+      }, SetOptions(merge: true));
+
+      await _db.collection('users').doc(fromUid).set({
+        'gameResult': {
+          'game': gameType,
+          'status': accepted ? 'accepted' : 'rejected',
+          'byName': responderName,
+          'timestamp': FieldValue.serverTimestamp(),
+        },
+      }, SetOptions(merge: true));
+
+      if (accepted) {
+        await _db.collection('couples').doc(coupleId).collection('games').doc(gameType).update({
+          'status': 'waiting_ready',
+          'blackPlayerName': responderName,
+          'whiteReady': false,
+          'blackReady': false,
+          'blackOnline': true,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      } else {
+        await _db.collection('couples').doc(coupleId).collection('games').doc(gameType).update({
+          'status': 'rejected',
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+    } catch (e) {
+      debugPrint('[$gameType] respondGameRequest error: $e');
+    }
+  }
+
+  /// Oyun bittikten sonra 'Tekrar Oyna' isteği (Genel)
+  Future<void> requestGameRematch({
+    required String coupleId,
+    required String gameType,
+    required bool isPlayer1,
+    required Map<String, dynamic> resetData,
+  }) async {
+    try {
+      final docRef = _db.collection('couples').doc(coupleId).collection('games').doc(gameType);
+      await _db.runTransaction((transaction) async {
+        final snap = await transaction.get(docRef);
+        if (!snap.exists) return;
+        final data = snap.data();
+        if (data == null) return;
+
+        final myKey = isPlayer1 ? 'whiteRematch' : 'blackRematch';
+        final otherKey = isPlayer1 ? 'blackRematch' : 'whiteRematch';
+        final otherWantsRematch = data[otherKey] == true;
+
+        if (otherWantsRematch) {
+          transaction.update(docRef, {
+            'status': 'waiting_ready',
+            'winnerUid': null,
+            'winnerReason': null,
+            'whiteReady': false,
+            'blackReady': false,
+            'whiteRematch': false,
+            'blackRematch': false,
+            ...resetData,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        } else {
+          transaction.update(docRef, {
+            myKey: true,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
+      });
+    } catch (e) {
+      debugPrint('[$gameType] requestGameRematch error: $e');
+    }
+  }
+
+  /// Oyun durumunu güncelle (Bilardo atışı veya Tavla hamlesi / zar atışı)
+  Future<void> updateGameState({
+    required String coupleId,
+    required String gameType,
+    required Map<String, dynamic> updates,
+  }) async {
+    try {
+      await _db.collection('couples').doc(coupleId).collection('games').doc(gameType).update({
+        ...updates,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('[$gameType] updateGameState error: $e');
+      rethrow;
+    }
+  }
+
+  /// Çizim Gönder (Canlı Çizim Tuvali / Noteit Modeli)
+  Future<void> sendDrawing({
+    required String coupleId,
+    required String imageBase64,
+    required String senderName,
+    String? note,
+  }) async {
+    if (uid == null) return;
+    try {
+      final drawingDoc = {
+        'senderId': uid,
+        'senderName': senderName,
+        'imageBase64': imageBase64,
+        'note': note,
+        'createdAt': FieldValue.serverTimestamp(),
+      };
+
+      // 1. Son çizimi anında partnerin erişebileceği ana referansa yaz
+      await _db.collection('couples').doc(coupleId).collection('drawings').doc('latest').set(
+        drawingDoc,
+        SetOptions(merge: true),
+      );
+
+      // 2. Geçmiş albümüne de ekle
+      await _db.collection('couples').doc(coupleId).collection('drawings_history').add(drawingDoc);
+      debugPrint('[DatabaseService] Drawing sent successfully: sender=$senderName');
+    } catch (e) {
+      debugPrint('[DatabaseService] sendDrawing error: $e');
+      rethrow;
+    }
+  }
+
+  /// Çiftin son canlı çizimini dinle
+  Stream<DocumentSnapshot<Map<String, dynamic>>>? latestDrawingStream(String coupleId) {
+    if (coupleId.isEmpty) return null;
+    return _db.collection('couples').doc(coupleId).collection('drawings').doc('latest').snapshots();
+  }
 }
+
+
 

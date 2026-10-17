@@ -9,6 +9,7 @@ import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../onboarding/presentation/onboarding_flow.dart';
 import 'account_settings_view.dart';
+import 'widget_settings_view.dart';
 
 class SettingsView extends ConsumerStatefulWidget {
   const SettingsView({super.key});
@@ -495,6 +496,17 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                     ],
                   ),
                   onTap: _openThemeSettings,
+                ),
+                Divider(height: 1, indent: 56, color: theme.dividerColor),
+                _SettingsTile(
+                  icon: Icons.widgets_outlined,
+                  title: 'Widget Ayarları',
+                  trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const WidgetSettingsView()),
+                    );
+                  },
                 ),
                 Divider(height: 1, indent: 56, color: theme.dividerColor),
                 _SettingsTile(

@@ -62,6 +62,30 @@
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="lovera_partner" />
 
+        <!-- Lovera Partner Ana Ekran Masaüstü Widget'ı -->
+        <receiver
+            android:name=".LoveraPartnerWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/lovera_partner_widget_info" />
+        </receiver>
+
+        <!-- Lovera Canlı Karşılıklı Çizim Widget'ı (Noteit Modeli) -->
+        <receiver
+            android:name=".LoveraDrawingWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/lovera_drawing_widget_info" />
+        </receiver>
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

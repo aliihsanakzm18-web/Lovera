@@ -6,6 +6,9 @@ import '../../../core/theme/app_theme.dart';
 import '../../chat/presentation/chat_view.dart';
 import '../../dashboard/presentation/dashboard_view.dart';
 import '../../games/presentation/games_view.dart';
+import '../../games/presentation/chess_game_view.dart';
+import '../../games/presentation/billiards_game_view.dart';
+import '../../games/presentation/backgammon_game_view.dart';
 import '../../map/presentation/live_map_view.dart';
 
 /// Lovera Ana Kabuk (Shell):
@@ -18,9 +21,15 @@ import '../../map/presentation/live_map_view.dart';
 /// Sabit Alt Gezinti Çubuğu (Bottom Navigation Bar):
 /// Sadece [Ana Sayfa (1), Mesajlar (2), Oyun (3)] için sabit, temaya özgü şık ikonlar barındırır.
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:home_widget/home_widget.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/notification_service.dart';
+import '../../../core/services/widget_sync_service.dart';
 import '../../../core/state/app_state.dart';
+import '../../drawing/presentation/drawing_screen.dart';
 
 class MainNavigationShell extends ConsumerStatefulWidget {
   const MainNavigationShell({super.key, this.initialPage = 1});
@@ -38,9 +47,12 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
   StreamSubscription? _deliverySub;
   StreamSubscription? _meetingSub;
   StreamSubscription? _coupleSub;
+  StreamSubscription? _drawingSub;
   String? _shownMeetingId;
   bool _meetingSheetOpen = false;
   Map<String, dynamic>? _activeReviewMeetingRequest;
+  String? _shownGameRequestId;
+  bool _gameSheetOpen = false;
 
   @override
   void initState() {
@@ -48,25 +60,40 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
     _currentIndex = widget.initialPage;
     _pageController = PageController(initialPage: widget.initialPage);
 
+    // Widget'a tıklanarak uygulama açıldıysa yakala
+    _checkWidgetLaunch();
+
     // Uygulama açık olduğu sürece (ister ana sayfada, ister sohbette, ister oyunda)
-    // her 15 saniyede bir partnerin "Şimdi aktif" görmesi için presence heartbeat gönder
-    DatabaseService().setAppPresence(true);
-    _heartbeatTimer = Timer.periodic(const Duration(seconds: 15), (_) {
-      DatabaseService().setAppPresence(true);
-    });
+    // her 20 saniyede bir partnerin "Şimdi aktif" görmesi için presence heartbeat gönder
+    _startHeartbeat();
 
     _lifecycleListener = AppLifecycleListener(
-      onResume: () => DatabaseService().setAppPresence(true),
-      onPause: () => DatabaseService().setAppPresence(false),
-      onDetach: () => DatabaseService().setAppPresence(false),
+      onResume: () {
+        DatabaseService().setAppPresence(true);
+        _startHeartbeat();
+      },
+      onPause: () {
+        _stopHeartbeat();
+        DatabaseService().setAppPresence(false);
+      },
+      onDetach: () {
+        _stopHeartbeat();
+        DatabaseService().setAppPresence(false);
+      },
     );
 
     // Bildirim servisini bağla:
     // 1) Kullanıcı sohbetteyken bildirimleri sessize al
-    // 2) Bildirime tıklandığında doğrudan Sohbet (Sayfa 2) sayfasına uçur
+    // 2) Kullanıcı satrançtayken oyun bildirimlerini sessize al
+    // 3) Bildirime tıklandığında (eğer satrançta değilse) Sohbet (Sayfa 2) sayfasına uçur
     NotificationService().isChatScreenActive = () => _currentIndex == 2;
+    NotificationService().isChessScreenActive = () => ref.read(isChessScreenOpenProvider);
     NotificationService().onNotificationTap = () {
       if (mounted) {
+        if (ref.read(isChessScreenOpenProvider)) {
+          debugPrint('[NOTIFICATION-TAP] Kullanıcı zaten satranç ekranında, sayfa değişimi engellendi.');
+          return;
+        }
         _goToPage(2);
       }
     };
@@ -117,13 +144,80 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
         }
       }
 
+      void setupDrawingListener(String? coupleId) {
+        _drawingSub?.cancel();
+        if (coupleId != null && coupleId.isNotEmpty) {
+          final dStream = DatabaseService().latestDrawingStream(coupleId);
+          if (dStream != null) {
+            _drawingSub = dStream.listen((snap) async {
+              if (!mounted || !snap.exists || snap.data() == null) return;
+              final data = snap.data()!;
+              final imageBase64 = data['imageBase64'] as String?;
+              final senderId = data['senderId'] as String?;
+              final senderName = data['senderName'] as String? ?? 'Partnerin';
+              final myUid = DatabaseService().uid;
+
+              if (imageBase64 != null && imageBase64.isNotEmpty) {
+                try {
+                  final raw = imageBase64.split(',').last;
+                  final bytes = base64Decode(raw);
+                  final appDir = await getApplicationDocumentsDirectory();
+                  final drawingPath = '${appDir.path}/partner_drawing_latest.png';
+                  final f = File(drawingPath);
+                  await f.writeAsBytes(bytes);
+
+                  final isMe = senderId == myUid;
+                  DateTime? createdAt;
+                  final rawCreatedAt = data['createdAt'];
+                  if (rawCreatedAt is int) {
+                    createdAt = DateTime.fromMillisecondsSinceEpoch(rawCreatedAt);
+                  } else if (rawCreatedAt != null) {
+                    try {
+                      createdAt = (rawCreatedAt as dynamic).toDate();
+                    } catch (_) {}
+                  }
+
+                  String timeAgo = 'Şimdi';
+                  int? tsMillis;
+                  if (createdAt != null) {
+                    tsMillis = createdAt.millisecondsSinceEpoch;
+                    final diff = DateTime.now().difference(createdAt);
+                    final minutes = diff.inMinutes;
+                    if (minutes < 1) {
+                      timeAgo = 'Şimdi';
+                    } else if (minutes < 60) {
+                      timeAgo = '$minutes dk önce';
+                    } else if (diff.inHours < 24) {
+                      timeAgo = '${diff.inHours} sa önce';
+                    } else {
+                      timeAgo = '${diff.inDays} gün önce';
+                    }
+                  }
+
+                  await WidgetSyncService.syncDrawingWidget(
+                    imagePath: drawingPath,
+                    senderName: isMe ? 'Sen' : senderName,
+                    timeAgo: timeAgo,
+                    timestampMillis: tsMillis,
+                  );
+                } catch (e) {
+                  debugPrint('[MainNavigationShell] Drawing widget sync error: $e');
+                }
+              }
+            });
+          }
+        }
+      }
+
       setupDeliveryListener(ref.read(coupleIdProvider));
       setupCoupleListener(ref.read(coupleIdProvider));
+      setupDrawingListener(ref.read(coupleIdProvider));
       // coupleId sonradan yüklenirse de dinleyiciyi başlat
       ref.listenManual(coupleIdProvider, (prev, next) {
         if (next != prev && next != null) {
           setupDeliveryListener(next);
           setupCoupleListener(next);
+          setupDrawingListener(next);
         }
       });
 
@@ -136,14 +230,55 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
     });
   }
 
+  Future<void> _checkWidgetLaunch() async {
+    try {
+      final uri = await HomeWidget.initiallyLaunchedFromHomeWidget();
+      if (uri != null && uri.host == 'open_drawing') {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const DrawingScreen()),
+            );
+          }
+        });
+      }
+      HomeWidget.widgetClicked.listen((uri) {
+        if (uri != null && uri.host == 'open_drawing') {
+          if (mounted) {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const DrawingScreen()),
+            );
+          }
+        }
+      });
+    } catch (e) {
+      debugPrint('[MainNavigationShell] widgetClicked error: $e');
+    }
+  }
+
+  void _startHeartbeat() {
+    _heartbeatTimer?.cancel();
+    DatabaseService().setAppPresence(true);
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      DatabaseService().setAppPresence(true);
+    });
+  }
+
+  void _stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+  }
+
   @override
   void dispose() {
     NotificationService().isChatScreenActive = null;
+    NotificationService().isChessScreenActive = null;
     NotificationService().onNotificationTap = null;
     _deliverySub?.cancel();
     _coupleSub?.cancel();
+    _drawingSub?.cancel();
     _meetingSub?.cancel();
-    _heartbeatTimer?.cancel();
+    _stopHeartbeat();
     _lifecycleListener?.dispose();
     _pageController.dispose();
     super.dispose();
@@ -177,6 +312,44 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
         );
       }
 
+      // Oyun isteği yanıt bildirimi (Kabul / Ret)
+      final gameRes = data['gameResult'];
+      if (gameRes is Map) {
+        DatabaseService().clearGameResult();
+        final accepted = gameRes['status'] == 'accepted';
+        final rawGame = gameRes['game']?.toString() ?? 'chess';
+        final game = rawGame == 'billiards'
+            ? 'bilardo'
+            : (rawGame == 'backgammon' ? 'tavla' : 'satranç');
+        final by = gameRes['byName']?.toString() ?? 'Partnerin';
+        if (accepted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('🎉 $by $game isteğini kabul etti! Oyun başlıyor...'),
+              backgroundColor: const Color(0xFF10B981),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('$by şimdilik $game oynamak istemedi.'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+
+      // Gelen Oyun Daveti (pendingGameRequest)
+      final gameReq = data['pendingGameRequest'];
+      if (gameReq is Map && gameReq['status'] == 'pending') {
+        final id = gameReq['id']?.toString() ?? gameReq['fromUid']?.toString();
+        if (id != null && id != _shownGameRequestId && !_gameSheetOpen) {
+          _shownGameRequestId = id;
+          _showGameRequestSheet(Map<String, dynamic>.from(gameReq));
+        }
+      }
+
       final req = data['pendingMeetingRequest'];
       if (req is Map && req['status'] == 'pending') {
         final id = req['id']?.toString();
@@ -193,6 +366,8 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
     final title = req['title']?.toString() ?? 'konum';
     final lat = (req['lat'] as num?)?.toDouble();
     final lng = (req['lng'] as num?)?.toDouble();
+    final meetingTime = req['meetingTime']?.toString();
+    final note = req['note']?.toString();
     final coupleId = ref.read(coupleIdProvider);
     final myName = ref.read(userNameProvider);
     final name = myName.isNotEmpty ? myName : 'Partnerin';
@@ -207,6 +382,8 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
           coupleId: coupleId,
           lat: lat,
           lng: lng,
+          meetingTime: meetingTime,
+          note: note,
         );
         NotificationService().sendPushToPartner(
           partnerUid: fromUid,
@@ -271,6 +448,66 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                   color: isDark ? Colors.white70 : LoveraColors.textMuted,
                 ),
               ),
+              if (req['meetingTime'] != null && req['meetingTime'].toString().trim().isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: LoveraColors.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: LoveraColors.primary.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.access_time_rounded, size: 16, color: LoveraColors.primary),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Saat: ${req['meetingTime']}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: LoveraColors.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              if (req['note'] != null && req['note'].toString().trim().isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF282B37) : const Color(0xFFF3F4F6),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
+                    ),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.edit_note_rounded, size: 18, color: isDark ? Colors.white70 : Colors.black54),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '"${req['note']}"',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontStyle: FontStyle.italic,
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white : const Color(0xFF1E2024),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 18),
               if (lat != null && lng != null)
                 SizedBox(
@@ -334,6 +571,195 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
       ),
     ).whenComplete(() => _meetingSheetOpen = false);
   }
+
+  void _showGameRequestSheet(Map<String, dynamic> req) {
+    final fromName = req['fromName']?.toString() ?? 'Partnerin';
+    final gameType = req['game']?.toString() ?? 'chess';
+    final gameTitle = req['gameTitle']?.toString() ??
+        (gameType == 'billiards'
+            ? '8 Top Bilardo'
+            : (gameType == 'backgammon' ? 'Klasik Tavla' : 'Satranç'));
+    final gameEmoji = gameType == 'billiards'
+        ? '🎱'
+        : (gameType == 'backgammon' ? '🎲' : '♟️');
+    final gradientColors = gameType == 'billiards'
+        ? const [Color(0xFF10B981), Color(0xFF0F766E)]
+        : (gameType == 'backgammon'
+            ? const [Color(0xFFEA580C), Color(0xFF9A3412)]
+            : const [Color(0xFF8B5CF6), Color(0xFF6D28D9)]);
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    _gameSheetOpen = true;
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.fromLTRB(22, 14, 22, 28),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E212B) : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.25),
+              blurRadius: 25,
+              offset: const Offset(0, -5),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 38,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: gradientColors,
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: gradientColors.last.withValues(alpha: 0.35),
+                      blurRadius: 18,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: Text(gameEmoji, style: const TextStyle(fontSize: 34)),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                '$gameTitle Daveti',
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '$fromName seninle $gameTitle oynamak istiyor! Kabul ettiğinde oyun ekranı açılacak ve birlikte oynayabileceksiniz.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  height: 1.45,
+                  color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _answerGameRequest(req, false);
+                      },
+                      child: const Text('Reddet'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: gradientColors.first,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _answerGameRequest(req, true);
+                      },
+                      child: const Text('Oyna 🚀', style: TextStyle(fontWeight: FontWeight.w800)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    ).whenComplete(() => _gameSheetOpen = false);
+  }
+
+  Future<void> _answerGameRequest(Map<String, dynamic> req, bool accepted) async {
+    final fromUid = req['fromUid']?.toString() ?? '';
+    final gameType = req['game']?.toString() ?? 'chess';
+    final gameLabel = gameType == 'billiards'
+        ? '8 Top Bilardo'
+        : (gameType == 'backgammon' ? 'Tavla' : 'Satranç');
+    final coupleId = ref.read(coupleIdProvider);
+    final myName = ref.read(userNameProvider);
+    final name = myName.isNotEmpty ? myName : 'Partnerin';
+
+    try {
+      if (coupleId != null && coupleId.isNotEmpty && fromUid.isNotEmpty) {
+        await DatabaseService().respondGameRequest(
+          coupleId: coupleId,
+          gameType: gameType,
+          fromUid: fromUid,
+          accepted: accepted,
+          responderName: name,
+        );
+
+        NotificationService().sendPushToPartner(
+          partnerUid: fromUid,
+          title: accepted ? 'Oyun Daveti Kabul Edildi 🎉' : 'Oyun Daveti',
+          body: accepted ? '$name $gameLabel davetini kabul etti! Hazırlan...' : '$name davetini reddetti.',
+          data: {'type': 'game_result', 'game': gameType},
+        );
+
+        if (accepted && mounted) {
+          Widget targetScreen;
+          if (gameType == 'billiards') {
+            targetScreen = const BilliardsGameView();
+          } else if (gameType == 'backgammon') {
+            targetScreen = const BackgammonGameView();
+          } else {
+            targetScreen = const ChessGameView();
+          }
+
+          Navigator.of(context).push(
+            PageRouteBuilder(
+              pageBuilder: (context, animation, secondaryAnimation) => targetScreen,
+              transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                const begin = Offset(1.0, 0.0);
+                const end = Offset.zero;
+                const curve = Curves.easeInOutCubic;
+                final tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+                return SlideTransition(
+                  position: animation.drive(tween),
+                  child: child,
+                );
+              },
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('[GAME_REQUEST] Error answering game request: $e');
+    }
+  }
+
   void _goToPage(int index) {
     if (index == _currentIndex) return;
     FocusManager.instance.primaryFocus?.unfocus();
@@ -442,19 +868,28 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
-                                  Builder(
+                                   Builder(
                                     builder: (context) {
                                       String cardTitle = _activeReviewMeetingRequest!['title']?.toString() ?? 'Buluşma Noktası';
                                       if (cardTitle.toLowerCase().contains('seçilen')) {
                                         cardTitle = 'Buluşma Noktası';
                                       }
+                                      final time = _activeReviewMeetingRequest!['meetingTime']?.toString();
+                                      final note = _activeReviewMeetingRequest!['note']?.toString();
+                                      String subtitle = cardTitle;
+                                      if (time != null && time.trim().isNotEmpty) {
+                                        subtitle += ' · Saat: $time';
+                                      }
+                                      if (note != null && note.trim().isNotEmpty) {
+                                        subtitle += ' ("$note")';
+                                      }
                                       return Text(
-                                        cardTitle,
+                                        subtitle,
                                         style: TextStyle(
                                           fontSize: 12,
                                           color: isDark ? Colors.white70 : LoveraColors.textMuted,
                                         ),
-                                        maxLines: 1,
+                                        maxLines: 2,
                                         overflow: TextOverflow.ellipsis,
                                       );
                                     },

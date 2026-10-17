@@ -241,10 +241,14 @@ class DeviceService {
         syncStatusToFirebase();
       });
 
-      // Ayrıca düzenli olarak 180 saniyede bir kontrol et (yalnızca değişiklik varsa yazar)
+      // Canlı Şarj Akışı: Pil yüzdesini her 5 saniyede bir kontrol et ve değiştiği anda anında Firebase'e aktar!
       _periodicSyncTimer?.cancel();
-      _periodicSyncTimer = Timer.periodic(const Duration(seconds: 180), (_) {
-        syncStatusToFirebase();
+      _periodicSyncTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+        final currentBat = await getBatteryLevel();
+        if (currentBat != null && currentBat != _lastSyncedBattery) {
+          debugPrint('[LIVE-BATTERY] Pil seviyesi değişti: $_lastSyncedBattery -> $currentBat. Anında eşitleniyor.');
+          await syncStatusToFirebase();
+        }
       });
 
       _isBackgroundTrackingActive = true;
@@ -328,6 +332,7 @@ class DeviceService {
       _lastPosWriteTime = now;
 
       final currentEmoji = matchedPlace?['emoji'] ?? '';
+      final currentBat = await getBatteryLevel();
 
       await DatabaseService().updateStatus(
         lat: pos.latitude,
@@ -335,12 +340,14 @@ class DeviceService {
         speed: calculatedSpeed >= 0 ? calculatedSpeed : 0.0,
         currentPlaceTitle: currentTitle,
         currentPlaceEmoji: currentEmoji,
+        batteryLevel: currentBat,
         weather: _lastWeather,
         city: _lastCity,
         updateLastActive: true,
       );
 
       _lastFirebaseWriteTime = now;
+      if (currentBat != null) _lastSyncedBattery = currentBat;
       _lastSyncedLat = pos.latitude;
       _lastSyncedLng = pos.longitude;
       _lastSyncedPlaceTitle = currentTitle;

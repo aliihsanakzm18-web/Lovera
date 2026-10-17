@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -6,10 +8,13 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../firebase_options.dart';
+import '../models/models.dart';
 import 'device_service.dart';
 import 'fcm_v1_service.dart';
+import 'widget_sync_service.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -109,6 +114,121 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     }
   }
 
+  // 1.8. Eğer partnerden mekan giriş/çıkış veya durum güncellemesi geldiyse Widget'ı anında senkronize et!
+  final msgType = message.data['type'];
+  if (msgType == 'place_enter' || msgType == 'place_exit' || msgType == 'status_update') {
+    try {
+      final partnerUid = message.data['partnerUid'] ?? prefs.getString('saved_partner_uid');
+      final latStr = message.data['lat'];
+      final lngStr = message.data['lng'];
+      final speedStr = message.data['speed'];
+      final batteryStr = message.data['batteryLevel'];
+      final placeTitle = message.data['currentPlaceTitle'];
+      final placeEmoji = message.data['currentPlaceEmoji'];
+
+      // Kayıtlı mekanları ve başlangıç tarihini al
+      List<SavedPlace> placesList = [];
+      final cachedPlacesJson = prefs.getString('cached_saved_places_json');
+      if (cachedPlacesJson != null && cachedPlacesJson.isNotEmpty) {
+        try {
+          final List decoded = jsonDecode(cachedPlacesJson);
+          placesList = decoded.map((e) => SavedPlace.fromJson(Map<String, dynamic>.from(e), e['id']?.toString() ?? '')).toList();
+        } catch (_) {}
+      }
+
+      final savedStartDateStr = prefs.getString('saved_start_date');
+      final startDate = savedStartDateStr != null ? DateTime.tryParse(savedStartDateStr) : null;
+
+      // Önbellekteki partner verisi
+      AppUser? partner;
+      final cachedPartnerJson = prefs.getString('cached_partner_json');
+      if (cachedPartnerJson != null && cachedPartnerJson.isNotEmpty) {
+        try {
+          partner = AppUser.fromJson(jsonDecode(cachedPartnerJson));
+        } catch (_) {}
+      }
+
+      // Yeni gelen konum ve hız verileriyle harmanla
+      final double? parsedLat = latStr != null ? double.tryParse(latStr) : partner?.lat;
+      final double? parsedLng = lngStr != null ? double.tryParse(lngStr) : partner?.lng;
+      final double? parsedSpeed = speedStr != null ? double.tryParse(speedStr) : partner?.speed;
+      final int? parsedBattery = batteryStr != null ? int.tryParse(batteryStr) : partner?.batteryLevel;
+
+      final updatedPartner = AppUser(
+        id: partnerUid ?? partner?.id ?? '',
+        name: partner?.name ?? 'Eda',
+        avatarUrl: partner?.avatarUrl,
+        batteryLevel: parsedBattery,
+        weather: partner?.weather,
+        city: partner?.city,
+        lat: parsedLat,
+        lng: parsedLng,
+        lastActive: DateTime.now(),
+        coupleId: partner?.coupleId,
+        isAppOpen: partner?.isAppOpen,
+        birthDate: partner?.birthDate,
+        speed: parsedSpeed,
+        currentPlaceTitle: placeTitle ?? partner?.currentPlaceTitle,
+        currentPlaceEmoji: placeEmoji ?? partner?.currentPlaceEmoji,
+      );
+
+      // Yeni partner halini önbelleğe yaz
+      await prefs.setString('cached_partner_json', jsonEncode(updatedPartner.toJson()));
+
+      // Widget'ı derhal güncelle!
+      await WidgetSyncService.syncWidget(
+        partner: updatedPartner,
+        startDate: startDate,
+        savedPlaces: placesList,
+      );
+      debugPrint('[FCM-BG-WIDGET-SYNC] Arka planda partner widget güncellendi: ${updatedPartner.name} -> $placeEmoji $placeTitle (Hız: $parsedSpeed, Pil: $parsedBattery)');
+    } catch (e) {
+      debugPrint('[FCM-BG-WIDGET-SYNC-ERR] $e');
+    }
+  }
+
+  // 1.9. Eğer yeni çizim bildirimi ulaştıysa (Uygulama arka planda/tamamen kapalı olsa bile) Çizim Widget'ını derhal güncelle!
+  if (msgType == 'drawing_sent') {
+    try {
+      final cId = message.data['coupleId'] ?? prefs.getString('saved_couple_id');
+      final senderName = message.data['senderName'] ?? 'Partnerin';
+      final tsStr = message.data['timestamp'];
+      final tsMillis = tsStr != null ? int.tryParse(tsStr) : DateTime.now().millisecondsSinceEpoch;
+
+      if (cId != null && cId.isNotEmpty) {
+        final doc = await FirebaseFirestore.instance
+            .collection('couples')
+            .doc(cId)
+            .collection('drawings')
+            .doc('latest')
+            .get();
+
+        if (doc.exists && doc.data() != null) {
+          final imageBase64 = doc.data()!['imageBase64'] as String?;
+          if (imageBase64 != null && imageBase64.isNotEmpty) {
+            final raw = imageBase64.split(',').last;
+            final bytes = base64Decode(raw);
+            // Standart Android/iOS dosya dizini
+            final dir = await getApplicationDocumentsDirectory();
+            final drawingPath = '${dir.path}/partner_drawing_latest.png';
+            final f = File(drawingPath);
+            await f.writeAsBytes(bytes);
+
+            await WidgetSyncService.syncDrawingWidget(
+              imagePath: drawingPath,
+              senderName: senderName,
+              timeAgo: 'Şimdi',
+              timestampMillis: tsMillis,
+            );
+            debugPrint('[FCM-BG-DRAWING-SYNC] Uygulama kapalıyken yeni çizim widget\'a başarıyla yazıldı: $senderName');
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[FCM-BG-DRAWING-SYNC-ERR] $e');
+    }
+  }
+
   // 2. Normal kullanıcı bildirimi gösterimi (sadece gerçek başlığı olan bildirimler)
   if (message.notification == null &&
       message.data.isNotEmpty &&
@@ -121,6 +241,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       id: message.messageId.hashCode,
       title: title,
       body: body,
+      payload: message.data['type']?.toString(),
     );
   }
 }
@@ -137,6 +258,9 @@ class NotificationService {
 
   /// Kullanıcı şu an sohbet ekranında mı kontrolü (sohbetteyken bildirim sesi/penceresi basmamak için)
   bool Function()? isChatScreenActive;
+
+  /// Kullanıcı şu an satranç oyun ekranında mı kontrolü (satrançtayken oyun bildirimi basmamak ve yönlendirmemek için)
+  bool Function()? isChessScreenActive;
 
   /// Bildirime tıklandığında sohbet ekranına yönlendirme callback'i
   void Function()? onNotificationTap;
@@ -163,6 +287,14 @@ class NotificationService {
         settings,
         onDidReceiveNotificationResponse: (NotificationResponse response) {
           debugPrint('[NOTIFICATION-TAP] Yerel bildirime tıklandı: ${response.payload}');
+          final payload = response.payload;
+          if (payload != null &&
+              (payload.contains('game_result') ||
+                  payload.contains('game_request') ||
+                  payload.contains('meeting_request') ||
+                  payload.contains('meeting_result'))) {
+            return;
+          }
           hasPendingNotificationTap = true;
           onNotificationTap?.call();
         },
@@ -176,7 +308,10 @@ class NotificationService {
     try {
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
         debugPrint('[FCM-OPEN] Bildirime tıklanarak açıldı: ${message.data}');
-        if (message.data['type'] == 'meeting_request') return; // Buluşma talebi: sohbete değil, talep penceresine düşer
+        final type = message.data['type'];
+        if (type == 'meeting_request' || type == 'meeting_result' || type == 'game_result' || type == 'game_request') {
+          return;
+        }
         hasPendingNotificationTap = true;
         onNotificationTap?.call();
       });
@@ -184,7 +319,10 @@ class NotificationService {
       _fcm.getInitialMessage().then((RemoteMessage? message) {
         if (message != null) {
           debugPrint('[FCM-INITIAL] Uygulama bildirimle başlatıldı: ${message.data}');
-          if (message.data['type'] == 'meeting_request') return;
+          final type = message.data['type'];
+          if (type == 'meeting_request' || type == 'meeting_result' || type == 'game_result' || type == 'game_request') {
+            return;
+          }
           hasPendingNotificationTap = true;
           onNotificationTap?.call();
         }
@@ -259,12 +397,21 @@ class NotificationService {
           return;
         }
 
+        // Eğer kullanıcı şu an satranç oyun ekranındaysa oyun bildirimlerini (kabul edildi, davet vs.) gösterme
+        final isChessActive = isChessScreenActive?.call() ?? false;
+        if (isChessActive && (message.data['type'] == 'game_result' || message.data['type'] == 'game_request')) {
+          debugPrint('[NOTIFICATION-MUTE] Kullanıcı zaten satrançta olduğu için oyun bildirimi bastırıldı.');
+          return;
+        }
+
         final notif = message.notification;
+        final payloadType = message.data['type']?.toString();
         if (notif != null && ((notif.title != null && notif.title!.trim().isNotEmpty) || (notif.body != null && notif.body!.trim().isNotEmpty))) {
           show(
             id: message.messageId.hashCode,
             title: notif.title ?? 'Lovera 💕',
             body: notif.body ?? '',
+            payload: payloadType,
           );
         } else if (message.data['title'] != null &&
             message.data['title'].toString().trim().isNotEmpty) {
@@ -272,6 +419,7 @@ class NotificationService {
             id: message.messageId.hashCode,
             title: message.data['title'].toString(),
             body: message.data['body']?.toString() ?? '',
+            payload: payloadType,
           );
         }
       });
@@ -430,7 +578,12 @@ class NotificationService {
   }
 
   /// Yerel bildirim gösterici
-  Future<void> show({required int id, required String title, required String body}) async {
+  Future<void> show({
+    required int id,
+    required String title,
+    required String body,
+    String? payload,
+  }) async {
     if (title.trim().isEmpty && body.trim().isEmpty) return;
     try {
       await _localPlugin.show(
@@ -449,6 +602,7 @@ class NotificationService {
           ),
           iOS: DarwinNotificationDetails(presentAlert: true, presentSound: true),
         ),
+        payload: payload,
       );
     } catch (_) {}
   }

@@ -98,3 +98,7 @@ class ThemeModeNotifier extends StateNotifier<ThemeMode> {
     } catch (_) {}
   }
 }
+
+/// Kullanıcının satranç oyun ekranında olup olmadığını belirten provider
+final isChessScreenOpenProvider = StateProvider<bool>((ref) => false);
+

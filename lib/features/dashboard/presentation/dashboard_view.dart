@@ -24,6 +24,9 @@ import '../../memories/presentation/memories_gallery_view.dart';
 import '../../milestones/presentation/milestones_view.dart';
 import '../../onboarding/presentation/onboarding_flow.dart';
 import '../../settings/presentation/settings_view.dart';
+import '../../drawing/presentation/drawing_screen.dart';
+import 'package:path_provider/path_provider.dart';
+import '../../../core/services/widget_sync_service.dart';
 
 class DashboardView extends ConsumerStatefulWidget {
   const DashboardView({super.key, this.onOpenMap, this.onOpenChat});
@@ -41,6 +44,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
   StreamSubscription? _coupleSub;
   StreamSubscription? _savedPlacesSub;
   String? _listenedCoupleId;
+  StreamSubscription? _drawingSub;
   List<SavedPlace> _savedPlaces = [];
   Timer? _statusSyncTimer;
   int? _lastHeartTimestamp;
@@ -118,7 +122,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     DatabaseService().setAppPresence(true);
 
     // Periyodik olarak durumu kontrol et (yalnızca pil/konum değiştiyse yazılır)
-    _statusSyncTimer = Timer.periodic(const Duration(seconds: 120), (_) {
+    _statusSyncTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       DeviceService().syncStatusToFirebase();
     });
 
@@ -136,7 +140,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
         DatabaseService().setAppPresence(true);
         DeviceService().syncStatusToFirebase();
         _statusSyncTimer?.cancel();
-        _statusSyncTimer = Timer.periodic(const Duration(seconds: 120), (_) {
+        _statusSyncTimer = Timer.periodic(const Duration(seconds: 15), (_) {
           DeviceService().syncStatusToFirebase();
         });
       },
@@ -339,6 +343,72 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
         }).toList();
         SharedPreferences.getInstance().then((p) => p.setString('cached_saved_places_json', jsonEncode(placesJsonList)));
       } catch (_) {}
+      WidgetSyncService.syncWidget(
+        partner: ref.read(partnerProvider),
+        startDate: ref.read(startDateProvider),
+        savedPlaces: places,
+      );
+    });
+  }
+
+  void _listenToDrawings(String coupleId) {
+    _drawingSub?.cancel();
+    _drawingSub = DatabaseService().latestDrawingStream(coupleId)?.listen((snap) async {
+      if (!mounted || !snap.exists || snap.data() == null) return;
+      final data = snap.data()!;
+      final imageBase64 = data['imageBase64'] as String?;
+      final senderId = data['senderId'] as String?;
+      final senderName = data['senderName'] as String? ?? 'Partnerin';
+      final myUid = DatabaseService().uid;
+
+      if (imageBase64 != null && imageBase64.isNotEmpty) {
+        try {
+          final raw = imageBase64.split(',').last;
+          final bytes = base64Decode(raw);
+          final appDir = await getApplicationDocumentsDirectory();
+          final drawingPath = '${appDir.path}/partner_drawing_latest.png';
+          final f = File(drawingPath);
+          await f.writeAsBytes(bytes);
+
+          final isMe = senderId == myUid;
+          DateTime? createdAt;
+          final rawCreatedAt = data['createdAt'];
+          if (rawCreatedAt is int) {
+            createdAt = DateTime.fromMillisecondsSinceEpoch(rawCreatedAt);
+          } else if (rawCreatedAt != null) {
+            try {
+              createdAt = (rawCreatedAt as dynamic).toDate();
+            } catch (_) {}
+          }
+
+          String timeAgo = 'Şimdi';
+          int? tsMillis;
+          if (createdAt != null) {
+            tsMillis = createdAt.millisecondsSinceEpoch;
+            final diff = DateTime.now().difference(createdAt);
+            final minutes = diff.inMinutes;
+            if (minutes < 1) {
+              timeAgo = 'Şimdi';
+            } else if (minutes < 60) {
+              timeAgo = '$minutes dk önce';
+            } else if (diff.inHours < 24) {
+              timeAgo = '${diff.inHours} sa önce';
+            } else {
+              timeAgo = '${diff.inDays} gün önce';
+            }
+          }
+
+          await WidgetSyncService.syncDrawingWidget(
+            imagePath: drawingPath,
+            senderName: isMe ? 'Sen' : senderName,
+            timeAgo: timeAgo,
+            timestampMillis: tsMillis,
+          );
+          debugPrint('[DashboardView] Çizim widget senkronize edildi: sender=$senderName, isMe=$isMe, timeAgo=$timeAgo');
+        } catch (e) {
+          debugPrint('[DashboardView] Çizim widget sync error: $e');
+        }
+      }
     });
   }
 
@@ -346,6 +416,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     _coupleSub?.cancel();
     _listenToMilestones(coupleId);
     _listenToSavedPlaces(coupleId);
+    _listenToDrawings(coupleId);
     _coupleSub = DatabaseService().coupleStream(coupleId)?.listen((doc) {
       if (!doc.exists || doc.data() == null || !mounted) return;
       final cData = doc.data()!;
@@ -356,6 +427,11 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
           SharedPreferences.getInstance().then((p) => p.setString('saved_start_date', date.toIso8601String()));
           DatabaseService().syncDefaultAnniversary(date, coupleId: coupleId);
         }
+        WidgetSyncService.syncWidget(
+          partner: ref.read(partnerProvider),
+          startDate: date ?? ref.read(startDateProvider),
+          savedPlaces: _savedPlaces,
+        );
       }
     });
   }
@@ -948,7 +1024,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
         city: data['city'],
         lat: (data['lat'] as num?)?.toDouble(),
         lng: (data['lng'] as num?)?.toDouble(),
-        lastActive: parsedLastActive ?? DateTime.now(),
+        lastActive: parsedLastActive,
         coupleId: data['coupleId'],
         isAppOpen: data['isAppOpen'] as bool?,
         birthDate: data['birthDate'] as String?,
@@ -995,6 +1071,13 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
           SharedPreferences.getInstance().then((p) => p.setString('saved_start_date', rDate.toIso8601String()));
         }
       }
+
+      // Ana Ekran Widget'ını senkronize et
+      WidgetSyncService.syncWidget(
+        partner: partnerUser,
+        startDate: ref.read(startDateProvider),
+        savedPlaces: _savedPlaces,
+      );
     });
   }
 
@@ -1167,6 +1250,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     _coupleSub?.cancel();
     _savedPlacesSub?.cancel();
     _milestonesSub?.cancel();
+    _drawingSub?.cancel();
     super.dispose();
   }
 
@@ -1291,15 +1375,31 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                     ),
                   ],
                 ).animate(delay: 180.ms).fadeIn(duration: 500.ms).slideY(begin: 0.08),
-                const SizedBox(height: 12),
-                _ActionTile(
-                  icon: Icons.photo_library_rounded,
-                  title: 'Ortak Anı Albümü',
-                  subtitle: 'Birlikte biriktirdiğiniz eşsiz anılar',
-                  color: LoveraColors.secondary,
-                  onTap: () => _push(const MemoriesGalleryView()),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _ActionTile(
+                        icon: Icons.brush_rounded,
+                        title: 'Çizim Tuvali',
+                        subtitle: 'Widget\'a çizim gönder',
+                        color: const Color(0xFFA78BFA),
+                        onTap: () => _push(const DrawingScreen()),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _ActionTile(
+                        icon: Icons.photo_library_rounded,
+                        title: 'Ortak Anı Albümü',
+                        subtitle: 'Birlikte anılarınız',
+                        color: LoveraColors.secondary,
+                        onTap: () => _push(const MemoriesGalleryView()),
+                      ),
+                    ),
+                  ],
                 ).animate(delay: 220.ms).fadeIn(duration: 500.ms).slideY(begin: 0.08),
-                const SizedBox(height: 20),
+                const SizedBox(height: 14),
                 _ThinkingButton(onPressed: _sendThought)
                     .animate(delay: 260.ms)
                     .fadeIn(duration: 500.ms)

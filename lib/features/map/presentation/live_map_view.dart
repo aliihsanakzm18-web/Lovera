@@ -14,6 +14,7 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart' hide Path;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/models/models.dart';
 import '../../../core/services/database_service.dart';
@@ -31,12 +32,11 @@ class LiveMapView extends ConsumerStatefulWidget {
   ConsumerState<LiveMapView> createState() => _LiveMapViewState();
 }
 
-enum _FollowTarget { none, partner, me, navigation }
+enum _FollowTarget { none, partner, me }
 
 class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderStateMixin {
   final MapController _mapController = MapController();
   AnimationController? _flightController;
-  AnimationController? _navTurnController;
 
   double? _roadDistanceMeters;
   bool _calculatingRoad = false;
@@ -47,7 +47,6 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
 
   // Anlık Takip (Kamera Kilitleme): Harita serbest kaydırılınca otomatik kapanır
   _FollowTarget _followTarget = _FollowTarget.partner;
-  bool get _isNavigating => _followTarget == _FollowTarget.navigation;
 
   // 60 FPS Pürüzsüz Snap Konum İnterpolasyonu (Kayarak İlerleme)
   AnimationController? _myAnimController;
@@ -68,28 +67,9 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
   LatLng? _pressedPoint;
   Timer? _highlightClearTimer;
 
-  // Buluşma rotaları (Ben -> Buluşma Noktası ve Partner -> Buluşma Noktası)
-  List<LatLng> _myMeetingRoute = [];
-  List<LatLng> _partnerMeetingRoute = [];
-  bool _isMeetingTopBannerVisible = false;
-  late final AnimationController _meetingBannerController;
-  late final Animation<Offset> _meetingBannerSlideAnimation;
-
   @override
   void initState() {
     super.initState();
-    _meetingBannerController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 320),
-    );
-    _meetingBannerSlideAnimation = Tween<Offset>(
-      begin: const Offset(0, -1.2), // Yukarıdan başlar
-      end: Offset.zero,             // Tam yerine iner
-    ).animate(CurvedAnimation(
-      parent: _meetingBannerController,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
-    ));
     // Arka planda güvenli durum senkronizasyonu
     WidgetsBinding.instance.addPostFrameCallback((_) {
       DeviceService().syncStatusToFirebase();
@@ -125,15 +105,9 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
       }
     });
 
-    // Buluşma noktasını dinle ve rotaları hesapla (Kullanıcı butona basana kadar menü otomatik açılmaz)
+    // Buluşma noktasını dinle
     ref.listenManual(activeMeetingLocationProvider, (prev, next) {
-      if (next != null) {
-        _fetchMeetingRoutes(next);
-      } else {
-        if (mounted) {
-          _closeMeetingBanner(clearRoutes: true);
-        }
-      }
+      if (mounted) setState(() {});
     });
 
     // Harita açıkken partnerin kapalı cihazını 6 saniyede bir sessiz uyandır ve konumunu tazelet
@@ -272,16 +246,8 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
         _animatedMyPos = currentPos;
       });
 
-      // Navigasyon Modu (Google Maps): Kamera kullanıcıya kilitli ve gidiş yönüne dönük akar
-      if (_followTarget == _FollowTarget.navigation && (_flightController == null || !_flightController!.isAnimating)) {
-        final double? roadHeading = _calculateNavigationHeading(currentPos);
-        if (roadHeading != null) {
-          _animateCameraTurnTo(roadHeading, center: currentPos, zoom: 18.2);
-        } else {
-          _mapController.move(currentPos, _mapController.camera.zoom);
-        }
-      } else if (_followTarget == _FollowTarget.me && (_flightController == null || !_flightController!.isAnimating)) {
-        // Normal kullanıcı takibi
+      if (_followTarget == _FollowTarget.me && (_flightController == null || !_flightController!.isAnimating)) {
+        // Kullanıcı takibi
         _mapController.move(currentPos, _mapController.camera.zoom);
       }
     });
@@ -290,182 +256,19 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
         setState(() {
           _animatedMyPos = newTarget;
         });
-        if (_followTarget == _FollowTarget.navigation && (_flightController == null || !_flightController!.isAnimating)) {
-          final double? roadHeading = _calculateNavigationHeading(newTarget);
-          if (roadHeading != null) {
-            _animateCameraTurnTo(roadHeading, center: newTarget, zoom: 18.2);
-          } else {
-            _mapController.move(newTarget, _mapController.camera.zoom);
-          }
-        } else if (_followTarget == _FollowTarget.me && (_flightController == null || !_flightController!.isAnimating)) {
+        if (_followTarget == _FollowTarget.me && (_flightController == null || !_flightController!.isAnimating)) {
           _mapController.move(newTarget, _mapController.camera.zoom);
         }
       }
     });
   }
 
-  /// Kullanıcının önündeki rota segmentinin açısını (kerteriz/bearing) hesaplar (0-360 derece)
-  double _calculateBearing(LatLng from, LatLng to) {
-    final lat1 = from.latitude * (math.pi / 180.0);
-    final lon1 = from.longitude * (math.pi / 180.0);
-    final lat2 = to.latitude * (math.pi / 180.0);
-    final lon2 = to.longitude * (math.pi / 180.0);
-    final dLon = lon2 - lon1;
-
-    final y = math.sin(dLon) * math.cos(lat2);
-    final x = math.cos(lat1) * math.sin(lat2) -
-        math.sin(lat1) * math.cos(lat2) * math.cos(dLon);
-    final radians = math.atan2(y, x);
-    final degrees = (radians * (180.0 / math.pi) + 360.0) % 360.0;
-    return degrees;
-  }
-
-  /// Navigasyon esnasında kullanıcının rotada ilerlediği yönün açısını bulur
-  double? _calculateNavigationHeading(LatLng userPos) {
-    if (_myMeetingRoute.length < 2) {
-      final activeMeeting = ref.read(activeMeetingLocationProvider);
-      if (activeMeeting != null) {
-        return _calculateBearing(userPos, LatLng(activeMeeting.lat, activeMeeting.lng));
-      }
-      return null;
-    }
-
-    // Rotadaki en yakın noktayı bul
-    int closestIdx = 0;
-    double minDistance = double.infinity;
-    for (int i = 0; i < _myMeetingRoute.length; i++) {
-      final pt = _myMeetingRoute[i];
-      final d = Geolocator.distanceBetween(userPos.latitude, userPos.longitude, pt.latitude, pt.longitude);
-      if (d < minDistance) {
-        minDistance = d;
-        closestIdx = i;
-      }
-    }
-
-    // Önümüzdeki 15-40 metre ilerideki rota noktasını hedef alarak virajları ve açıyı yumuşak süz
-    int forwardIdx = closestIdx + 1;
-    double accumulatedDist = 0;
-    while (forwardIdx < _myMeetingRoute.length) {
-      accumulatedDist += Geolocator.distanceBetween(
-        _myMeetingRoute[forwardIdx - 1].latitude,
-        _myMeetingRoute[forwardIdx - 1].longitude,
-        _myMeetingRoute[forwardIdx].latitude,
-        _myMeetingRoute[forwardIdx].longitude,
-      );
-      if (accumulatedDist >= 15.0 || forwardIdx == _myMeetingRoute.length - 1) {
-        break;
-      }
-      forwardIdx++;
-    }
-
-    if (forwardIdx < _myMeetingRoute.length) {
-      return _calculateBearing(userPos, _myMeetingRoute[forwardIdx]);
-    } else {
-      return _calculateBearing(_myMeetingRoute[math.max(0, _myMeetingRoute.length - 2)], _myMeetingRoute.last);
-    }
-  }
-
-  /// Kamerayı Google Maps gibi gidiş yönüne doğru akıcı bir şekilde döndürür
-  void _animateCameraTurnTo(double targetHeading, {LatLng? center, double? zoom}) {
-    final curHeading = _mapController.camera.rotation;
-    final curCenter = center ?? _mapController.camera.center;
-    final curZoom = zoom ?? _mapController.camera.zoom;
-
-    // En kısa açı farkını hesapla (-180 ile +180 derece arası)
-    double diff = (targetHeading - curHeading) % 360.0;
-    if (diff > 180.0) diff -= 360.0;
-    if (diff < -180.0) diff += 360.0;
-
-    // Eğer açı farkı 1.5 dereceden azsa gereksiz animasyon tetikleme
-    if (diff.abs() < 1.5) {
-      _mapController.moveAndRotate(curCenter, curZoom, curHeading);
-      return;
-    }
-
-    _navTurnController?.stop();
-    _navTurnController?.dispose();
-    final turnCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 400),
-    );
-    _navTurnController = turnCtrl;
-
-    final startAngle = curHeading;
-
-    turnCtrl.addListener(() {
-      if (!mounted) return;
-      final t = Curves.easeOutQuad.transform(turnCtrl.value);
-      final angle = (startAngle + diff * t) % 360.0;
-      _mapController.moveAndRotate(curCenter, curZoom, angle);
-    });
-
-    turnCtrl.forward();
-  }
-
-  /// Google Maps Navigasyon Modunu Başlat: Kullanıcıya yakınlaşır, kamerayı gidiş yoluna çevirir
-  Future<void> _startGoogleMapsNavigation(AttachedLocation meetingLoc) async {
-    HapticFeedback.heavyImpact();
-    final dest = LatLng(meetingLoc.lat, meetingLoc.lng);
-    final my = _animatedMyPos ?? (ref.read(currentUserProvider)?.lat != null && ref.read(currentUserProvider)?.lng != null
-        ? LatLng(ref.read(currentUserProvider)!.lat!, ref.read(currentUserProvider)!.lng!)
-        : null);
-
-    if (my == null) return;
-
-    // Eğer rota henüz çekilmediyse önce çek
-    if (_myMeetingRoute.isEmpty) {
-      await _fetchMeetingRoutes(meetingLoc);
-    }
-
-    final double initialHeading = _calculateNavigationHeading(my) ?? _calculateBearing(my, dest);
-
-    setState(() {
-      _followTarget = _FollowTarget.navigation;
-    });
-
-    // Uçuş ve dönüş animasyonu ile tepe irtifasından Google Maps sürüş bakış açısına (Zoom: 18.2) in
-    _flightController?.stop();
-    _flightController?.dispose();
-
-    final LatLng startLoc = _mapController.camera.center;
-    final double startZoom = _mapController.camera.zoom;
-    final double startRotation = _mapController.camera.rotation;
-
-    double diffRot = (initialHeading - startRotation) % 360.0;
-    if (diffRot > 180.0) diffRot -= 360.0;
-    if (diffRot < -180.0) diffRot += 360.0;
-
-    final navFlightCtrl = AnimationController(
-      duration: const Duration(milliseconds: 750),
-      vsync: this,
-    );
-    _flightController = navFlightCtrl;
-
-    navFlightCtrl.addListener(() {
-      if (!mounted) return;
-      final t = Curves.easeInOutCubicEmphasized.transform(navFlightCtrl.value);
-      final curLat = startLoc.latitude + (my.latitude - startLoc.latitude) * t;
-      final curLng = startLoc.longitude + (my.longitude - startLoc.longitude) * t;
-      final curZoom = startZoom + (18.2 - startZoom) * t;
-      final curRot = (startRotation + diffRot * t) % 360.0;
-
-      _mapController.moveAndRotate(LatLng(curLat, curLng), curZoom, curRot);
-    });
-
-    navFlightCtrl.forward();
-  }
-
-  /// Navigasyon modunu kapatıp pusulayı kuzeye (0 derece) sıfırlar
+  /// Pusulayı kuzeye (0 derece) sıfırlar
   void _resetCompassToNorth() {
     HapticFeedback.lightImpact();
     final curCenter = _mapController.camera.center;
     final curZoom = _mapController.camera.zoom;
-    _animateCameraTurnTo(0.0, center: curCenter, zoom: curZoom);
-    if (_followTarget == _FollowTarget.navigation) {
-      setState(() {
-        _followTarget = _FollowTarget.me;
-      });
-    }
+    _mapController.moveAndRotate(curCenter, curZoom, 0.0);
   }
 
   void _smoothAnimatePartnerPos(LatLng newTarget) {
@@ -569,36 +372,10 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     _mapSyncTimer?.cancel();
     _flightController?.stop();
     _flightController?.dispose();
-    _navTurnController?.stop();
-    _navTurnController?.dispose();
     _myAnimController?.dispose();
     _partnerAnimController?.dispose();
-    _meetingBannerController.dispose();
     _mapController.dispose();
     super.dispose();
-  }
-
-  void _openMeetingBanner() {
-    if (!mounted) return;
-    setState(() {
-      _isMeetingTopBannerVisible = true;
-    });
-    _meetingBannerController.forward(from: 0.0);
-  }
-
-  void _closeMeetingBanner({bool clearRoutes = false}) {
-    if (!mounted) return;
-    _meetingBannerController.reverse().then((_) {
-      if (mounted) {
-        setState(() {
-          _isMeetingTopBannerVisible = false;
-          if (clearRoutes) {
-            _myMeetingRoute = [];
-            _partnerMeetingRoute = [];
-          }
-        });
-      }
-    });
   }
 
   /// Snap Map Akıcı Uçuş Animasyonu:
@@ -665,76 +442,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     controller.forward();
   }
 
-  Future<void> _fetchMeetingRoutes(AttachedLocation meetingLoc) async {
-    final dest = LatLng(meetingLoc.lat, meetingLoc.lng);
-    final my = _animatedMyPos ?? (ref.read(currentUserProvider)?.lat != null && ref.read(currentUserProvider)?.lng != null
-        ? LatLng(ref.read(currentUserProvider)!.lat!, ref.read(currentUserProvider)!.lng!)
-        : null);
 
-    if (my != null) {
-      final myRoute = await _fetchPolyline(my, dest);
-      if (mounted) {
-        setState(() {
-          _myMeetingRoute = myRoute;
-          _partnerMeetingRoute = [];
-        });
-      }
-    }
-  }
-
-  /// Kullanıcının kendi konumundan buluşma noktasına olan rotasını ekrana sığdırıp yakınlaştırır
-  void _fitBothMeetingRoutes(AttachedLocation meetingLoc) {
-    HapticFeedback.selectionClick();
-    _fetchMeetingRoutes(meetingLoc);
-
-    final dest = LatLng(meetingLoc.lat, meetingLoc.lng);
-    final my = _animatedMyPos ?? (ref.read(currentUserProvider)?.lat != null && ref.read(currentUserProvider)?.lng != null
-        ? LatLng(ref.read(currentUserProvider)!.lat!, ref.read(currentUserProvider)!.lng!)
-        : null);
-
-    final List<LatLng> pointsToFit = [];
-    if (_myMeetingRoute.isNotEmpty) {
-      pointsToFit.addAll(_myMeetingRoute);
-    } else {
-      pointsToFit.add(dest);
-      if (my != null) pointsToFit.add(my);
-    }
-
-    if (pointsToFit.length > 1) {
-      final bounds = LatLngBounds.fromPoints(pointsToFit);
-      _mapController.fitCamera(
-        CameraFit.bounds(
-          bounds: bounds,
-          padding: const EdgeInsets.only(left: 45, right: 45, top: 150, bottom: 200),
-        ),
-      );
-    } else {
-      _animatedFlightMove(dest, 16.5);
-    }
-  }
-
-  Future<List<LatLng>> _fetchPolyline(LatLng start, LatLng end) async {
-    try {
-      final url = Uri.parse(
-        'https://router.project-osrm.org/route/v1/driving/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?overview=full&geometries=geojson',
-      );
-      final res = await http.get(url).timeout(const Duration(seconds: 4));
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        final routes = data['routes'] as List?;
-        if (routes != null && routes.isNotEmpty) {
-          final geometry = routes[0]['geometry'];
-          if (geometry is Map && geometry['coordinates'] is List) {
-            final coords = geometry['coordinates'] as List;
-            return coords
-                .map((c) => LatLng((c[1] as num).toDouble(), (c[0] as num).toDouble()))
-                .toList();
-          }
-        }
-      }
-    } catch (_) {}
-    return [start, end]; // Fallback düz çizgi
-  }
 
   void _checkAndFetchRoute(LatLng my, LatLng partner) {
     if (_lastRouteStart?.latitude == my.latitude &&
@@ -787,8 +495,269 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     }
   }
 
+  /// Buluşma talebi gönderme alt sayfası (Saat ve Not opsiyonlu)
+  void _showSendMeetingRequestSheet(LatLng point, String title) {
+    final partnerUid = ref.read(partnerUidProvider);
+    if (partnerUid == null || partnerUid.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Buluşma talebi için partnerinizle eşleşmiş olmanız gerekir.'),
+          backgroundColor: LoveraColors.primary,
+        ),
+      );
+      return;
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final partnerName = ref.read(partnerProvider)?.name ?? 'Partnerin';
+    final noteController = TextEditingController();
+    TimeOfDay? selectedTime;
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final timeStr = selectedTime != null
+              ? '${selectedTime!.hour.toString().padLeft(2, '0')}:${selectedTime!.minute.toString().padLeft(2, '0')}'
+              : null;
+
+          return Container(
+            padding: EdgeInsets.only(
+              left: 22,
+              right: 22,
+              top: 14,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+            ),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E212B) : Colors.white,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.15),
+                  blurRadius: 24,
+                  offset: const Offset(0, -6),
+                ),
+              ],
+            ),
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 38,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: LoveraColors.primary.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Text('💕', style: TextStyle(fontSize: 24)),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Buluşma Talebi Gönder',
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              title,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? Colors.white70 : LoveraColors.textMuted,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+
+                  // Saat Seçimi (İsteğe bağlı)
+                  Text(
+                    'Buluşma Saati (İsteğe Bağlı)',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: isDark ? Colors.white70 : const Color(0xFF475569),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () async {
+                      final picked = await showTimePicker(
+                        context: context,
+                        initialTime: selectedTime ?? TimeOfDay.now(),
+                        builder: (context, child) {
+                          return Theme(
+                            data: Theme.of(context).copyWith(
+                              colorScheme: ColorScheme.fromSeed(
+                                seedColor: LoveraColors.primary,
+                                brightness: isDark ? Brightness.dark : Brightness.light,
+                              ),
+                            ),
+                            child: child!,
+                          );
+                        },
+                      );
+                      if (picked != null) {
+                        setSheetState(() => selectedTime = picked);
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF282C3A) : const Color(0xFFF6F8FB),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: selectedTime != null
+                              ? LoveraColors.primary
+                              : (isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.access_time_rounded,
+                            size: 20,
+                            color: selectedTime != null ? LoveraColors.primary : (isDark ? Colors.white54 : Colors.black45),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              selectedTime != null ? 'Saat: $timeStr' : 'Saat belirle (İsteğe bağlı)',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: selectedTime != null ? FontWeight.w800 : FontWeight.w500,
+                                color: selectedTime != null
+                                    ? (isDark ? Colors.white : const Color(0xFF1E2024))
+                                    : (isDark ? Colors.white54 : LoveraColors.textMuted),
+                              ),
+                            ),
+                          ),
+                          if (selectedTime != null)
+                            GestureDetector(
+                              onTap: () => setSheetState(() => selectedTime = null),
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.06),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.close_rounded, size: 14),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Not Ekleme (İsteğe bağlı)
+                  Text(
+                    'Romantik / Özel Not (İsteğe Bağlı)',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: isDark ? Colors.white70 : const Color(0xFF475569),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: noteController,
+                    maxLines: 2,
+                    maxLength: 100,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: InputDecoration(
+                      hintText: 'Örn: Seni çok özledim, kahveler benden... ☕❤️',
+                      hintStyle: TextStyle(
+                        fontSize: 13,
+                        color: isDark ? Colors.white38 : LoveraColors.textMuted,
+                      ),
+                      filled: true,
+                      fillColor: isDark ? const Color(0xFF282C3A) : const Color(0xFFF6F8FB),
+                      counterStyle: TextStyle(
+                        fontSize: 11,
+                        color: isDark ? Colors.white38 : LoveraColors.textMuted,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Gönder Butonu
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: LoveraColors.primary,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      icon: const Icon(Icons.send_rounded, size: 18),
+                      label: Text(
+                        '$partnerName\'e Talebi Gönder',
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+                      ),
+                      onPressed: () {
+                        final note = noteController.text.trim();
+                        Navigator.pop(ctx);
+                        _sendMeetingRequest(
+                          point,
+                          title,
+                          meetingTime: timeStr,
+                          note: note.isNotEmpty ? note : null,
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   /// Partnere belirli bir konum için buluşma talebi gönderir (kapalı olsa da bildirim düşer).
-  Future<void> _sendMeetingRequest(LatLng point, String title) async {
+  Future<void> _sendMeetingRequest(
+    LatLng point,
+    String title, {
+    String? meetingTime,
+    String? note,
+  }) async {
     final partnerUid = ref.read(partnerUidProvider);
     if (partnerUid == null || partnerUid.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -808,11 +777,22 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
         lat: point.latitude,
         lng: point.longitude,
         placeTitle: title,
+        meetingTime: meetingTime,
+        note: note,
       );
+
+      String pushBody = '$name seni "$title" konumunda buluşmaya çağırıyor.';
+      if (meetingTime != null && meetingTime.isNotEmpty) {
+        pushBody += ' (Saat: $meetingTime)';
+      }
+      if (note != null && note.isNotEmpty) {
+        pushBody += ' - "$note"';
+      }
+
       NotificationService().sendPushToPartner(
         partnerUid: partnerUid,
         title: 'Buluşma talebi 💕',
-        body: '$name seni "$title" konumunda buluşmaya çağırıyor.',
+        body: pushBody,
         data: {'type': 'meeting_request'},
       );
       if (mounted) {
@@ -1198,7 +1178,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                         final meetTitle = typed.isNotEmpty ? '$selectedEmoji $typed' : '💖 Buluşma Noktası';
                         Navigator.pop(ctx);
                         HapticFeedback.selectionClick();
-                        _sendMeetingRequest(point, meetTitle);
+                        _showSendMeetingRequestSheet(point, meetTitle);
                       },
                     ),
                   ),
@@ -1487,6 +1467,217 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                 style: const TextStyle(fontSize: 12, color: LoveraColors.textMuted),
               ),
             ],
+            const SizedBox(height: 14),
+
+            // Şık Konum Bilgisi & Google / Apple Haritalar Yönlendirme Kartı
+            Builder(
+              builder: (context) {
+                final coordStr = '${place.lat.toStringAsFixed(5)}, ${place.lng.toStringAsFixed(5)}';
+                final currentUser = ref.watch(currentUserProvider);
+                double? myDist;
+                if (currentUser?.lat != null && currentUser?.lng != null) {
+                  myDist = Geolocator.distanceBetween(currentUser!.lat!, currentUser.lng!, place.lat, place.lng);
+                }
+                final distText = myDist != null
+                    ? (myDist >= 1000 ? '${(myDist / 1000).toStringAsFixed(1)} km uzaklıkta' : '${myDist.round()} m uzaklıkta')
+                    : null;
+
+                Future<void> openMap(String urlStr) async {
+                  final uri = Uri.parse(urlStr);
+                  try {
+                    final canLaunch = await canLaunchUrl(uri);
+                    if (canLaunch) {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    } else {
+                      await launchUrl(uri, mode: LaunchMode.platformDefault);
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Harita uygulaması açılamadı.')),
+                      );
+                    }
+                  }
+                }
+
+                return Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF282B37) : const Color(0xFFF3F4F6),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.05),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.location_on_rounded, size: 15, color: LoveraColors.primary),
+                          const SizedBox(width: 6),
+                          Text(
+                            'KONUM DETAYI',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.5,
+                              color: isDark ? const Color(0xFFA0A6B2) : const Color(0xFF6B7280),
+                            ),
+                          ),
+                          if (distText != null) ...[
+                            const Spacer(),
+                            Text(
+                              distText,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: LoveraColors.primary,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: SelectableText(
+                              coordStr,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                fontFamily: 'monospace',
+                                color: isDark ? Colors.white70 : const Color(0xFF374151),
+                              ),
+                            ),
+                          ),
+                          InkWell(
+                            borderRadius: BorderRadius.circular(8),
+                            onTap: () {
+                              Clipboard.setData(ClipboardData(text: coordStr));
+                              HapticFeedback.lightImpact();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Row(
+                                    children: [
+                                      const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+                                      const SizedBox(width: 8),
+                                      Text('${place.title} koordinatları kopyalandı! 📋'),
+                                    ],
+                                  ),
+                                  backgroundColor: const Color(0xFF10B981),
+                                  behavior: SnackBarBehavior.floating,
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.all(4.0),
+                              child: Icon(
+                                Icons.copy_rounded,
+                                size: 16,
+                                color: isDark ? Colors.white60 : Colors.black54,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      // Haritalar Butonları: Google Haritalar & Apple Haritalar
+                      Row(
+                        children: [
+                          // Google Haritalar Butonu
+                          Expanded(
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () {
+                                  HapticFeedback.mediumImpact();
+                                  final gMapsUrl = 'https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}';
+                                  openMap(gMapsUrl);
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF4285F4).withValues(alpha: isDark ? 0.22 : 0.12),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: const Color(0xFF4285F4).withValues(alpha: isDark ? 0.45 : 0.35),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const Icon(Icons.map_rounded, size: 16, color: Color(0xFF4285F4)),
+                                      const SizedBox(width: 6),
+                                      const Text(
+                                        'Google Haritalar',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w800,
+                                          color: Color(0xFF4285F4),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          // Apple Haritalar Butonu
+                          Expanded(
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () {
+                                  HapticFeedback.mediumImpact();
+                                  final appleMapsUrl = 'https://maps.apple.com/?q=${Uri.encodeComponent(place.title)}&ll=${place.lat},${place.lng}';
+                                  openMap(appleMapsUrl);
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                                  decoration: BoxDecoration(
+                                    color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: isDark ? Colors.white.withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.15),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.apple_rounded,
+                                        size: 17,
+                                        color: isDark ? Colors.white : Colors.black87,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Apple Haritalar',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w800,
+                                          color: isDark ? Colors.white : Colors.black87,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
             const SizedBox(height: 16),
             // Bildirim Tercihleri (Partner ve Kendim İçin Ayrı Ayrı)
             // Canlı Firestore Stream ile her iki tarafın telefonunda ANLIK (Realtime) senkronize olur!
@@ -1807,11 +1998,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                         }
                         ref.read(activeMeetingLocationProvider.notifier).state = null;
                         if (mounted) {
-                          setState(() {
-                            _myMeetingRoute = [];
-                            _partnerMeetingRoute = [];
-                            _isMeetingTopBannerVisible = false;
-                          });
+                          setState(() {});
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text('Buluşma noktası silindi.')),
                           );
@@ -1916,7 +2103,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                   onPressed: () {
                     Navigator.pop(ctx);
                     HapticFeedback.selectionClick();
-                    _sendMeetingRequest(LatLng(place.lat, place.lng), '${place.iconEmoji} ${place.title}');
+                    _showSendMeetingRequestSheet(LatLng(place.lat, place.lng), '${place.iconEmoji} ${place.title}');
                   },
                 ),
               ),
@@ -2381,29 +2568,6 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                 tileBuilder: isDark ? _snapMapDarkTileBuilder : null,
               ),
 
-              // Buluşma Rotaları (Her iki kullanıcı için en yakın yol çizgileri)
-              if (_myMeetingRoute.isNotEmpty || _partnerMeetingRoute.isNotEmpty)
-                PolylineLayer(
-                  polylines: [
-                    if (_myMeetingRoute.isNotEmpty)
-                      Polyline(
-                        points: _myMeetingRoute,
-                        strokeWidth: 5.0,
-                        color: const Color(0xFF388AF6).withValues(alpha: 0.85),
-                        borderStrokeWidth: 2.0,
-                        borderColor: Colors.white.withValues(alpha: 0.9),
-                      ),
-                    if (_partnerMeetingRoute.isNotEmpty)
-                      Polyline(
-                        points: _partnerMeetingRoute,
-                        strokeWidth: 5.0,
-                        color: LoveraColors.primary.withValues(alpha: 0.85),
-                        borderStrokeWidth: 2.0,
-                        borderColor: Colors.white.withValues(alpha: 0.9),
-                      ),
-                  ],
-                ),
-
               // Kalıcı Kayıtlı Özel Konumlar Katmanı (Ev, İş, Okul vb.)
               MarkerLayer(
                 markers: standalonePlaces.map((place) {
@@ -2528,12 +2692,23 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                       alignment: Alignment.topCenter,
                       child: GestureDetector(
                         onTap: () {
-                          if (_isMeetingTopBannerVisible) {
-                            _closeMeetingBanner();
-                          } else {
-                            _openMeetingBanner();
-                            _fitBothMeetingRoutes(activeMeeting);
-                          }
+                          HapticFeedback.selectionClick();
+                          _animatedFlightMove(LatLng(activeMeeting.lat, activeMeeting.lng), 16.5);
+                        },
+                        onLongPress: () {
+                          HapticFeedback.mediumImpact();
+                          final meetingPlace = SavedPlace(
+                            id: 'active_meeting',
+                            title: activeMeeting.title.isNotEmpty ? activeMeeting.title : 'Buluşma Noktası',
+                            iconEmoji: '💖',
+                            lat: activeMeeting.lat,
+                            lng: activeMeeting.lng,
+                            category: 'meeting',
+                            createdBy: currentUser?.id ?? '',
+                            createdByName: 'Buluşma Noktası',
+                            createdAt: DateTime.now(),
+                          );
+                          _showPlaceDetailsDialog(meetingPlace);
                         },
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
@@ -2656,7 +2831,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                       Builder(
                         builder: (context) {
                           final double rot = _mapController.camera.rotation;
-                          final bool isRotated = rot.abs() > 2.0 || _isNavigating;
+                          final bool isRotated = rot.abs() > 2.0;
                           if (!isRotated) return const SizedBox.shrink();
                           return Padding(
                             padding: const EdgeInsets.only(right: 8),
@@ -2690,9 +2865,6 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                           tooltip: 'İkimizi Göster',
                           isDark: isDark,
                           onTap: () {
-                            if (_isNavigating) {
-                              _resetCompassToNorth();
-                            }
                             setState(() => _followTarget = _FollowTarget.none);
                             final bounds = LatLngBounds.fromPoints([myLatLng, partnerLatLng]);
                             _mapController.fitCamera(
@@ -2711,156 +2883,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
             ),
           ),
 
-          // Aktif Buluşma Bilgi Kartı (Sadece alttaki Buluşma butonuna basınca yukarıdan aşağı animasyonla iner, çarpıya basınca yukarı kayarak kapanır)
-          if (activeMeeting != null && _isMeetingTopBannerVisible)
-            SafeArea(
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: SlideTransition(
-                  position: _meetingBannerSlideAnimation,
-                  child: FadeTransition(
-                    opacity: _meetingBannerController,
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 60, left: 16, right: 16),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(18),
-                        onTap: () => _fitBothMeetingRoutes(activeMeeting),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: isDark ? const Color(0xFF1E212B) : Colors.white,
-                            borderRadius: BorderRadius.circular(18),
-                            boxShadow: [
-                              BoxShadow(
-                                color: LoveraColors.primary.withValues(alpha: 0.25),
-                                blurRadius: 16,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                            border: Border.all(
-                              color: LoveraColors.primary.withValues(alpha: 0.4),
-                              width: 1.5,
-                            ),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  gradient: LoveraColors.primaryGradient,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(Icons.favorite_rounded, color: Colors.white, size: 16),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Text(
-                                      'Buluşma Noktası',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w700,
-                                        color: LoveraColors.primary,
-                                      ),
-                                    ),
-                                    Builder(
-                                      builder: (context) {
-                                        String meetTitle = activeMeeting.title.trim();
-                                        if (meetTitle.toLowerCase().contains('seçilen') || meetTitle.isEmpty) {
-                                          meetTitle = 'Buluşma';
-                                        }
-                                        return Text(
-                                          meetTitle,
-                                          style: const TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        );
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              // Yola Odaklan Butonu (Google Maps stili yol yönüne kilitli navigasyon veya tüm rotayı görme)
-                              InkWell(
-                                borderRadius: BorderRadius.circular(10),
-                                onTap: () {
-                                  if (_isNavigating) {
-                                    _resetCompassToNorth();
-                                    _fitBothMeetingRoutes(activeMeeting);
-                                  } else {
-                                    _startGoogleMapsNavigation(activeMeeting);
-                                  }
-                                },
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 250),
-                                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: _isNavigating
-                                        ? LoveraColors.primary
-                                        : LoveraColors.primary.withValues(alpha: 0.12),
-                                    borderRadius: BorderRadius.circular(10),
-                                    boxShadow: _isNavigating
-                                        ? [
-                                            BoxShadow(
-                                              color: LoveraColors.primary.withValues(alpha: 0.4),
-                                              blurRadius: 8,
-                                              offset: const Offset(0, 2),
-                                            ),
-                                          ]
-                                        : null,
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        _isNavigating ? Icons.navigation_rounded : Icons.alt_route_rounded,
-                                        color: _isNavigating ? Colors.white : LoveraColors.primary,
-                                        size: 16,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        _isNavigating ? 'Navigasyondasın' : 'Yola Odaklan',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w800,
-                                          color: _isNavigating ? Colors.white : LoveraColors.primary,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              InkWell(
-                                borderRadius: BorderRadius.circular(10),
-                                onTap: () {
-                                  HapticFeedback.lightImpact();
-                                  _closeMeetingBanner(clearRoutes: true);
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.all(6),
-                                  decoration: BoxDecoration(
-                                    color: Colors.redAccent.withValues(alpha: 0.12),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: const Icon(Icons.close_rounded, color: Colors.redAccent, size: 18),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
+
 
           // Alt Bölüm: Snap Map Tarzı Hızlı Işınlanma Butonları & Canlı Bilgi Kartı
           Positioned(
@@ -2935,12 +2958,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                             tooltip: 'Buluşma Noktası',
                             onTap: () {
                               HapticFeedback.selectionClick();
-                              if (_isMeetingTopBannerVisible) {
-                                _closeMeetingBanner();
-                              } else {
-                                _openMeetingBanner();
-                                _fitBothMeetingRoutes(activeMeeting);
-                              }
+                              _animatedFlightMove(LatLng(activeMeeting.lat, activeMeeting.lng), 16.5);
                             },
                             onLongPress: () {
                               HapticFeedback.mediumImpact();

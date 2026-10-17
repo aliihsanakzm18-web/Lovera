@@ -14,11 +14,13 @@ import '../../../core/services/database_service.dart';
 import '../../../core/services/notification_service.dart';
 import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../drawing/presentation/drawing_screen.dart';
 
 class ChatView extends ConsumerStatefulWidget {
-  const ChatView({super.key, this.onBackToHome, this.onOpenMap});
+  const ChatView({super.key, this.onBackToHome, this.onOpenMap, this.isEmbedded = false});
   final VoidCallback? onBackToHome;
   final VoidCallback? onOpenMap;
+  final bool isEmbedded;
 
   @override
   ConsumerState<ChatView> createState() => _ChatViewState();
@@ -759,6 +761,17 @@ class _ChatViewState extends ConsumerState<ChatView> {
                     icon: const Icon(Icons.photo_rounded, color: LoveraColors.secondary, size: 24),
                     onPressed: _pickImage,
                     tooltip: 'Fotoğraf Gönder',
+                  ),
+
+                  // Canlı Çizim Tuvali Butonu
+                  IconButton(
+                    icon: const Icon(Icons.brush_rounded, color: Color(0xFFA78BFA), size: 24),
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const DrawingScreen()),
+                      );
+                    },
+                    tooltip: 'Çizim Yap ve Gönder',
                   ),
 
                   // Metin Alanı

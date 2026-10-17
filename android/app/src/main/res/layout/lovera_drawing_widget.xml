@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_drawing_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background">
+
+    <!-- 1. Çizim Görseli Katmanı (Tam Widget Alanını Kaplar) -->
+    <ImageView
+        android:id="@+id/widget_drawing_image"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:visibility="gone" />
+
+    <!-- 2. Henüz Çizim Yokken Gösterilen Yer Tutucu (Empty State) -->
+    <LinearLayout
+        android:id="@+id/widget_drawing_placeholder"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:visibility="visible">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🎨"
+            android:textSize="36sp" />
+
+        <TextView
+            android:id="@+id/widget_drawing_empty_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Canlı Çizim Tuvali"
+            android:textColor="#F3F4F6"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/widget_drawing_empty_subtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:gravity="center"
+            android:text="Çizmek için tıkla 💜"
+            android:textColor="#A78BFA"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <!-- 3. Sol Üst: Gönderen Partner Çipi & Zaman -->
+    <LinearLayout
+        android:id="@+id/widget_drawing_badge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_margin="10dp"
+        android:background="@drawable/widget_chip_bg"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="9dp"
+        android:paddingVertical="5dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/widget_drawing_sender_icon"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="✏️"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/widget_drawing_sender_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="Eda"
+            android:textColor="#F3F4F6"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/widget_drawing_time_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="5dp"
+            android:text="• Şimdi"
+            android:textColor="#A78BFA"
+            android:textSize="10sp" />
+    </LinearLayout>
+
+    <!-- 4. Sağ Alt: Yeni Çiz Butonu İkonu -->
+    <LinearLayout
+        android:id="@+id/widget_drawing_btn_reply"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="10dp"
+        android:background="@drawable/widget_chip_bg"
+        android:gravity="center"
+        android:paddingHorizontal="8dp"
+        android:paddingVertical="5dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🖌️ Çiz"
+            android:textColor="#F3F4F6"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+</FrameLayout>

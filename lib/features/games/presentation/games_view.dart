@@ -14,53 +14,6 @@ class GamesView extends ConsumerStatefulWidget {
 }
 
 class _GamesViewState extends ConsumerState<GamesView> {
-  final PageController _pageController = PageController();
-  int _currentPage = 0;
-
-  final List<GameCategory> _categories = [
-    GameCategory(
-      title: 'Aşk & Uyum Testi',
-      subtitle: 'Birbirinizi ne kadar iyi tanıyorsunuz?',
-      icon: Icons.quiz_rounded,
-      color: LoveraColors.primary,
-      pages: [
-        'Birlikte En Çok Ne Yapmayı Seversiniz?',
-        'Partnerinin En Sevdiği Yemek Nedir?',
-        'İlk Buluşmanız Neredeydi?',
-        'İlişkinizin En Unutulmaz Günü Hangisiydi?',
-      ],
-    ),
-    GameCategory(
-      title: 'Doğruluk mu Cesaret mi?',
-      subtitle: 'Romantik ve eğlenceli görevler',
-      icon: Icons.casino_rounded,
-      color: LoveraColors.secondary,
-      pages: [
-        'Partnerine şu an hissettiğin en tatlı duyguyu sesli söyle.',
-        'Birbirinize en son ne zaman hediye aldınız?',
-        'Partnerin için 10 saniyelik komik bir yüz ifadesi yap.',
-        'Birlikte gitmek istediğiniz hayalinizdeki tatil yeri neresi?',
-      ],
-    ),
-    GameCategory(
-      title: 'Çift Kart Eşleştirme',
-      subtitle: 'Görsel hafıza ve eğlence odası',
-      icon: Icons.style_rounded,
-      color: LoveraColors.accentViolet,
-      pages: [
-        'Kalp Kartları & Hatıra Puanı',
-        'Zaman Tüneli Eşleşmesi',
-        'Ortak Sır Kutusu',
-      ],
-    ),
-  ];
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -88,251 +41,93 @@ class _GamesViewState extends ConsumerState<GamesView> {
             ),
             const SizedBox(width: 10),
             Text(
-              'Oyun & Eğlence',
+              'Karşılıklı Oyunlar',
               style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
             ),
           ],
         ),
       ),
       body: SafeArea(
-        child: Column(
-          children: [
-            // Kategori Seçim Sekmeleri
-            Container(
-              height: 54,
-              margin: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: _categories.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 10),
-                itemBuilder: (context, index) {
-                  final cat = _categories[index];
-                  final isSelected = _currentPage == index;
-                  return InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: () {
-                      _pageController.animateToPage(
-                        index,
-                        duration: const Duration(milliseconds: 350),
-                        curve: Curves.easeInOutCubic,
-                      );
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? cat.color
-                            : (isDark ? const Color(0xFF1C1E2A) : Colors.white),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: isSelected
-                              ? cat.color
-                              : (isDark ? Colors.white12 : Colors.black12),
-                        ),
-                        boxShadow: isSelected
-                            ? [
-                                BoxShadow(
-                                  color: cat.color.withValues(alpha: 0.35),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ]
-                            : null,
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            cat.icon,
-                            size: 18,
-                            color: isSelected
-                                ? Colors.white
-                                : (isDark ? Colors.white70 : Colors.black87),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            cat.title,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: isSelected
-                                  ? Colors.white
-                                  : (isDark ? Colors.white70 : Colors.black87),
-                            ),
-                          ),
-                        ],
-                      ),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 90,
+                  height: 90,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        LoveraColors.primary.withValues(alpha: 0.15),
+                        LoveraColors.primarySoft.withValues(alpha: 0.25),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                  );
-                },
-              ),
-            ),
-
-            // Sayfalar Arası Swipe & İçerik Alanı
-            Expanded(
-              child: PageView.builder(
-                controller: _pageController,
-                onPageChanged: (idx) => setState(() => _currentPage = idx),
-                itemCount: _categories.length,
-                itemBuilder: (context, catIdx) {
-                  final cat = _categories[catIdx];
-                  return ListView(
-                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 30),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Center(
+                    child: Text('🎮', style: TextStyle(fontSize: 44)),
+                  ),
+                ).animate().scale(duration: 500.ms, curve: Curves.easeOutBack),
+                const SizedBox(height: 24),
+                Text(
+                  'Oyunlar Yakında!',
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.5,
+                  ),
+                ).animate(delay: 150.ms).fadeIn(duration: 400.ms).slideY(begin: 0.1),
+                const SizedBox(height: 10),
+                Text(
+                  'Partnerinle oynayabileceğiniz eğlenceli ve keyifli yeni oyunlar üzerinde çalışıyoruz. Çok yakında burada olacak! 💕',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    height: 1.5,
+                    color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
+                  ),
+                ).animate(delay: 250.ms).fadeIn(duration: 400.ms).slideY(begin: 0.1),
+                const SizedBox(height: 28),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF191B26) : Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isDark ? Colors.white12 : Colors.black12,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Başlık Kartı
                       Container(
-                        padding: const EdgeInsets.all(22),
+                        width: 8,
+                        height: 8,
                         decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              cat.color.withValues(alpha: 0.85),
-                              cat.color,
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(AppTheme.radius),
-                          boxShadow: [
-                            BoxShadow(
-                              color: cat.color.withValues(alpha: 0.3),
-                              blurRadius: 16,
-                              offset: const Offset(0, 6),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Icon(cat.icon, size: 36, color: Colors.white),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.25),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Text(
-                                    partner != null ? 'Partner: ${partner.name}' : 'Eşleşme Bekleniyor',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              cat.title,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 22,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              cat.subtitle,
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.9),
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ).animate().fadeIn(duration: 350.ms).slideY(begin: 0.08),
-
-                      const SizedBox(height: 24),
-
-                      // Kategoriye ait sayfalar/sorular/kartlar
-                      Text(
-                        'ETKİNLİK LİSTESİ',
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          color: LoveraColors.textMuted,
-                          letterSpacing: 1.2,
-                          fontWeight: FontWeight.w700,
+                          color: partner != null ? const Color(0xFF10B981) : Colors.amber,
+                          shape: BoxShape.circle,
                         ),
                       ),
-
-                      const SizedBox(height: 12),
-
-                      ...cat.pages.asMap().entries.map((entry) {
-                        final pIdx = entry.key;
-                        final pageText = entry.value;
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.surface,
-                            borderRadius: BorderRadius.circular(AppTheme.radius),
-                            border: Border.all(color: theme.dividerColor),
-                            boxShadow: AppTheme.ambientShadow,
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 36,
-                                height: 36,
-                                decoration: BoxDecoration(
-                                  color: cat.color.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    '${pIdx + 1}',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                      color: cat.color,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: Text(
-                                  pageText,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Icon(
-                                Icons.chevron_right_rounded,
-                                color: LoveraColors.textMuted,
-                                size: 20,
-                              ),
-                            ],
-                          ),
-                        ).animate(delay: (pIdx * 80).ms).fadeIn().slideY(begin: 0.06);
-                      }),
+                      const SizedBox(width: 8),
+                      Text(
+                        partner != null ? 'Partner: ${partner.name}' : 'Partner bekleniyor',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: isDark ? Colors.white70 : Colors.black87,
+                        ),
+                      ),
                     ],
-                  );
-                },
-              ),
+                  ),
+                ).animate(delay: 350.ms).fadeIn(duration: 400.ms),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
-}
-
-class GameCategory {
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final Color color;
-  final List<String> pages;
-
-  GameCategory({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.color,
-    required this.pages,
-  });
 }

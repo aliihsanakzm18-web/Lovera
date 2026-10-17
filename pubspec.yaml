@@ -23,6 +23,7 @@ dependencies:
   flutter_local_notifications: ^17.2.1
   haptic_feedback: ^0.5.1
   qr_flutter: ^4.1.0
+  chess: ^0.8.1
   image_picker: ^1.1.2
   permission_handler: ^11.3.1
   shared_preferences: ^2.3.2
@@ -36,6 +37,8 @@ dependencies:
   video_player: ^2.14.1
   gal: ^2.3.3
   path_provider: ^2.1.5
+  url_launcher: ^6.3.3
+  home_widget: ^0.10.0
 
 dev_dependencies:
   flutter_test:
