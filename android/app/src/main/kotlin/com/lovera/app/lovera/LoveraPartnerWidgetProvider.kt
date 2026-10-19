@@ -1,7 +1,9 @@
 package com.lovera.app.lovera
 
+import android.app.AlarmManager
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -13,15 +15,117 @@ import java.io.File
 
 class LoveraPartnerWidgetProvider : HomeWidgetProvider() {
 
+    companion object {
+        private const val ACTION_AUTO_TICK = "com.lovera.app.lovera.PARTNER_WIDGET_TICK"
+        private const val TICK_INTERVAL_MS = 60000L // Her 60 saniyede bir widget süresini güncelle
+    }
+
+    override fun onReceive(context: Context, intent: Intent) {
+        super.onReceive(context, intent)
+        if (intent.action == ACTION_AUTO_TICK) {
+            val appWidgetManager = AppWidgetManager.getInstance(context)
+            val thisWidget = ComponentName(context, LoveraPartnerWidgetProvider::class.java)
+            val appWidgetIds = appWidgetManager.getAppWidgetIds(thisWidget)
+            if (appWidgetIds != null && appWidgetIds.isNotEmpty()) {
+                val widgetData = context.getSharedPreferences("HomeWidgetPreferences", Context.MODE_PRIVATE)
+                onUpdate(context, appWidgetManager, appWidgetIds, widgetData)
+            }
+        }
+    }
+
+    private fun scheduleNextTick(context: Context) {
+        try {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+            val tickIntent = Intent(context, LoveraPartnerWidgetProvider::class.java).apply {
+                action = ACTION_AUTO_TICK
+                setPackage(context.packageName)
+            }
+            val pendingIntent = PendingIntent.getBroadcast(
+                context,
+                1001,
+                tickIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val triggerAtMillis = System.currentTimeMillis() + TICK_INTERVAL_MS
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                if (alarmManager.canScheduleExactAlarms()) {
+                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC, triggerAtMillis, pendingIntent)
+                } else {
+                    alarmManager.setAndAllowWhileIdle(AlarmManager.RTC, triggerAtMillis, pendingIntent)
+                }
+            } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC, triggerAtMillis, pendingIntent)
+            } else {
+                alarmManager.set(AlarmManager.RTC, triggerAtMillis, pendingIntent)
+            }
+        } catch (_: Exception) {
+            // Cihaz pil tasarrufu veya izin kısıtlaması durumunda sessizce geç
+        }
+    }
+
+    override fun onDisabled(context: Context) {
+        super.onDisabled(context)
+        try {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+            val tickIntent = Intent(context, LoveraPartnerWidgetProvider::class.java).apply {
+                action = ACTION_AUTO_TICK
+            }
+            val pendingIntent = PendingIntent.getBroadcast(
+                context,
+                1001,
+                tickIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            alarmManager.cancel(pendingIntent)
+        } catch (_: Exception) {}
+    }
+
     override fun onUpdate(
         context: Context,
         appWidgetManager: AppWidgetManager,
         appWidgetIds: IntArray,
         widgetData: SharedPreferences
     ) {
+        // Bir sonraki dakika güncellemesini takvimle
+        scheduleNextTick(context)
         for (appWidgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, R.layout.lovera_partner_widget).apply {
-                // 0. Arka Plan Fotoğrafı & Kenardan Ortaya Karanlık (Vignette) Efekti
+                // Tema Tespiti (Koyu / Açık) - Varsayılan koyu gece teması
+                val widgetTheme = widgetData.getString("widget_theme", "dark") ?: "dark"
+                val isDarkTheme = when (widgetTheme) {
+                    "light" -> false
+                    "dark" -> true
+                    else -> {
+                        // "system" veya başka değer gelirse telefonun gece modunu kontrol et, yoksa varsayılan koyu (true)
+                        val nightModeFlags = context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
+                        nightModeFlags != android.content.res.Configuration.UI_MODE_NIGHT_NO
+                    }
+                }
+
+                // 0. Tema Arka Plan Deseni ve Çip Stilleri
+                if (isDarkTheme) {
+                    setImageViewResource(R.id.widget_bg_pattern, R.drawable.widget_background)
+                    setInt(R.id.widget_partner_chip, "setBackgroundResource", R.drawable.widget_chip_bg)
+                    setInt(R.id.widget_counter_chip, "setBackgroundResource", R.drawable.widget_counter_bg)
+                    setInt(R.id.widget_last_seen, "setBackgroundResource", R.drawable.widget_chip_bg)
+                    setInt(R.id.widget_battery_chip, "setBackgroundResource", R.drawable.widget_chip_bg)
+                    setInt(R.id.widget_status_chip, "setBackgroundResource", R.drawable.widget_chip_bg)
+                    setTextColor(R.id.widget_partner_name, android.graphics.Color.parseColor("#F3F4F6"))
+                    setTextColor(R.id.widget_status_text, android.graphics.Color.parseColor("#F3F4F6"))
+                    setTextColor(R.id.widget_counter_label, android.graphics.Color.parseColor("#E2E8F0"))
+                } else {
+                    setImageViewResource(R.id.widget_bg_pattern, R.drawable.widget_background_light)
+                    setInt(R.id.widget_partner_chip, "setBackgroundResource", R.drawable.widget_chip_bg_light)
+                    setInt(R.id.widget_counter_chip, "setBackgroundResource", R.drawable.widget_chip_bg_light)
+                    setInt(R.id.widget_last_seen, "setBackgroundResource", R.drawable.widget_chip_bg_light)
+                    setInt(R.id.widget_battery_chip, "setBackgroundResource", R.drawable.widget_chip_bg_light)
+                    setInt(R.id.widget_status_chip, "setBackgroundResource", R.drawable.widget_chip_bg_light)
+                    setTextColor(R.id.widget_partner_name, android.graphics.Color.parseColor("#1E1B4B")) // Derin İndigo / Koyu
+                    setTextColor(R.id.widget_status_text, android.graphics.Color.parseColor("#1E1B4B"))
+                    setTextColor(R.id.widget_counter_label, android.graphics.Color.parseColor("#4B5563"))
+                }
+
+                // 0.1 Arka Plan Fotoğrafı & Kenardan Ortaya Karanlık (Vignette) Efekti
                 val bgImagePath = widgetData.getString("widget_bg_image_path", null)
                 if (bgImagePath != null && bgImagePath.isNotEmpty()) {
                     val file = File(bgImagePath)
@@ -56,15 +160,16 @@ class LoveraPartnerWidgetProvider : HomeWidgetProvider() {
                 // 2. Aşk Sayacı (Gün Sayısı)
                 val daysCount = widgetData.getString("days_count", "0") ?: "0"
                 setTextViewText(R.id.widget_days_count, daysCount)
+                setTextColor(R.id.widget_days_count, android.graphics.Color.parseColor(if (isDarkTheme) "#A78BFA" else "#7C3AED"))
 
                 // 3. Batarya Seviyesi ve Rengi (Azaldıkça seviyesi ve rengi dinamik değişir)
                 val batteryLevel = widgetData.getString("battery_level", "%--") ?: "%--"
                 setTextViewText(R.id.widget_battery_text, batteryLevel)
                 val numericBat = batteryLevel.replace("%", "").trim().toIntOrNull()
                 val batteryColor = when {
-                    numericBat == null -> android.graphics.Color.parseColor("#34D399")
-                    numericBat >= 50 -> android.graphics.Color.parseColor("#34D399") // Yeşil
-                    numericBat >= 20 -> android.graphics.Color.parseColor("#FBBF24") // Sarı / Turuncu
+                    numericBat == null -> android.graphics.Color.parseColor(if (isDarkTheme) "#34D399" else "#059669")
+                    numericBat >= 50 -> android.graphics.Color.parseColor(if (isDarkTheme) "#34D399" else "#059669") // Yeşil
+                    numericBat >= 20 -> android.graphics.Color.parseColor(if (isDarkTheme) "#FBBF24" else "#D97706") // Sarı / Turuncu
                     else -> android.graphics.Color.parseColor("#EF4444") // Kritik Kırmızı
                 }
                 setTextColor(R.id.widget_battery_text, batteryColor)
@@ -79,26 +184,106 @@ class LoveraPartnerWidgetProvider : HomeWidgetProvider() {
                 setTextViewText(R.id.widget_status_text, statusText)
                 setTextViewText(R.id.widget_status_emoji, statusEmoji)
 
-                // 5. Son Görülme / Durum zamanı
-                val lastSeen = widgetData.getString("last_seen", "Şimdi aktif") ?: "Şimdi aktif"
-                setTextViewText(R.id.widget_last_seen, lastSeen)
-                if (lastSeen.contains("Şimdi aktif") || lastSeen.contains("Canlı")) {
-                    setTextColor(R.id.widget_last_seen, android.graphics.Color.parseColor("#34D399")) // Canlı Yeşil
+                // 5. Son Görülme / Durum zamanı (Sistem saati ile gerçek zamanlı dinamik hesaplanır)
+                val lastActiveMillis: Long = try {
+                    widgetData.getLong("last_active_millis", 0L)
+                } catch (_: Exception) {
+                    try {
+                        widgetData.getInt("last_active_millis", 0).toLong()
+                    } catch (_: Exception) {
+                        widgetData.getString("last_active_millis", "0")?.toLongOrNull() ?: 0L
+                    }
+                }
+                val isPartnerAppOpen = widgetData.getBoolean("partner_is_app_open", false)
+                val lastSeen: String = if (lastActiveMillis > 0) {
+                    val diffMillis = System.currentTimeMillis() - lastActiveMillis
+                    val diffMinutes = (diffMillis / 60000).toInt()
+                    val diffHours = (diffMinutes / 60)
+                    val diffDays = (diffHours / 24)
+
+                    when {
+                        isPartnerAppOpen && diffMinutes < 3 -> "Şimdi aktif"
+                        diffMinutes < 1 -> "Şimdi"
+                        diffMinutes == 1 -> "1 dk önce"
+                        diffMinutes < 60 -> "$diffMinutes dk önce"
+                        diffHours < 24 -> "$diffHours sa önce"
+                        diffDays < 30 -> "$diffDays gün önce"
+                        else -> "${diffDays / 30} ay önce"
+                    }
                 } else {
-                    setTextColor(R.id.widget_last_seen, android.graphics.Color.parseColor("#CBD5E1")) // Normal Açık Gri/Lavanta
+                    val fallback = widgetData.getString("last_seen", "Çevrimdışı") ?: "Çevrimdışı"
+                    if (fallback == "1 dk önce" || fallback == "Şimdi aktif") "Çevrimdışı" else fallback
                 }
 
-                // Widget'a dokunulduğunda Lovera uygulamasını aç
-                val launchIntent = Intent(context, MainActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                setTextViewText(R.id.widget_last_seen, lastSeen)
+                if (lastSeen.contains("Şimdi aktif") || lastSeen.contains("Canlı")) {
+                    setTextColor(R.id.widget_last_seen, android.graphics.Color.parseColor(if (isDarkTheme) "#34D399" else "#059669")) // Canlı Zümrüt Yeşili
+                } else {
+                    setTextColor(R.id.widget_last_seen, android.graphics.Color.parseColor(if (isDarkTheme) "#E2E8F0" else "#475569")) // Net, Okunaklı Slate / Gri
                 }
-                val pendingIntent = PendingIntent.getActivity(
+
+                // 6. Partnerden Gelen Mesaj Bildirim Baloncukları Yığını
+                val unreadCount = widgetData.getInt("widget_unread_count", 0)
+                val msg1 = widgetData.getString("widget_msg_1", "") ?: ""
+                val msg2 = widgetData.getString("widget_msg_2", "") ?: ""
+                val msg3 = widgetData.getString("widget_msg_3", "") ?: ""
+
+                if (unreadCount > 0 && (msg1.isNotEmpty() || msg2.isNotEmpty() || msg3.isNotEmpty())) {
+                    setViewVisibility(R.id.widget_message_container, View.VISIBLE)
+
+                    val bubbleBg = if (isDarkTheme) R.drawable.widget_message_bubble_bg else R.drawable.widget_message_bubble_bg_light
+                    val msg3Color = if (isDarkTheme) "#FFFFFF" else "#1E1B4B"
+                    val msg2Color = if (isDarkTheme) "#E2E8F0" else "#334155"
+                    val msg1Color = if (isDarkTheme) "#B3DDD6FE" else "#64748B"
+
+                    // 1. En eski mesaj balonu
+                    if (msg1.isNotEmpty()) {
+                        setInt(R.id.widget_msg_bubble_1, "setBackgroundResource", bubbleBg)
+                        setTextViewText(R.id.widget_msg_text_1, msg1)
+                        setTextColor(R.id.widget_msg_text_1, android.graphics.Color.parseColor(msg1Color))
+                        setViewVisibility(R.id.widget_msg_bubble_1, View.VISIBLE)
+                    } else {
+                        setViewVisibility(R.id.widget_msg_bubble_1, View.GONE)
+                    }
+
+                    // 2. Orta mesaj balonu
+                    if (msg2.isNotEmpty()) {
+                        setInt(R.id.widget_msg_bubble_2, "setBackgroundResource", bubbleBg)
+                        setTextViewText(R.id.widget_msg_text_2, msg2)
+                        setTextColor(R.id.widget_msg_text_2, android.graphics.Color.parseColor(msg2Color))
+                        setViewVisibility(R.id.widget_msg_bubble_2, View.VISIBLE)
+                    } else {
+                        setViewVisibility(R.id.widget_msg_bubble_2, View.GONE)
+                    }
+
+                    // 3. En yeni mesaj balonu
+                    if (msg3.isNotEmpty()) {
+                        setInt(R.id.widget_msg_bubble_3, "setBackgroundResource", bubbleBg)
+                        setTextViewText(R.id.widget_msg_text_3, msg3)
+                        setTextColor(R.id.widget_msg_text_3, android.graphics.Color.parseColor(msg3Color))
+                        setViewVisibility(R.id.widget_msg_bubble_3, View.VISIBLE)
+                        if (unreadCount > 3) {
+                            setTextViewText(R.id.widget_msg_badge_more, "+${unreadCount - 3}")
+                            setViewVisibility(R.id.widget_msg_badge_more, View.VISIBLE)
+                        } else {
+                            setViewVisibility(R.id.widget_msg_badge_more, View.GONE)
+                        }
+                    } else {
+                        setViewVisibility(R.id.widget_msg_bubble_3, View.GONE)
+                    }
+                } else {
+                    setViewVisibility(R.id.widget_message_container, View.GONE)
+                }
+
+                // Widget'a dokunulduğunda: Mesaj varsa sohbete, yoksa ana ekrana yönlendir
+                val targetUri = if (unreadCount > 0) "lovera://open_chat" else "lovera://open_dashboard"
+                val clickIntent = es.antonborri.home_widget.HomeWidgetLaunchIntent.getActivity(
                     context,
-                    0,
-                    launchIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    MainActivity::class.java,
+                    android.net.Uri.parse(targetUri)
                 )
-                setOnClickPendingIntent(R.id.widget_root, pendingIntent)
+                setOnClickPendingIntent(R.id.widget_root, clickIntent)
+                setOnClickPendingIntent(R.id.widget_message_container, clickIntent)
             }
 
             appWidgetManager.updateAppWidget(appWidgetId, views)

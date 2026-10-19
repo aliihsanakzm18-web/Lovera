@@ -2,8 +2,15 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_drawing_root"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@drawable/widget_background">
+    android:layout_height="match_parent">
+
+    <!-- 0. Dinamik Tema Arka Plan Deseni (Koyu / Açık / Vektör) -->
+    <ImageView
+        android:id="@+id/widget_drawing_bg_pattern"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="fitXY"
+        android:src="@drawable/widget_drawing_background" />
 
     <!-- 1. Çizim Görseli Katmanı (Tam Widget Alanını Kaplar) -->
     <ImageView

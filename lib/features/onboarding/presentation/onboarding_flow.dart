@@ -1,11 +1,16 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/services/database_service.dart';
+import '../../../core/services/widget_sync_service.dart';
 import '../../../core/state/app_state.dart';
 import '../../auth/presentation/login_page.dart';
 import '../../auth/presentation/pairing_view.dart';
@@ -84,6 +89,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
     String? name;
     String? coupleId;
     String? avatarUrl;
+    String? widgetBgUrl;
 
     try {
       final doc = await FirebaseFirestore.instance
@@ -96,6 +102,7 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
         name = data['name'] as String?;
         coupleId = data['coupleId'] as String?;
         avatarUrl = data['avatarUrl'] as String?;
+        widgetBgUrl = data['widgetBgUrl'] as String?;
       }
     } catch (_) {}
 
@@ -119,6 +126,18 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       } else {
         ref.read(userAvatarProvider.notifier).state = null;
       }
+    }
+
+    // Hesaba kayıtlı widget arka plan fotoğrafı varsa yeni cihaza otomatik geri yükle
+    if (widgetBgUrl != null && widgetBgUrl.isNotEmpty) {
+      try {
+        final appDir = await getApplicationDocumentsDirectory();
+        final targetPath = '${appDir.path}/widget_bg_custom.jpg';
+        final clean = widgetBgUrl.contains(',') ? widgetBgUrl.split(',').last : widgetBgUrl;
+        await File(targetPath).writeAsBytes(base64Decode(clean));
+        await prefs.setString('widget_custom_bg_path', targetPath);
+        await WidgetSyncService.setWidgetBackgroundImage(targetPath);
+      } catch (_) {}
     }
 
     // Hoş geldin ekranı: Sadece ilk kez kayıt olan ya da henüz ismi hiç girilmemiş kullanıcıya sorulur.

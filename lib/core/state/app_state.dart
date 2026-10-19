@@ -3,6 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/models.dart';
+import '../services/widget_sync_service.dart';
+
+/// Global ScaffoldMessengerKey for toasts and SnackBars across all bottom sheets and dialogs
+final rootScaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
 /// Kullanıcının kendi girdiği adı.
 final userNameProvider = StateProvider<String>((ref) => '');
@@ -95,6 +99,23 @@ class ThemeModeNotifier extends StateNotifier<ThemeMode> {
           ? 'light'
           : (mode == ThemeMode.dark ? 'dark' : 'system');
       await prefs.setString('theme_mode', modeStr);
+
+      // Eğer widget teması özel olarak 'dark' veya 'light' kilitlenmemişse ('app' ise)
+      // uygulamanın temasıyla birlikte anında widget temasını da senkronize et!
+      final customWidgetTheme = prefs.getString('widget_theme') ?? 'app';
+      if (customWidgetTheme != 'dark' && customWidgetTheme != 'light') {
+        String targetWidgetTheme;
+        if (mode == ThemeMode.light) {
+          targetWidgetTheme = 'light';
+        } else if (mode == ThemeMode.dark) {
+          targetWidgetTheme = 'dark';
+        } else {
+          // Sistem varsayılanı ise telefonun o anki parlaklığını al
+          final brightness = WidgetsBinding.instance.platformDispatcher.platformBrightness;
+          targetWidgetTheme = brightness == Brightness.dark ? 'dark' : 'light';
+        }
+        await WidgetSyncService.setWidgetTheme(targetWidgetTheme, savedPreferenceMode: 'app');
+      }
     } catch (_) {}
   }
 }

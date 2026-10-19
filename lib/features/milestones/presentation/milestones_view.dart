@@ -6,6 +6,7 @@ import '../../../core/models/models.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/lovera_theme_background.dart';
 
 class MilestonesView extends ConsumerWidget {
   const MilestonesView({super.key});
@@ -36,9 +37,10 @@ class MilestonesView extends ConsumerWidget {
         icon: const Icon(Icons.add_rounded),
         label: const Text('Yeni gün ekle'),
       ),
-      body: StreamBuilder<List<Milestone>>(
-        stream: DatabaseService().milestonesStream(coupleId: coupleId),
-        builder: (context, snapshot) {
+      body: LoveraThemeBackground(
+        child: StreamBuilder<List<Milestone>>(
+          stream: DatabaseService().milestonesStream(coupleId: coupleId),
+          builder: (context, snapshot) {
           final items = snapshot.data ?? [];
 
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -170,8 +172,9 @@ class MilestonesView extends ConsumerWidget {
           );
         },
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 class _MilestoneFormSheet extends ConsumerStatefulWidget {

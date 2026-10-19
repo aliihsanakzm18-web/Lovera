@@ -109,6 +109,15 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
             .update({'isDelivered': true});
         debugPrint('[FCM-DELIVERY-ACK] Mesaj arka planda cihaza ulaştı ve çift tike güncellendi: $mId');
       }
+
+      // Widget üzerine mesaj baloncuğu ekle
+      final msgBody = message.notification?.body ?? message.data['body']?.toString();
+      if (msgBody != null && msgBody.isNotEmpty) {
+        final cachedMsgs = prefs.getStringList('widget_unread_messages_cache') ?? [];
+        cachedMsgs.add(msgBody);
+        await prefs.setStringList('widget_unread_messages_cache', cachedMsgs);
+        await WidgetSyncService.syncWidgetMessages(cachedMsgs);
+      }
     } catch (e) {
       debugPrint('[FCM-DELIVERY-ACK-ERR] $e');
     }
@@ -229,6 +238,8 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       debugPrint('[FCM-BG-DRAWING-SYNC-ERR] $e');
     }
   }
+
+
 
   // 2. Normal kullanıcı bildirimi gösterimi (sadece gerçek başlığı olan bildirimler)
   if (message.notification == null &&
@@ -390,6 +401,8 @@ class NotificationService {
           final senderName = message.data['fromName']?.toString() ?? 'Partnerin';
           onChargePingReceived?.call(senderName);
         }
+
+
 
         // Eğer kullanıcı şu an zaten sohbet ekranındaysa sohbet bildirimini gösterme (Zaten görüyor!)
         final isChatActive = isChatScreenActive?.call() ?? false;

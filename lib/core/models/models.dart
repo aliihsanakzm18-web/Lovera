@@ -15,6 +15,7 @@ class AppUser {
   final double? speed; // m/s cinsinden anlık hız (hız * 3.6 = km/s)
   final String? currentPlaceTitle; // Örn. "Evim", "İş Yeri"
   final String? currentPlaceEmoji; // Örn. "🏠", "💼"
+  final String? widgetBgUrl; // Hesaba kalıcı kayıtlı widget arka plan görseli (base64)
 
   const AppUser({
     required this.id,
@@ -32,12 +33,14 @@ class AppUser {
     this.speed,
     this.currentPlaceTitle,
     this.currentPlaceEmoji,
+    this.widgetBgUrl,
   });
 
   factory AppUser.fromJson(Map<String, dynamic> j) => AppUser(
         id: (j['id'] ?? '') as String,
         name: (j['name'] ?? '') as String,
         avatarUrl: (j['avatarUrl'] ?? j['avatar_url']) as String?,
+        widgetBgUrl: (j['widgetBgUrl'] ?? j['widget_bg_url']) as String?,
         batteryLevel: (j['batteryLevel'] ?? j['battery_level']) as int?,
         weather: j['weather'] as String?,
         city: j['city'] as String?,
@@ -78,6 +81,7 @@ class AppUser {
         'speed': speed,
         'currentPlaceTitle': currentPlaceTitle,
         'currentPlaceEmoji': currentPlaceEmoji,
+        'widget_bg_url': widgetBgUrl,
       };
 }
 
@@ -354,6 +358,148 @@ class SavedPlace {
         'createdByName': createdByName,
         'createdAt': createdAt.toIso8601String(),
         if (notifications != null) 'notifications': notifications,
+      };
+}
+
+/// Ortak Anı Albümü Modeli
+class MemoryItem {
+  final String id;
+  final String coupleId;
+  final String imageUrl; // base64 veya url
+  final String caption;
+  final String locationTitle;
+  final DateTime date;
+  final String createdBy;
+  final String createdByName;
+  final DateTime createdAt;
+  final List<String> likedBy; // Kalp bırakanların UID listesi
+  final String? albumId; // Anı Grubu / Klasör ID'si (Eğer bir gruba aitse)
+  final String? albumTitle; // Anı Grubu / Klasör Başlığı
+
+  const MemoryItem({
+    required this.id,
+    required this.coupleId,
+    required this.imageUrl,
+    required this.caption,
+    required this.locationTitle,
+    required this.date,
+    required this.createdBy,
+    required this.createdByName,
+    required this.createdAt,
+    this.likedBy = const [],
+    this.albumId,
+    this.albumTitle,
+  });
+
+  factory MemoryItem.fromJson(Map<String, dynamic> json, String docId) {
+    DateTime parseDate(dynamic val) {
+      if (val is DateTime) return val;
+      if (val is String) return DateTime.tryParse(val) ?? DateTime.now();
+      if (val != null) {
+        try {
+          return (val as dynamic).toDate?.call() ?? DateTime.now();
+        } catch (_) {}
+      }
+      return DateTime.now();
+    }
+
+    return MemoryItem(
+      id: docId,
+      coupleId: json['coupleId'] as String? ?? '',
+      imageUrl: json['imageUrl'] as String? ?? '',
+      caption: json['caption'] as String? ?? '',
+      locationTitle: json['locationTitle'] as String? ?? '',
+      date: parseDate(json['date']),
+      createdBy: json['createdBy'] as String? ?? '',
+      createdByName: json['createdByName'] as String? ?? '',
+      createdAt: parseDate(json['createdAt']),
+      likedBy: (json['likedBy'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+      albumId: json['albumId'] as String?,
+      albumTitle: json['albumTitle'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'coupleId': coupleId,
+        'imageUrl': imageUrl,
+        'caption': caption,
+        'locationTitle': locationTitle,
+        'date': date.toIso8601String(),
+        'createdBy': createdBy,
+        'createdByName': createdByName,
+        'createdAt': createdAt.toIso8601String(),
+        'likedBy': likedBy,
+        if (albumId != null) 'albumId': albumId,
+        if (albumTitle != null) 'albumTitle': albumTitle,
+      };
+}
+
+/// Anı Grubu / Klasör Modeli
+class MemoryAlbum {
+  final String id;
+  final String coupleId;
+  final String title;
+  final String description;
+  final String locationTitle;
+  final DateTime date;
+  final String coverImageUrl;
+  final int photoCount;
+  final String createdBy;
+  final String createdByName;
+  final DateTime createdAt;
+
+  const MemoryAlbum({
+    required this.id,
+    required this.coupleId,
+    required this.title,
+    required this.description,
+    required this.locationTitle,
+    required this.date,
+    required this.coverImageUrl,
+    this.photoCount = 0,
+    required this.createdBy,
+    required this.createdByName,
+    required this.createdAt,
+  });
+
+  factory MemoryAlbum.fromJson(Map<String, dynamic> json, String docId) {
+    DateTime parseDate(dynamic val) {
+      if (val is DateTime) return val;
+      if (val is String) return DateTime.tryParse(val) ?? DateTime.now();
+      if (val != null) {
+        try {
+          return (val as dynamic).toDate?.call() ?? DateTime.now();
+        } catch (_) {}
+      }
+      return DateTime.now();
+    }
+
+    return MemoryAlbum(
+      id: docId,
+      coupleId: json['coupleId'] as String? ?? '',
+      title: json['title'] as String? ?? 'Anı Grubu',
+      description: json['description'] as String? ?? '',
+      locationTitle: json['locationTitle'] as String? ?? '',
+      date: parseDate(json['date']),
+      coverImageUrl: json['coverImageUrl'] as String? ?? '',
+      photoCount: (json['photoCount'] as num?)?.toInt() ?? 0,
+      createdBy: json['createdBy'] as String? ?? '',
+      createdByName: json['createdByName'] as String? ?? '',
+      createdAt: parseDate(json['createdAt']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'coupleId': coupleId,
+        'title': title,
+        'description': description,
+        'locationTitle': locationTitle,
+        'date': date.toIso8601String(),
+        'coverImageUrl': coverImageUrl,
+        'photoCount': photoCount,
+        'createdBy': createdBy,
+        'createdByName': createdByName,
+        'createdAt': createdAt.toIso8601String(),
       };
 }
 

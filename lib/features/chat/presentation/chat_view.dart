@@ -12,9 +12,12 @@ import 'package:image_picker/image_picker.dart';
 import '../../../core/models/models.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/notification_service.dart';
+import '../../../core/services/widget_sync_service.dart';
 import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../drawing/presentation/drawing_screen.dart';
+import '../../../core/widgets/avatar_cache.dart';
+import '../../../core/widgets/lovera_theme_background.dart';
 
 class ChatView extends ConsumerStatefulWidget {
   const ChatView({super.key, this.onBackToHome, this.onOpenMap, this.isEmbedded = false});
@@ -65,10 +68,14 @@ class _ChatViewState extends ConsumerState<ChatView> {
         ref.read(pendingChatLocationAttachmentProvider.notifier).state = null;
       }
     });
+
+    // Sohbete girildiğinde widget üzerindeki mesajları derhal temizle
+    WidgetSyncService.clearWidgetMessages();
   }
 
   @override
   void dispose() {
+    WidgetSyncService.clearWidgetMessages();
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -204,24 +211,10 @@ class _ChatViewState extends ConsumerState<ChatView> {
   }
 
   ImageProvider? _getAvatarProvider(String? path) {
-    if (path == null || path.isEmpty) return null;
-    if (path.startsWith('data:image')) {
-      try {
-        final base64String = path.split(',').last;
-        return MemoryImage(base64Decode(base64String));
-      } catch (_) {
-        return null;
-      }
-    } else if (path.startsWith('http')) {
-      return NetworkImage(path);
-    } else {
-      final f = File(path);
-      if (f.existsSync()) return FileImage(f);
-      return null;
-    }
+    return AvatarCache.getProvider(path);
   }
 
-  void _openChatOptionsSheet(String coupleId) {
+  void _openChatOptionsSheet(String coupleId, {String? currentChatBg}) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
@@ -247,6 +240,119 @@ class _ChatViewState extends ConsumerState<ChatView> {
                   ),
                 ),
                 const SizedBox(height: 20),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: LoveraColors.primary.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.wallpaper_rounded, color: LoveraColors.primary, size: 22),
+                  ),
+                  title: const Text(
+                    'Sohbet Arka Planını Değiştir',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'İkiniz için de ortak sohbet arka planı belirler',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
+                    ),
+                  ),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    HapticFeedback.lightImpact();
+                    try {
+                      final picker = ImagePicker();
+                      final picked = await picker.pickImage(
+                        source: ImageSource.gallery,
+                        imageQuality: 65,
+                        maxWidth: 720,
+                        maxHeight: 1280,
+                      );
+                      if (picked != null) {
+                        final bytes = await File(picked.path).readAsBytes();
+                        final base64Str = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+                        final myName = ref.read(userNameProvider);
+                        await DatabaseService().updateChatBackground(coupleId, base64Str, myName.isEmpty ? 'Partnerin' : myName);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Sohbet arka planı iki taraf için de güncellendi! 💕'),
+                              backgroundColor: LoveraColors.secondary,
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Fotoğraf eklenirken bir hata oluştu: $e'),
+                            backgroundColor: const Color(0xFFEF4444),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                ),
+                if (currentChatBg != null && currentChatBg.isNotEmpty) ...[
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.image_not_supported_rounded, color: Colors.orange, size: 22),
+                    ),
+                    title: const Text(
+                      'Arka Planı Sıfırla',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: Colors.orange,
+                        fontSize: 16,
+                      ),
+                    ),
+                    subtitle: Text(
+                      'Özel arka planı kaldırıp varsayılan temaya döner',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
+                      ),
+                    ),
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      try {
+                        await DatabaseService().removeChatBackground(coupleId);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Sohbet arka planı varsayılana döndürüldü.'),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Hata oluştu: $e'),
+                              backgroundColor: const Color(0xFFEF4444),
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  ),
+                ],
+                const Divider(height: 1),
                 ListTile(
                   leading: Container(
                     padding: const EdgeInsets.all(10),
@@ -362,34 +468,42 @@ class _ChatViewState extends ConsumerState<ChatView> {
       }
     });
 
-    return GestureDetector(
-      onTap: () => FocusScope.of(context).unfocus(),
-      behavior: HitTestBehavior.opaque,
-      child: Scaffold(
-        backgroundColor: isDark ? const Color(0xFF0F1015) : const Color(0xFFF7F8FA),
-        appBar: AppBar(
-          backgroundColor: isDark ? const Color(0xFF161822) : Colors.white,
-          elevation: 0.5,
-          titleSpacing: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-            onPressed: () {
-              FocusScope.of(context).unfocus();
-              if (widget.onBackToHome != null) {
-                widget.onBackToHome!();
-              } else {
-                Navigator.of(context).maybePop();
-              }
-            },
-          ),
-          actions: [
-            if (coupleId != null && coupleId.isNotEmpty)
-              IconButton(
-                icon: const Icon(Icons.more_vert_rounded),
-                tooltip: 'Seçenekler',
-                onPressed: () => _openChatOptionsSheet(coupleId),
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: (coupleId != null && coupleId.isNotEmpty)
+          ? DatabaseService().coupleStream(coupleId)
+          : null,
+      builder: (context, coupleSnapshot) {
+        final coupleData = coupleSnapshot.data?.data();
+        final chatBackgroundUrl = coupleData?['chatBackgroundUrl'] as String?;
+
+        return GestureDetector(
+          onTap: () => FocusScope.of(context).unfocus(),
+          behavior: HitTestBehavior.opaque,
+          child: Scaffold(
+            backgroundColor: isDark ? const Color(0xFF0F1015) : const Color(0xFFF7F8FA),
+            appBar: AppBar(
+              backgroundColor: isDark ? const Color(0xFF161822) : Colors.white,
+              elevation: 0.5,
+              titleSpacing: 0,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+                onPressed: () {
+                  FocusScope.of(context).unfocus();
+                  if (widget.onBackToHome != null) {
+                    widget.onBackToHome!();
+                  } else {
+                    Navigator.of(context).maybePop();
+                  }
+                },
               ),
-          ],
+              actions: [
+                if (coupleId != null && coupleId.isNotEmpty)
+                  IconButton(
+                    icon: const Icon(Icons.more_vert_rounded),
+                    tooltip: 'Seçenekler',
+                    onPressed: () => _openChatOptionsSheet(coupleId, currentChatBg: chatBackgroundUrl),
+                  ),
+              ],
           title: partnerUid != null && partnerUid.isNotEmpty
               ? StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
                   stream: DatabaseService().partnerStream(partnerUid),
@@ -419,16 +533,32 @@ class _ChatViewState extends ConsumerState<ChatView> {
                       children: [
                         Stack(
                           children: [
-                            CircleAvatar(
-                              radius: 20,
-                              backgroundColor: LoveraColors.primarySoft.withValues(alpha: 0.2),
-                              backgroundImage: _getAvatarProvider(pAvatar),
-                              child: _getAvatarProvider(pAvatar) == null
-                                  ? Text(
-                                      pName.isNotEmpty ? pName[0].toUpperCase() : '?',
-                                      style: const TextStyle(fontWeight: FontWeight.w800, color: LoveraColors.primary),
-                                    )
-                                  : null,
+                            Container(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: LoveraColors.primary.withValues(alpha: 0.35),
+                                  width: 1.8,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.08),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 1),
+                                  ),
+                                ],
+                              ),
+                              child: CircleAvatar(
+                                radius: 20,
+                                backgroundColor: LoveraColors.primarySoft.withValues(alpha: 0.2),
+                                backgroundImage: _getAvatarProvider(pAvatar),
+                                child: _getAvatarProvider(pAvatar) == null
+                                    ? Text(
+                                        pName.isNotEmpty ? pName[0].toUpperCase() : '?',
+                                        style: const TextStyle(fontWeight: FontWeight.w800, color: LoveraColors.primary),
+                                      )
+                                    : null,
+                              ),
                             ),
                             if (isLiveOnline)
                               Positioned(
@@ -517,8 +647,46 @@ class _ChatViewState extends ConsumerState<ChatView> {
                 )
               : const Text('Partner bekleniyor', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
         ),
-        body: SafeArea(
-        child: Column(
+        body: Stack(
+          children: [
+            // Ortak Sohbet Arka Planı (Dünya standartları: Telegram & WhatsApp tarzı canlı ve net)
+            if (chatBackgroundUrl != null && chatBackgroundUrl.isNotEmpty) ...[
+              Positioned.fill(
+                child: Image(
+                  image: AvatarCache.getProvider(chatBackgroundUrl)!,
+                  fit: BoxFit.cover,
+                  gaplessPlayback: true,
+                ),
+              ),
+              // Fotoğrafı asla matlaştırmayan, sadece hafif derinlik katan minimal degrade
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: isDark
+                          ? [
+                              Colors.black.withValues(alpha: 0.25),
+                              Colors.black.withValues(alpha: 0.35),
+                              const Color(0xFF0F1015).withValues(alpha: 0.50),
+                            ]
+                          : [
+                              Colors.black.withValues(alpha: 0.04),
+                              Colors.white.withValues(alpha: 0.08),
+                              Colors.white.withValues(alpha: 0.18),
+                            ],
+                    ),
+                  ),
+                ),
+              ),
+            ] else ...[
+              const Positioned.fill(
+                child: LoveraThemeBackground(),
+              ),
+            ],
+            SafeArea(
+              child: Column(
           children: [
             // Mesaj Listesi
             Expanded(
@@ -571,6 +739,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                           _alreadyMarkedReadIds.addAll(unreadIds);
                           WidgetsBinding.instance.addPostFrameCallback((_) {
                             DatabaseService().markMessagesAsRead(coupleId, unreadIds);
+                            WidgetSyncService.clearWidgetMessages();
                           });
                         }
 
@@ -608,6 +777,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                             return _ChatBubble(
                               message: msg,
                               isMe: isMe,
+                              hasCustomBg: chatBackgroundUrl != null && chatBackgroundUrl.isNotEmpty,
                               onReply: () {
                                 setState(() => _replyingTo = msg);
                               },
@@ -841,7 +1011,11 @@ class _ChatViewState extends ConsumerState<ChatView> {
           ],
         ),
       ),
-    ),
+    ],
+  ),
+),
+);
+      },
     );
   }
 }
@@ -851,12 +1025,14 @@ class _ChatBubble extends StatelessWidget {
     required this.message,
     required this.isMe,
     required this.onReply,
+    this.hasCustomBg = false,
     this.onDelete,
     this.onLocationTap,
   });
 
   final ChatMessage message;
   final bool isMe;
+  final bool hasCustomBg;
   final VoidCallback onReply;
   final VoidCallback? onDelete;
   final void Function(double lat, double lng, String title)? onLocationTap;
@@ -867,13 +1043,42 @@ class _ChatBubble extends StatelessWidget {
     final timeStr =
         '${message.createdAt.hour.toString().padLeft(2, '0')}:${message.createdAt.minute.toString().padLeft(2, '0')}';
 
-    final bubbleColor = isMe
-        ? LoveraColors.primary
-        : (isDark ? const Color(0xFF222533) : const Color(0xFFE9ECF2));
+    // WhatsApp / Telegram / iMessage tarzı dünya standartlarında mesaj balonları:
+    final Color bubbleColor;
+    final Color textColor;
+    final Border? bubbleBorder;
 
-    final textColor = isMe
-        ? Colors.white
-        : (isDark ? Colors.white : const Color(0xFF1E2024));
+    if (isMe) {
+      if (hasCustomBg) {
+        // Fotoğraf varken gönderilen mesaj: WhatsApp/Telegram tarzı belirgin, canlı ve gölgeli mor
+        bubbleColor = isDark
+            ? const Color(0xFF7C3AED)
+            : const Color(0xFF8B5CF6);
+        textColor = Colors.white;
+        bubbleBorder = Border.all(color: Colors.white.withValues(alpha: 0.2), width: 0.8);
+      } else {
+        bubbleColor = LoveraColors.primary;
+        textColor = Colors.white;
+        bubbleBorder = null;
+      }
+    } else {
+      if (hasCustomBg) {
+        // Fotoğraf varken gelen mesaj:
+        // WhatsApp'taki gibi net, sağlam, asla arkadaki fotoğrafla karışmayan pürüzsüz kart
+        bubbleColor = isDark
+            ? const Color(0xFF1E212E)
+            : Colors.white;
+        textColor = isDark ? Colors.white : const Color(0xFF111827);
+        bubbleBorder = Border.all(
+          color: isDark ? Colors.white.withValues(alpha: 0.15) : Colors.black.withValues(alpha: 0.08),
+          width: 0.8,
+        );
+      } else {
+        bubbleColor = isDark ? const Color(0xFF222533) : const Color(0xFFE9ECF2);
+        textColor = isDark ? Colors.white : const Color(0xFF1E2024);
+        bubbleBorder = null;
+      }
+    }
 
     final bool hasLocation = (message.locationLat != null && message.locationLng != null) ||
         (message.type == 'location');
@@ -936,6 +1141,7 @@ class _ChatBubble extends StatelessWidget {
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: bubbleColor,
+                  border: bubbleBorder,
                   borderRadius: BorderRadius.only(
                     topLeft: const Radius.circular(18),
                     topRight: const Radius.circular(18),
@@ -944,8 +1150,8 @@ class _ChatBubble extends StatelessWidget {
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 6,
+                      color: Colors.black.withValues(alpha: hasCustomBg ? 0.12 : 0.04),
+                      blurRadius: hasCustomBg ? 8 : 6,
                       offset: const Offset(0, 2),
                     ),
                   ],
@@ -1160,7 +1366,12 @@ class _ChatBubble extends StatelessWidget {
                           timeStr,
                           style: TextStyle(
                             fontSize: 10.5,
-                            color: isMe ? Colors.white70 : LoveraColors.textMuted,
+                            fontWeight: FontWeight.w500,
+                            color: isMe
+                                ? Colors.white70
+                                : (hasCustomBg
+                                    ? (isDark ? Colors.white60 : const Color(0xFF6B7280))
+                                    : LoveraColors.textMuted),
                           ),
                         ),
                         if (isMe) ...[

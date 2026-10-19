@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -18,8 +19,13 @@ import '../../../core/theme/app_theme.dart';
 class DrawingPoint {
   final Offset offset;
   final Paint paint;
+  final bool isEraser;
 
-  DrawingPoint({required this.offset, required this.paint});
+  DrawingPoint({
+    required this.offset,
+    required this.paint,
+    this.isEraser = false,
+  });
 }
 
 /// Çizim Tuvaline Eklenen Metin Öğesi
@@ -58,6 +64,7 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
   bool _isEraser = false;
   bool _isTextMode = false;
   bool _isSending = false;
+  bool _isExporting = false;
 
   final List<Color> _palette = const [
     Color(0xFFA78BFA), // Lovera Moru
@@ -97,19 +104,24 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
     final isEditing = editIndex != null && editIndex < _texts.length;
     final initialText = isEditing ? _texts[editIndex].text : '';
     final controller = TextEditingController(text: initialText);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     showDialog(
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF1E1938),
+          backgroundColor: isDark ? const Color(0xFF1E1938) : Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: Row(
             children: [
               Text(isEditing ? '✏️ ' : '✍️ ', style: const TextStyle(fontSize: 20)),
               Text(
                 isEditing ? 'Yazıyı Düzenle' : 'Yazı Ekle',
-                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: isDark ? Colors.white : const Color(0xFF1E1B4B),
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const Spacer(),
               if (isEditing)
@@ -137,16 +149,22 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
             ),
             decoration: InputDecoration(
               hintText: 'Mesajını veya notunu yaz...',
-              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 15),
+              hintStyle: TextStyle(
+                color: isDark ? Colors.white.withValues(alpha: 0.4) : const Color(0xFF94A3B8),
+                fontSize: 15,
+              ),
               filled: true,
-              fillColor: const Color(0xFF161426),
+              fillColor: isDark ? const Color(0xFF161426) : const Color(0xFFF1F5F9),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
             ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('İptal', style: TextStyle(color: Colors.white70)),
+              child: Text(
+                'İptal',
+                style: TextStyle(color: isDark ? Colors.white70 : const Color(0xFF64748B)),
+              ),
             ),
             FilledButton(
               onPressed: () {
@@ -210,15 +228,16 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
 
     setState(() {
       _isSending = true;
+      _isExporting = true;
       _selectedTextIndex = null;
     });
     HapticFeedback.mediumImpact();
 
     try {
-      // Çerçevenin seçim kutucuksuz çizildiğinden emin olmak için bir frame bekle
+      // Çerçevenin transparan arka plan ve seçim kutucuksuz çizildiğinden emin olmak için bir frame bekle
       await WidgetsBinding.instance.endOfFrame;
 
-      // 1. RepaintBoundary'den yüksek kaliteli PNG üret
+      // 1. RepaintBoundary'den yüksek kaliteli şeffaf PNG üret
       final boundary = _globalKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
       if (boundary == null) {
         throw Exception('Canvas render hatası');
@@ -294,7 +313,12 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
         );
       }
     } finally {
-      if (mounted) setState(() => _isSending = false);
+      if (mounted) {
+        setState(() {
+          _isSending = false;
+          _isExporting = false;
+        });
+      }
     }
   }
 
@@ -437,12 +461,13 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                   HapticFeedback.selectionClick();
                                   final paint = Paint()
                                     ..color = _isEraser
-                                        ? const Color(0xFF161426)
+                                        ? Colors.transparent
                                         : _selectedColor
                                     ..strokeCap = StrokeCap.round
-                                    ..strokeWidth = _isEraser ? _strokeWidth * 2.2 : _strokeWidth;
+                                    ..strokeWidth = _isEraser ? _strokeWidth * 2.2 : _strokeWidth
+                                    ..blendMode = _isEraser ? BlendMode.clear : BlendMode.srcOver;
                                   setState(() {
-                                    _currentLine = [DrawingPoint(offset: pos, paint: paint)];
+                                    _currentLine = [DrawingPoint(offset: pos, paint: paint, isEraser: _isEraser)];
                                   });
                                 },
                                 onPanUpdate: (details) {
@@ -457,12 +482,13 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                   final offset = details.localPosition;
                                   final paint = Paint()
                                     ..color = _isEraser
-                                        ? const Color(0xFF161426)
+                                        ? Colors.transparent
                                         : _selectedColor
                                     ..strokeCap = StrokeCap.round
-                                    ..strokeWidth = _isEraser ? _strokeWidth * 2.2 : _strokeWidth;
+                                    ..strokeWidth = _isEraser ? _strokeWidth * 2.2 : _strokeWidth
+                                    ..blendMode = _isEraser ? BlendMode.clear : BlendMode.srcOver;
                                   setState(() {
-                                    _currentLine.add(DrawingPoint(offset: offset, paint: paint));
+                                    _currentLine.add(DrawingPoint(offset: offset, paint: paint, isEraser: _isEraser));
                                   });
                                 },
                                 onPanEnd: (details) {
@@ -479,7 +505,9 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                     currentLine: _currentLine,
                                     texts: _texts,
                                     selectedIndex: _isSending ? null : _selectedTextIndex,
-                                    backgroundColor: isDark ? const Color(0xFF161426) : const Color(0xFF161426),
+                                    backgroundColor: isDark ? const Color(0xFF161426) : const Color(0xFFFAF5FF),
+                                    isDark: isDark,
+                                    isExporting: _isExporting,
                                   ),
                                   size: Size.infinite,
                                 ),
@@ -499,12 +527,15 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                       child: Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                         decoration: BoxDecoration(
-                                          color: const Color(0xFF1E1938),
+                                          color: isDark ? const Color(0xFF1E1938) : Colors.white,
                                           borderRadius: BorderRadius.circular(20),
-                                          border: Border.all(color: const Color(0xFFA78BFA), width: 1.2),
+                                          border: Border.all(
+                                            color: isDark ? const Color(0xFFA78BFA) : const Color(0xFF8B5CF6),
+                                            width: 1.2,
+                                          ),
                                           boxShadow: [
                                             BoxShadow(
-                                              color: Colors.black.withValues(alpha: 0.5),
+                                              color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.12),
                                               blurRadius: 10,
                                               offset: const Offset(0, 3),
                                             ),
@@ -518,13 +549,24 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                               onTap: () {
                                                 _showAddTextDialog(editIndex: _selectedTextIndex);
                                               },
-                                              child: const Padding(
-                                                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                              child: Padding(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                                 child: Row(
                                                   children: [
-                                                    Icon(Icons.edit_rounded, color: Colors.white, size: 14),
-                                                    SizedBox(width: 4),
-                                                    Text('Düzenle', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                                                    Icon(
+                                                      Icons.edit_rounded,
+                                                      color: isDark ? Colors.white : const Color(0xFF1E1B4B),
+                                                      size: 14,
+                                                    ),
+                                                    const SizedBox(width: 4),
+                                                    Text(
+                                                      'Düzenle',
+                                                      style: TextStyle(
+                                                        color: isDark ? Colors.white : const Color(0xFF1E1B4B),
+                                                        fontSize: 12,
+                                                        fontWeight: FontWeight.bold,
+                                                      ),
+                                                    ),
                                                   ],
                                                 ),
                                               ),
@@ -532,7 +574,7 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                             Container(
                                               width: 1,
                                               height: 14,
-                                              color: Colors.white24,
+                                              color: isDark ? Colors.white24 : Colors.black12,
                                             ),
                                             // Sil Butonu
                                             GestureDetector(
@@ -677,13 +719,15 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                 color: color,
                                 shape: BoxShape.circle,
                                 border: Border.all(
-                                  color: isSelected ? Colors.white : Colors.black12,
-                                  width: isSelected ? 3 : 1.5,
+                                  color: isSelected
+                                      ? (isDark ? Colors.white : const Color(0xFF7C3AED))
+                                      : (isDark ? Colors.white24 : Colors.black26),
+                                  width: isSelected ? 3.2 : 1.5,
                                 ),
                                 boxShadow: isSelected
                                     ? [
                                         BoxShadow(
-                                          color: color.withValues(alpha: 0.6),
+                                          color: color.withValues(alpha: isDark ? 0.6 : 0.4),
                                           blurRadius: 8,
                                           spreadRadius: 1,
                                         ),
@@ -796,6 +840,8 @@ class _DrawingCanvasPainter extends CustomPainter {
   final List<TextItem> texts;
   final int? selectedIndex;
   final Color backgroundColor;
+  final bool isDark;
+  final bool isExporting;
 
   _DrawingCanvasPainter({
     required this.lines,
@@ -803,21 +849,68 @@ class _DrawingCanvasPainter extends CustomPainter {
     required this.texts,
     this.selectedIndex,
     required this.backgroundColor,
+    this.isDark = true,
+    this.isExporting = false,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Arka planı doldur
-    final bgPaint = Paint()..color = backgroundColor;
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), bgPaint);
+    if (!isExporting) {
+      // 1. Zemin Rengi (Lovera Teması)
+      final bgPaint = Paint()..color = backgroundColor;
+      canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), bgPaint);
 
-    // Çizilmiş tüm çizgileri render et
+      // 2. Sol Üst ve Sağ Alt Hafif Aurora Işıltısı (Uygulama Temasına Uygun, Çizimi Gölgelemez)
+      final violetPaint = Paint()
+        ..shader = RadialGradient(
+          colors: isDark
+              ? [
+                  const Color(0xFF8B5CF6).withValues(alpha: 0.12),
+                  const Color(0xFF7C3AED).withValues(alpha: 0.05),
+                  Colors.transparent,
+                ]
+              : [
+                  const Color(0xFF8B5CF6).withValues(alpha: 0.10),
+                  const Color(0xFFC4B5FD).withValues(alpha: 0.04),
+                  Colors.transparent,
+                ],
+          stops: const [0.0, 0.55, 1.0],
+        ).createShader(Rect.fromCircle(
+          center: Offset(size.width * 0.15, size.height * 0.15),
+          radius: size.width * 0.65,
+        ));
+      canvas.drawCircle(Offset(size.width * 0.15, size.height * 0.15), size.width * 0.65, violetPaint);
+
+      final pinkPaint = Paint()
+        ..shader = RadialGradient(
+          colors: isDark
+              ? [
+                  const Color(0xFFEC4899).withValues(alpha: 0.08),
+                  Colors.transparent,
+                ]
+              : [
+                  const Color(0xFFF472B6).withValues(alpha: 0.08),
+                  Colors.transparent,
+                ],
+        ).createShader(Rect.fromCircle(
+          center: Offset(size.width * 0.85, size.height * 0.85),
+          radius: size.width * 0.55,
+        ));
+      canvas.drawCircle(Offset(size.width * 0.85, size.height * 0.85), size.width * 0.55, pinkPaint);
+
+      // 3. Lovera Romantik Doodle Desenleri (Yıldız, Kalp, Hilal, Sonsuzluk vb. - Soluk, Gözü Yormayan Watermark)
+      _drawThemePatterns(canvas, size);
+    }
+
+    // 4. Çizilmiş tüm çizgileri render et (Ayrı bir çizim katmanında render edilir; böylece silgi deseni değil sadece çizgiyi siler)
+    canvas.saveLayer(Rect.fromLTWH(0, 0, size.width, size.height), Paint());
     for (final line in lines) {
       _drawLine(canvas, line);
     }
     _drawLine(canvas, currentLine);
+    canvas.restore();
 
-    // Eklenen metinleri render et
+    // 5. Eklenen metinleri render et
     for (int i = 0; i < texts.length; i++) {
       final item = texts[i];
       final isSelected = selectedIndex == i;
@@ -864,8 +957,22 @@ class _DrawingCanvasPainter extends CustomPainter {
 
   void _drawLine(Canvas canvas, List<DrawingPoint> line) {
     if (line.isEmpty) return;
+    final isEraser = line.first.isEraser;
+
+    final paint = Paint()
+      ..color = isEraser ? Colors.transparent : line.first.paint.color
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..strokeWidth = line.first.paint.strokeWidth
+      ..style = PaintingStyle.stroke
+      ..blendMode = isEraser ? BlendMode.clear : BlendMode.srcOver;
+
     if (line.length == 1) {
-      canvas.drawCircle(line.first.offset, line.first.paint.strokeWidth / 2, line.first.paint);
+      final fillPaint = Paint()
+        ..color = isEraser ? Colors.transparent : line.first.paint.color
+        ..style = PaintingStyle.fill
+        ..blendMode = isEraser ? BlendMode.clear : BlendMode.srcOver;
+      canvas.drawCircle(line.first.offset, line.first.paint.strokeWidth / 2, fillPaint);
       return;
     }
 
@@ -876,14 +983,163 @@ class _DrawingCanvasPainter extends CustomPainter {
       path.lineTo(line[i].offset.dx, line[i].offset.dy);
     }
 
-    final paint = Paint()
-      ..color = line.first.paint.color
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..strokeWidth = line.first.paint.strokeWidth
-      ..style = PaintingStyle.stroke;
-
     canvas.drawPath(path, paint);
+  }
+
+  void _drawThemePatterns(Canvas canvas, Size size) {
+    // Çizilen şeyleri gölgede bırakmayacak şekilde çok soluk, zarif fligran opaklığı
+    final strokePaint = Paint()
+      ..color = isDark
+          ? const Color(0xFFC4B5FD).withValues(alpha: 0.055)
+          : const Color(0xFF8B5CF6).withValues(alpha: 0.065)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final fillPaint = Paint()
+      ..color = isDark
+          ? const Color(0xFFA78BFA).withValues(alpha: 0.035)
+          : const Color(0xFFC4B5FD).withValues(alpha: 0.045)
+      ..style = PaintingStyle.fill;
+
+    const cellW = 80.0;
+    const cellH = 80.0;
+
+    final cols = (size.width / cellW).ceil() + 1;
+    final rows = (size.height / cellH).ceil() + 1;
+
+    for (int r = 0; r < rows; r++) {
+      for (int c = 0; c < cols; c++) {
+        final x = c * cellW + ((r % 2 == 1) ? cellW * 0.5 : 0.0);
+        final y = r * cellH;
+
+        final patternType = (r * 5 + c * 3) % 8;
+
+        canvas.save();
+        canvas.translate(x, y);
+
+        switch (patternType) {
+          case 0:
+            _drawHeart(canvas, strokePaint, fillPaint, 11);
+            break;
+          case 1:
+            _drawArtPalette(canvas, strokePaint, fillPaint, 13);
+            break;
+          case 2:
+            _drawFourPointStar(canvas, fillPaint, strokePaint, 9);
+            break;
+          case 3:
+            _drawArtPencil(canvas, strokePaint, fillPaint, 12);
+            break;
+          case 4:
+            _drawLoveEnvelope(canvas, strokePaint, 13);
+            break;
+          case 5:
+            _drawCrescentMoon(canvas, strokePaint, fillPaint, 9);
+            break;
+          case 6:
+            _drawInfinity(canvas, strokePaint, 12);
+            break;
+          case 7:
+            _drawSparkleCross(canvas, strokePaint, 7);
+            break;
+        }
+
+        canvas.restore();
+      }
+    }
+  }
+
+  void _drawArtPalette(Canvas canvas, Paint stroke, Paint fill, double r) {
+    final path = Path();
+    path.addOval(Rect.fromCenter(center: Offset.zero, width: r * 2.0, height: r * 1.5));
+    canvas.drawPath(path, fill);
+    canvas.drawPath(path, stroke);
+    // Başparmak deliği
+    canvas.drawCircle(Offset(-r * 0.4, 0), r * 0.25, stroke);
+    // Minik renk damlaları
+    canvas.drawCircle(Offset(r * 0.3, -r * 0.3), 1.2, stroke);
+    canvas.drawCircle(Offset(r * 0.5, 0), 1.2, stroke);
+    canvas.drawCircle(Offset(r * 0.2, r * 0.35), 1.2, stroke);
+  }
+
+  void _drawArtPencil(Canvas canvas, Paint stroke, Paint fill, double s) {
+    canvas.save();
+    canvas.rotate(-math.pi / 4);
+    final rect = Rect.fromCenter(center: Offset.zero, width: s * 0.35, height: s * 1.6);
+    canvas.drawRect(rect, fill);
+    canvas.drawRect(rect, stroke);
+    final tip = Path()
+      ..moveTo(-s * 0.175, -s * 0.8)
+      ..lineTo(0, -s * 1.25)
+      ..lineTo(s * 0.175, -s * 0.8)
+      ..close();
+    canvas.drawPath(tip, stroke);
+    canvas.restore();
+  }
+
+  void _drawHeart(Canvas canvas, Paint stroke, Paint fill, double r) {
+    final path = Path();
+    path.moveTo(0, r * 0.35);
+    path.cubicTo(-r, -r * 0.5, -r * 1.2, r * 0.45, 0, r * 1.2);
+    path.cubicTo(r * 1.2, r * 0.45, r, -r * 0.5, 0, r * 0.35);
+    canvas.drawPath(path, fill);
+    canvas.drawPath(path, stroke);
+  }
+
+  void _drawFourPointStar(Canvas canvas, Paint fill, Paint stroke, double r) {
+    final path = Path();
+    path.moveTo(0, -r);
+    path.quadraticBezierTo(0, 0, r, 0);
+    path.quadraticBezierTo(0, 0, 0, r);
+    path.quadraticBezierTo(0, 0, -r, 0);
+    path.quadraticBezierTo(0, 0, 0, -r);
+    path.close();
+    canvas.drawPath(path, fill);
+    canvas.drawPath(path, stroke);
+  }
+
+  void _drawLoveEnvelope(Canvas canvas, Paint stroke, double w) {
+    final h = w * 0.68;
+    final rrect = RRect.fromRectAndRadius(
+      Rect.fromCenter(center: Offset.zero, width: w, height: h),
+      const Radius.circular(2.0),
+    );
+    canvas.drawRRect(rrect, stroke);
+    final flap = Path()
+      ..moveTo(-w / 2, -h / 2)
+      ..lineTo(0, h * 0.15)
+      ..lineTo(w / 2, -h / 2);
+    canvas.drawPath(flap, stroke);
+  }
+
+  void _drawCrescentMoon(Canvas canvas, Paint stroke, Paint fill, double r) {
+    final path = Path();
+    path.addArc(Rect.fromCircle(center: Offset.zero, radius: r), -math.pi / 2, math.pi);
+    path.arcTo(Rect.fromCircle(center: Offset(r * 0.35, 0), radius: r * 0.8), math.pi / 2, -math.pi, false);
+    path.close();
+    canvas.drawPath(path, fill);
+    canvas.drawPath(path, stroke);
+  }
+
+  void _drawInfinity(Canvas canvas, Paint stroke, double w) {
+    final r = w * 0.32;
+    canvas.drawCircle(Offset(-r, 0), r * 0.72, stroke);
+    canvas.drawCircle(Offset(r, 0), r * 0.72, stroke);
+  }
+
+  void _drawSparkleCross(Canvas canvas, Paint stroke, double s) {
+    canvas.drawLine(Offset(-s, 0), Offset(s, 0), stroke);
+    canvas.drawLine(Offset(0, -s), Offset(0, s), stroke);
+    canvas.drawCircle(const Offset(6, -6), 1.0, stroke);
+    canvas.drawCircle(const Offset(-6, 6), 0.8, stroke);
+  }
+
+  void _drawOrbitalHeart(Canvas canvas, Paint stroke, double r) {
+    canvas.drawCircle(Offset.zero, r * 0.45, stroke);
+    final ovalRect = Rect.fromCenter(center: Offset.zero, width: r * 1.5, height: r * 0.6);
+    canvas.drawOval(ovalRect, stroke);
   }
 
   @override

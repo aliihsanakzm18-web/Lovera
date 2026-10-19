@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/lovera_theme_background.dart';
 
 class GamesView extends ConsumerStatefulWidget {
   const GamesView({super.key, this.onBackToHome});
@@ -47,7 +48,8 @@ class _GamesViewState extends ConsumerState<GamesView> {
           ],
         ),
       ),
-      body: SafeArea(
+      body: LoveraThemeBackground(
+        child: SafeArea(
         child: Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -128,6 +130,7 @@ class _GamesViewState extends ConsumerState<GamesView> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }

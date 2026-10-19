@@ -12,6 +12,7 @@ class DatabaseService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   String? get uid => _auth.currentUser?.uid;
+  FirebaseFirestore get db => _db;
 
   // 1. KULLANICI BİLGİLERİNİ CANLI DİNLEME
   Stream<DocumentSnapshot<Map<String, dynamic>>>? userStream() {
@@ -73,6 +74,32 @@ class DatabaseService {
     } catch (_) {}
   }
 
+  // Widget arka plan fotoğrafı güncelle (Yalnızca kullanıcının kendi profiline kaydeder, kişiseldir)
+  Future<void> updateWidgetBg(String base64Str) async {
+    if (uid == null) return;
+    try {
+      final userRef = _db.collection('users').doc(uid);
+      await userRef.set({
+        'widgetBgUrl': base64Str,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true)).timeout(const Duration(seconds: 8));
+    } catch (e) {
+      debugPrint('updateWidgetBg error: $e');
+    }
+  }
+
+  // Widget arka plan fotoğrafını kullanıcının hesabından sil
+  Future<void> deleteWidgetBg() async {
+    if (uid == null) return;
+    try {
+      final userRef = _db.collection('users').doc(uid);
+      await userRef.update({
+        'widgetBgUrl': FieldValue.delete(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }).timeout(const Duration(seconds: 6));
+    } catch (_) {}
+  }
+
   // 2. DAVET KODU & EŞLEŞME YÖNETİMİ
   /// Kullanıcı için 6 haneli benzersiz davet kodu oluşturur veya var olanı döner.
   Future<String> getOrCreateInviteCode(String myName, String? myAvatar) async {
@@ -92,6 +119,46 @@ class DatabaseService {
       return code;
     }
 
+    // Yeni benzersiz kod üret: Daha önce hiç oluşturulmamış ve hiç kullanılmamış kod olmalı
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    final r = Random.secure();
+    String newCode;
+    while (true) {
+      newCode = List.generate(6, (_) => chars[r.nextInt(chars.length)]).join();
+      final codeDoc = await _db.collection('inviteCodes').doc(newCode).get();
+      // Kod inviteCodes tablosunda yoksa veya kullanılmışsa ASLA tekrar üretilemez!
+      if (!codeDoc.exists) break;
+    }
+
+    await _db.collection('inviteCodes').doc(newCode).set({
+      'uid': uid,
+      'name': myName,
+      'avatarUrl': myAvatar,
+      'isUsed': false,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    await _db.collection('users').doc(uid).set({
+      'inviteCode': newCode,
+    }, SetOptions(merge: true));
+
+    return newCode;
+  }
+
+  /// Kullanıcı isterse mevcut kodunu iptal edip tek seferlik yepyeni bir kod üretir
+  Future<String> refreshInviteCode(String myName, String? myAvatar) async {
+    if (uid == null) return 'LOVERA';
+
+    // Eski kodu 'used' (kullanılmış/iptal) olarak işaretle ki bir daha asla üretilmesin
+    final userDoc = await _db.collection('users').doc(uid).get();
+    if (userDoc.exists && userDoc.data()?['inviteCode'] != null) {
+      final oldCode = userDoc.data()!['inviteCode'] as String;
+      await _db.collection('inviteCodes').doc(oldCode).set({
+        'isUsed': true,
+        'revokedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
+
     // Yeni benzersiz kod üret
     const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
     final r = Random.secure();
@@ -106,6 +173,7 @@ class DatabaseService {
       'uid': uid,
       'name': myName,
       'avatarUrl': myAvatar,
+      'isUsed': false,
       'createdAt': FieldValue.serverTimestamp(),
     });
 
@@ -121,7 +189,12 @@ class DatabaseService {
     final cleanCode = code.trim().toUpperCase();
     final doc = await _db.collection('inviteCodes').doc(cleanCode).get();
     if (!doc.exists) return null;
-    return doc.data();
+    final data = doc.data();
+    // Eğer kod daha önce kullanılmışsa veya iptal edilmişse geçersiz say
+    if (data == null || data['isUsed'] == true) {
+      return null;
+    }
+    return data;
   }
 
   /// 1. Adım: Karşı tarafa eşleşme isteği gönder
@@ -202,6 +275,35 @@ class DatabaseService {
       },
     }, SetOptions(merge: true));
 
+    // İki kullanıcının da davet kodunu 'kullanıldı (isUsed: true)' olarak yak ve profillerinden temizle
+    try {
+      final u1Snap = await _db.collection('users').doc(requesterUid).get();
+      final code1 = u1Snap.data()?['inviteCode'] as String?;
+      if (code1 != null && code1.isNotEmpty) {
+        batch.set(_db.collection('inviteCodes').doc(code1), {
+          'isUsed': true,
+          'usedAt': FieldValue.serverTimestamp(),
+          'usedByCoupleId': coupleId,
+        }, SetOptions(merge: true));
+        batch.update(_db.collection('users').doc(requesterUid), {
+          'inviteCode': FieldValue.delete(),
+        });
+      }
+
+      final u2Snap = await _db.collection('users').doc(uid).get();
+      final code2 = u2Snap.data()?['inviteCode'] as String?;
+      if (code2 != null && code2.isNotEmpty) {
+        batch.set(_db.collection('inviteCodes').doc(code2), {
+          'isUsed': true,
+          'usedAt': FieldValue.serverTimestamp(),
+          'usedByCoupleId': coupleId,
+        }, SetOptions(merge: true));
+        batch.update(_db.collection('users').doc(uid), {
+          'inviteCode': FieldValue.delete(),
+        });
+      }
+    } catch (_) {}
+
     await batch.commit();
 
     // Otomatik Özel Günler: Yıldönümü ve her iki tarafın doğum günlerini ekle
@@ -248,6 +350,22 @@ class DatabaseService {
     }, SetOptions(merge: true));
 
     await batch.commit();
+  }
+
+  /// Tüketilen outgoingPairRequest'i temizle
+  Future<void> clearOutgoingPairRequest() async {
+    if (uid == null) return;
+    await _db.collection('users').doc(uid).update({
+      'outgoingPairRequest': FieldValue.delete(),
+    }).catchError((_) {});
+  }
+
+  /// Tüketilen pendingPairRequest'i temizle
+  Future<void> clearPendingPairRequest() async {
+    if (uid == null) return;
+    await _db.collection('users').doc(uid).update({
+      'pendingPairRequest': FieldValue.delete(),
+    }).catchError((_) {});
   }
 
   // 3. İLİŞKİ BAŞLANGIÇ TARİHİ (SAYAÇ) KAYDI
@@ -344,6 +462,122 @@ class DatabaseService {
     if (uid == null) return;
     await _db.collection('users').doc(uid).update({
       'dateChangeResult': FieldValue.delete(),
+    }).catchError((_) {});
+  }
+
+  // ==========================================
+  // EŞ AYRILMA / BAĞLANTI KOPARMA (UNPAIR) SİSTEMİ
+  // ==========================================
+
+  /// Eş yönetim panelinden ayrılma isteği gönderir
+  Future<void> proposeBreakup({
+    required String partnerUid,
+    required String requesterName,
+    String? coupleId,
+  }) async {
+    if (uid == null) return;
+    final batch = _db.batch();
+
+    // Partnere gelen istek
+    batch.set(_db.collection('users').doc(partnerUid), {
+      'pendingBreakupRequest': {
+        'fromUid': uid,
+        'fromName': requesterName,
+        'coupleId': coupleId ?? '',
+        'status': 'pending',
+        'createdAt': FieldValue.serverTimestamp(),
+      }
+    }, SetOptions(merge: true));
+
+    // Kendisine bekleme durumu
+    batch.set(_db.collection('users').doc(uid), {
+      'outgoingBreakupRequest': {
+        'toUid': partnerUid,
+        'status': 'waiting',
+        'createdAt': FieldValue.serverTimestamp(),
+      }
+    }, SetOptions(merge: true));
+
+    await batch.commit();
+  }
+
+  /// Ayrılma isteğini kabul et ve iki tarafın da eşleşmesini kalıcı olarak sonlandır
+  Future<void> acceptBreakup({
+    required String partnerUid,
+    String? coupleId,
+  }) async {
+    if (uid == null) return;
+    final batch = _db.batch();
+
+    // 1. Kendi kullanıcımızın profilini eşleşmeden arındır
+    final myRef = _db.collection('users').doc(uid);
+    batch.update(myRef, {
+      'coupleId': FieldValue.delete(),
+      'partnerUid': FieldValue.delete(),
+      'relationshipStartDate': FieldValue.delete(),
+      'pendingBreakupRequest': FieldValue.delete(),
+      'outgoingBreakupRequest': FieldValue.delete(),
+      'pendingPairRequest': FieldValue.delete(),
+      'outgoingPairRequest': FieldValue.delete(),
+      'breakupResult': {
+        'status': 'accepted',
+        'timestamp': FieldValue.serverTimestamp(),
+      },
+    });
+
+    // 2. Partnerin profilini eşleşmeden arındır ve sonuca bağla
+    final partnerRef = _db.collection('users').doc(partnerUid);
+    batch.update(partnerRef, {
+      'coupleId': FieldValue.delete(),
+      'partnerUid': FieldValue.delete(),
+      'relationshipStartDate': FieldValue.delete(),
+      'pendingBreakupRequest': FieldValue.delete(),
+      'outgoingBreakupRequest': FieldValue.delete(),
+      'pendingPairRequest': FieldValue.delete(),
+      'outgoingPairRequest': FieldValue.delete(),
+      'breakupResult': {
+        'status': 'accepted',
+        'timestamp': FieldValue.serverTimestamp(),
+      },
+    });
+
+    // 3. Ortak çift (couple) belgesini pasife çek
+    if (coupleId != null && coupleId.isNotEmpty) {
+      final cRef = _db.collection('couples').doc(coupleId);
+      batch.update(cRef, {
+        'status': 'separated',
+        'endedAt': FieldValue.serverTimestamp(),
+      });
+    }
+
+    await batch.commit();
+  }
+
+  /// Ayrılma isteğini reddet
+  Future<void> rejectBreakup(String partnerUid) async {
+    if (uid == null) return;
+    final batch = _db.batch();
+    batch.set(_db.collection('users').doc(uid), {
+      'pendingBreakupRequest': FieldValue.delete(),
+    }, SetOptions(merge: true));
+
+    batch.set(_db.collection('users').doc(partnerUid), {
+      'outgoingBreakupRequest': FieldValue.delete(),
+      'breakupResult': {
+        'status': 'rejected',
+        'timestamp': FieldValue.serverTimestamp(),
+      }
+    }, SetOptions(merge: true));
+
+    await batch.commit();
+  }
+
+  /// Ayrılma sonucunu tüketildikten sonra temizle
+  Future<void> clearBreakupResult() async {
+    if (uid == null) return;
+    await _db.collection('users').doc(uid).update({
+      'breakupResult': FieldValue.delete(),
+      'outgoingBreakupRequest': FieldValue.delete(),
     }).catchError((_) {});
   }
 
@@ -1710,6 +1944,355 @@ class DatabaseService {
   Stream<DocumentSnapshot<Map<String, dynamic>>>? latestDrawingStream(String coupleId) {
     if (coupleId.isEmpty) return null;
     return _db.collection('couples').doc(coupleId).collection('drawings').doc('latest').snapshots();
+  }
+
+  /// Ortak Sohbet Arka Planı Güncelle (Her iki taraf için de anlık ve kalıcı olur)
+  Future<void> updateChatBackground(String coupleId, String base64Str, String senderName) async {
+    if (coupleId.isEmpty) return;
+    try {
+      await _db.collection('couples').doc(coupleId).set({
+        'chatBackgroundUrl': base64Str,
+        'chatBackgroundSetBy': senderName,
+        'chatBackgroundUpdatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true)).timeout(const Duration(seconds: 8));
+    } catch (e) {
+      debugPrint('[DatabaseService] updateChatBackground error: $e');
+      rethrow;
+    }
+  }
+
+  /// Ortak Sohbet Arka Planını Kaldır (Varsayılan Lovera temasına döner)
+  Future<void> removeChatBackground(String coupleId) async {
+    if (coupleId.isEmpty) return;
+    try {
+      await _db.collection('couples').doc(coupleId).set({
+        'chatBackgroundUrl': '',
+        'chatBackgroundSetBy': '',
+        'chatBackgroundUpdatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true)).timeout(const Duration(seconds: 6));
+    } catch (e) {
+      debugPrint('[DatabaseService] removeChatBackground error: $e');
+      rethrow;
+    }
+  }
+
+  // 10. ORTAK ANI ALBÜMÜ (MEMORIES) CRUD
+  Stream<List<MemoryItem>> memoriesStream(String coupleId) {
+    if (coupleId.isEmpty) return const Stream.empty();
+    return _db
+        .collection('couples')
+        .doc(coupleId)
+        .collection('memories')
+        .orderBy('date', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => MemoryItem.fromJson(d.data(), d.id)).toList())
+        .asBroadcastStream();
+  }
+
+  Stream<List<MemoryAlbum>> albumsStream(String coupleId) {
+    if (coupleId.isEmpty) return const Stream.empty();
+    return _db
+        .collection('couples')
+        .doc(coupleId)
+        .collection('memory_albums')
+        .orderBy('date', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => MemoryAlbum.fromJson(d.data(), d.id)).toList())
+        .asBroadcastStream();
+  }
+
+  Future<void> addMemory({
+    required String coupleId,
+    required String imageBase64,
+    required String caption,
+    required String locationTitle,
+    required DateTime date,
+    required String createdByName,
+    String? albumId,
+    String? albumTitle,
+  }) async {
+    if (coupleId.isEmpty || uid == null) return;
+    await _db.collection('couples').doc(coupleId).collection('memories').add({
+      'coupleId': coupleId,
+      'imageUrl': imageBase64,
+      'caption': caption.trim(),
+      'locationTitle': locationTitle.trim(),
+      'date': date.toIso8601String(),
+      'createdBy': uid,
+      'createdByName': createdByName,
+      'createdAt': FieldValue.serverTimestamp(),
+      'likedBy': [],
+      if (albumId != null) 'albumId': albumId,
+      if (albumTitle != null) 'albumTitle': albumTitle,
+    });
+  }
+
+  /// Birden fazla fotoğrafı ortak anı albümüne ekler
+  Future<void> addMultipleMemories({
+    required String coupleId,
+    required List<String> imagesBase64,
+    required String createdByName,
+    String caption = '',
+    String locationTitle = '',
+    DateTime? commonDate,
+    String? albumId,
+    String? albumTitle,
+  }) async {
+    if (coupleId.isEmpty || uid == null || imagesBase64.isEmpty) return;
+    final now = commonDate ?? DateTime.now();
+
+    final batch = _db.batch();
+    for (final img in imagesBase64) {
+      final docRef = _db.collection('couples').doc(coupleId).collection('memories').doc();
+      batch.set(docRef, {
+        'coupleId': coupleId,
+        'imageUrl': img,
+        'caption': caption.trim(),
+        'locationTitle': locationTitle.trim(),
+        'date': now.toIso8601String(),
+        'createdBy': uid,
+        'createdByName': createdByName,
+        'createdAt': FieldValue.serverTimestamp(),
+        'likedBy': [],
+        if (albumId != null) 'albumId': albumId,
+        if (albumTitle != null) 'albumTitle': albumTitle,
+      });
+    }
+
+    // Eğer bir anı grubuna ekleniyorsa, anı grubunun fotoğraf sayısını ve kapak fotosunu güncelle
+    if (albumId != null && albumId.isNotEmpty) {
+      final albumRef = _db.collection('couples').doc(coupleId).collection('memory_albums').doc(albumId);
+      String currentCover = '';
+      try {
+        final albumDoc = await albumRef.get();
+        if (albumDoc.exists) {
+          currentCover = albumDoc.data()?['coverImageUrl'] as String? ?? '';
+        }
+      } catch (_) {}
+      batch.update(albumRef, {
+        'photoCount': FieldValue.increment(imagesBase64.length),
+        if (currentCover.isEmpty && imagesBase64.isNotEmpty) 'coverImageUrl': imagesBase64.first,
+      });
+    }
+
+    await batch.commit();
+  }
+
+  /// Yeni Anı Grubu (Klasör) oluşturur ve seçilen fotoğrafları bu gruba bağlar
+  Future<String> createMemoryAlbum({
+    required String coupleId,
+    required String title,
+    required String description,
+    required String locationTitle,
+    required DateTime date,
+    required String coverImageUrl,
+    required String createdByName,
+    required List<String> photosBase64,
+  }) async {
+    if (coupleId.isEmpty || uid == null) return '';
+
+    final albumRef = _db.collection('couples').doc(coupleId).collection('memory_albums').doc();
+    final albumId = albumRef.id;
+
+    final batch = _db.batch();
+    batch.set(albumRef, {
+      'coupleId': coupleId,
+      'title': title.trim(),
+      'description': description.trim(),
+      'locationTitle': locationTitle.trim(),
+      'date': date.toIso8601String(),
+      'coverImageUrl': coverImageUrl,
+      'photoCount': photosBase64.length,
+      'createdBy': uid,
+      'createdByName': createdByName,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    for (final img in photosBase64) {
+      final memRef = _db.collection('couples').doc(coupleId).collection('memories').doc();
+      batch.set(memRef, {
+        'coupleId': coupleId,
+        'imageUrl': img,
+        'caption': description.trim(),
+        'locationTitle': locationTitle.trim(),
+        'date': date.toIso8601String(),
+        'createdBy': uid,
+        'createdByName': createdByName,
+        'createdAt': FieldValue.serverTimestamp(),
+        'likedBy': [],
+        'albumId': albumId,
+        'albumTitle': title.trim(),
+      });
+    }
+
+    await batch.commit();
+    return albumId;
+  }
+
+  /// Var olan anıları seçip yeni veya mevcut bir anı grubuna taşır/gruplar
+  Future<void> groupExistingMemories({
+    required String coupleId,
+    required List<String> memoryIds,
+    required String albumId,
+    required String albumTitle,
+  }) async {
+    if (coupleId.isEmpty || memoryIds.isEmpty) return;
+
+    final batch = _db.batch();
+    for (final id in memoryIds) {
+      final docRef = _db.collection('couples').doc(coupleId).collection('memories').doc(id);
+      batch.update(docRef, {
+        'albumId': albumId,
+        'albumTitle': albumTitle,
+      });
+    }
+
+    final albumRef = _db.collection('couples').doc(coupleId).collection('memory_albums').doc(albumId);
+    String currentCover = '';
+    try {
+      final albumDoc = await albumRef.get();
+      if (albumDoc.exists) {
+        currentCover = albumDoc.data()?['coverImageUrl'] as String? ?? '';
+      }
+    } catch (_) {}
+
+    String firstCover = '';
+    if (currentCover.isEmpty) {
+      try {
+        final firstMemDoc = await _db.collection('couples').doc(coupleId).collection('memories').doc(memoryIds.first).get();
+        if (firstMemDoc.exists) {
+          firstCover = firstMemDoc.data()?['imageUrl'] as String? ?? '';
+        }
+      } catch (_) {}
+    }
+
+    batch.update(albumRef, {
+      'photoCount': FieldValue.increment(memoryIds.length),
+      if (currentCover.isEmpty && firstCover.isNotEmpty) 'coverImageUrl': firstCover,
+    });
+
+    await batch.commit();
+  }
+
+  /// Tek bir anının bilgilerini (not, mekan, tarih, albüm) günceller
+  Future<void> updateMemoryDetails({
+    required String coupleId,
+    required String memoryId,
+    required String caption,
+    required String locationTitle,
+    required DateTime date,
+  }) async {
+    if (coupleId.isEmpty || memoryId.isEmpty) return;
+    await _db.collection('couples').doc(coupleId).collection('memories').doc(memoryId).update({
+      'caption': caption.trim(),
+      'locationTitle': locationTitle.trim(),
+      'date': date.toIso8601String(),
+    });
+  }
+
+  /// Anı grubunu ve içindeki anıların grup bağını siler
+  Future<void> deleteMemoryAlbum({
+    required String coupleId,
+    required String albumId,
+  }) async {
+    if (coupleId.isEmpty || albumId.isEmpty) return;
+    await _db.collection('couples').doc(coupleId).collection('memory_albums').doc(albumId).delete();
+
+    // Gruptaki anıların albumId bağını kaldır (fotoğraflar albümde kalsın ama gruptan çıksın)
+    final snap = await _db
+        .collection('couples')
+        .doc(coupleId)
+        .collection('memories')
+        .where('albumId', isEqualTo: albumId)
+        .get();
+
+    final batch = _db.batch();
+    for (final doc in snap.docs) {
+      batch.update(doc.reference, {
+        'albumId': FieldValue.delete(),
+        'albumTitle': FieldValue.delete(),
+      });
+    }
+    await batch.commit();
+  }
+
+  Future<void> toggleMemoryLike({
+    required String coupleId,
+    required String memoryId,
+    required bool isLiked,
+  }) async {
+    if (coupleId.isEmpty || uid == null) return;
+    final ref = _db.collection('couples').doc(coupleId).collection('memories').doc(memoryId);
+    if (isLiked) {
+      await ref.update({
+        'likedBy': FieldValue.arrayRemove([uid]),
+      });
+    } else {
+      await ref.update({
+        'likedBy': FieldValue.arrayUnion([uid]),
+      });
+    }
+  }
+
+  Future<void> deleteMemory({
+    required String coupleId,
+    required String memoryId,
+    String? albumId,
+  }) async {
+    if (coupleId.isEmpty) return;
+    await _db.collection('couples').doc(coupleId).collection('memories').doc(memoryId).delete();
+    if (albumId != null && albumId.isNotEmpty) {
+      await _db
+          .collection('couples')
+          .doc(coupleId)
+          .collection('memory_albums')
+          .doc(albumId)
+          .update({'photoCount': FieldValue.increment(-1)})
+          .catchError((_) {});
+    }
+  }
+
+  /// Toplu olarak anıları siler ve bağlı oldukları albüm sayılarını günceller
+  Future<void> deleteMultipleMemories({
+    required String coupleId,
+    required List<String> memoryIds,
+    required List<MemoryItem> allMemories,
+  }) async {
+    if (coupleId.isEmpty || memoryIds.isEmpty) return;
+    final batch = _db.batch();
+    final Map<String, int> albumDecrementMap = {};
+
+    for (final id in memoryIds) {
+      final docRef = _db.collection('couples').doc(coupleId).collection('memories').doc(id);
+      batch.delete(docRef);
+
+      final match = allMemories.where((m) => m.id == id).firstOrNull;
+      if (match != null && match.albumId != null && match.albumId!.isNotEmpty) {
+        albumDecrementMap[match.albumId!] = (albumDecrementMap[match.albumId!] ?? 0) + 1;
+      }
+    }
+
+    for (final entry in albumDecrementMap.entries) {
+      final albumRef = _db.collection('couples').doc(coupleId).collection('memory_albums').doc(entry.key);
+      batch.update(albumRef, {'photoCount': FieldValue.increment(-entry.value)});
+    }
+
+    await batch.commit();
+  }
+
+  /// Tekli veya toplu anıları mevcut bir albüme ekler/ilişkilendirir
+  Future<void> addMemoriesToExistingAlbum({
+    required String coupleId,
+    required List<String> memoryIds,
+    required String albumId,
+    required String albumTitle,
+  }) async {
+    await groupExistingMemories(
+      coupleId: coupleId,
+      memoryIds: memoryIds,
+      albumId: albumId,
+      albumTitle: albumTitle,
+    );
   }
 }
 

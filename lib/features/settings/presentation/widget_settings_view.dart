@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -7,10 +8,13 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/services/database_service.dart';
+import '../../../core/services/notification_service.dart';
 import '../../../core/services/widget_sync_service.dart';
 import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../drawing/presentation/drawing_screen.dart';
+import '../../../core/widgets/lovera_theme_background.dart';
 
 class WidgetSettingsView extends ConsumerStatefulWidget {
   const WidgetSettingsView({super.key});
@@ -22,32 +26,109 @@ class WidgetSettingsView extends ConsumerStatefulWidget {
 class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
   String? _savedImagePath;
   int? _lastUpdated;
+  String _widgetTheme = 'app'; // 'app', 'dark', 'light'
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadSavedImage();
+    _loadSavedData();
   }
 
-  Future<void> _loadSavedImage() async {
+  Future<void> _loadSavedData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final path = prefs.getString('widget_custom_bg_path');
+      var savedTheme = prefs.getString('widget_theme') ?? 'app';
+      if (savedTheme != 'dark' && savedTheme != 'light') {
+        savedTheme = 'app';
+      }
+      final appDir = await getApplicationDocumentsDirectory();
+      final targetPath = '${appDir.path}/widget_bg_custom.jpg';
+
+      _widgetTheme = savedTheme;
+
+      // 1. Önce yerel diskte var mı bak
       if (path != null && path.isNotEmpty && File(path).existsSync()) {
         setState(() {
           _savedImagePath = path;
           _lastUpdated = DateTime.now().millisecondsSinceEpoch;
           _isLoading = false;
         });
-      } else {
+        return;
+      }
+
+      // 2. Kullanıcının kendi hesabından widget fotoğrafını kontrol et
+      String? cloudBg;
+      final meUser = ref.read(currentUserProvider);
+      cloudBg = meUser?.widgetBgUrl;
+      if (cloudBg == null || cloudBg.isEmpty) {
+        final uid = DatabaseService().uid;
+        if (uid != null) {
+          final doc = await DatabaseService().db.collection('users').doc(uid).get();
+          cloudBg = doc.data()?['widgetBgUrl'] as String?;
+        }
+      }
+
+      if (cloudBg != null && cloudBg.isNotEmpty) {
+        final clean = cloudBg.contains(',') ? cloudBg.split(',').last : cloudBg;
+        final bytes = base64Decode(clean);
+        final file = File(targetPath);
+        await file.writeAsBytes(bytes);
+        await prefs.setString('widget_custom_bg_path', targetPath);
+        await WidgetSyncService.setWidgetBackgroundImage(targetPath);
+
         setState(() {
-          _savedImagePath = null;
+          _savedImagePath = targetPath;
+          _lastUpdated = DateTime.now().millisecondsSinceEpoch;
           _isLoading = false;
         });
+        return;
       }
+
+      setState(() {
+        _savedImagePath = null;
+        _isLoading = false;
+      });
     } catch (_) {
       setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _changeWidgetTheme(String mode) async {
+    HapticFeedback.selectionClick();
+    setState(() => _widgetTheme = mode);
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('widget_theme', mode);
+
+    // Eğer 'app' (otomatik) seçildiyse uygulamanın mevcut temasına göre 'dark' veya 'light' belirle
+    String effectiveTheme = mode;
+    if (mode == 'app') {
+      final currentAppTheme = ref.read(themeModeProvider);
+      if (currentAppTheme == ThemeMode.light) {
+        effectiveTheme = 'light';
+      } else if (currentAppTheme == ThemeMode.dark) {
+        effectiveTheme = 'dark';
+      } else {
+        // Sistem modu ise cihazın o anki parlaklığına bak
+        final brightness = WidgetsBinding.instance.platformDispatcher.platformBrightness;
+        effectiveTheme = brightness == Brightness.dark ? 'dark' : 'light';
+      }
+    }
+
+    await WidgetSyncService.setWidgetTheme(effectiveTheme, savedPreferenceMode: mode);
+
+    if (mounted) {
+      final label = mode == 'app'
+          ? 'Uygulama Temasıyla Senkron'
+          : (mode == 'dark' ? 'Koyu Gece Teması' : 'Açık Ferah Tema');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Widget teması "$label" olarak ayarlandı ✨'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
@@ -56,8 +137,9 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(
       source: ImageSource.gallery,
-      imageQuality: 85,
-      maxWidth: 1080,
+      imageQuality: 75,
+      maxWidth: 800,
+      maxHeight: 800,
     );
 
     if (pickedFile == null) return;
@@ -81,8 +163,13 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('widget_custom_bg_path', targetPath);
 
-      // Widget'a senkronize et
+      // Widget'a yerel senkronize et
       await WidgetSyncService.setWidgetBackgroundImage(targetPath);
+
+      // Yalnızca kullanıcının kendi hesabına kaydet (Kişisel widget arka planı)
+      final imageBytes = await File(targetPath).readAsBytes();
+      final base64Str = 'data:image/jpeg;base64,${base64Encode(imageBytes)}';
+      await DatabaseService().updateWidgetBg(base64Str);
 
       setState(() {
         _savedImagePath = targetPath;
@@ -93,7 +180,7 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Widget arka plan fotoğrafı güncellendi! 💕'),
+            content: Text('Widget fotoğrafın başarıyla güncellendi! 💕'),
             backgroundColor: LoveraColors.secondary,
             behavior: SnackBarBehavior.floating,
           ),
@@ -126,21 +213,33 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
 
       await WidgetSyncService.removeWidgetBackgroundImage();
 
+      // Yalnızca kendi hesabından kaldır
+      await DatabaseService().deleteWidgetBg();
+
       setState(() {
         _savedImagePath = null;
+        _lastUpdated = DateTime.now().millisecondsSinceEpoch;
         _isLoading = false;
       });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Widget varsayılan Lovera temasına döndürüldü.'),
+            content: Text('Widget fotoğrafı kaldırıldı, varsayılan temaya dönüldü.'),
             behavior: SnackBarBehavior.floating,
           ),
         );
       }
-    } catch (_) {
+    } catch (e) {
       setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fotoğraf kaldırılırken bir hata oluştu: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
     }
   }
 
@@ -154,16 +253,22 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
     final batteryText = partner?.batteryLevel != null ? '%${partner!.batteryLevel}' : '%78';
     const daysCount = '868';
 
+    // Widget teması belirleme (Canlı Önizleme için)
+    final bool previewIsDark = _widgetTheme == 'dark'
+        ? true
+        : (_widgetTheme == 'light' ? false : isDark);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Widget Ayarları'),
         centerTitle: true,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              children: [
+      body: LoveraThemeBackground(
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                children: [
                 // Başlık Bilgi Metni
                 Text(
                   'Ana Ekran Widget Görünümü',
@@ -171,7 +276,7 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Widget arkasına sevgilinizle olan özel bir anınızı ekleyin. Yazıların ve sayaçların net okunabilmesi için kenarlardan ortaya doğru sinematik karanlık vignette efekti otomatik olarak uygulanır.',
+                  'Widget arkasına sevgilinizle olan özel bir anınızı ekleyin veya Lovera temalarını kullanın. Widget\'ların açık/koyu modunu ayrı olarak seçebilir ya da uygulama temanızla eşitleyebilirsiniz.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
                     height: 1.45,
@@ -182,17 +287,17 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                 // Canlı Widget Önizleme Kartı (Simülasyon)
                 Center(
                   child: Container(
-                    width: 200,
-                    height: 200,
+                    width: 226,
+                    height: 226,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(26),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.35),
+                          color: Colors.black.withValues(alpha: previewIsDark ? 0.35 : 0.12),
                           blurRadius: 20,
                           offset: const Offset(0, 10),
                         ),
-                        if (isDark)
+                        if (previewIsDark)
                           BoxShadow(
                             color: LoveraColors.primary.withValues(alpha: 0.2),
                             blurRadius: 25,
@@ -205,7 +310,7 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
-                          // 1. Arka Plan: Seçilen Fotoğraf VEYA Varsayılan Degrade
+                          // 1. Arka Plan: Seçilen Fotoğraf VEYA Lovera Özel Teması (Koyu / Açık Desen)
                           if (_savedImagePath != null && File(_savedImagePath!).existsSync())
                             Image.file(
                               File(_savedImagePath!),
@@ -214,15 +319,30 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                             )
                           else
                             Container(
-                              decoration: const BoxDecoration(
+                              decoration: BoxDecoration(
                                 gradient: LinearGradient(
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
-                                  colors: [
-                                    Color(0xFF2A1B4E),
-                                    Color(0xFF1E1938),
-                                    Color(0xFF161426),
-                                  ],
+                                  colors: previewIsDark
+                                      ? [
+                                          const Color(0xFF0F0C1B),
+                                          const Color(0xFF1B1530),
+                                          const Color(0xFF120E22),
+                                        ]
+                                      : [
+                                          const Color(0xFFFFFFFF),
+                                          const Color(0xFFF8FAFC),
+                                          const Color(0xFFF1F5F9),
+                                        ],
+                                ),
+                              ),
+                              child: Center(
+                                child: Icon(
+                                  Icons.favorite_rounded,
+                                  size: 64,
+                                  color: previewIsDark
+                                      ? const Color(0x18A78BFA)
+                                      : const Color(0x228B5CF6),
                                 ),
                               ),
                             ),
@@ -264,36 +384,47 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                                 // Üst Satır: Partner Çipi (Sol), Gün Sayacı (Orta), Son Aktif (Sağ)
                                 Row(
                                   children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xD018132A),
-                                        borderRadius: BorderRadius.circular(18),
-                                        border: Border.all(color: const Color(0x55A78BFA), width: 1.2),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          const Text('💜', style: TextStyle(fontSize: 12)),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            partnerName,
-                                            style: const TextStyle(
-                                              color: Color(0xFFF3F4F6),
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.bold,
-                                            ),
+                                    Flexible(
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
+                                        decoration: BoxDecoration(
+                                          color: previewIsDark ? const Color(0xD018132A) : const Color(0xF0FFFFFF),
+                                          borderRadius: BorderRadius.circular(16),
+                                          border: Border.all(
+                                            color: previewIsDark ? const Color(0x55A78BFA) : const Color(0x358B5CF6),
+                                            width: 1,
                                           ),
-                                        ],
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Text('💜', style: TextStyle(fontSize: 10)),
+                                            const SizedBox(width: 3),
+                                            Flexible(
+                                              child: Text(
+                                                partnerName,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  color: previewIsDark ? const Color(0xFFF3F4F6) : const Color(0xFF1E1B4B),
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ),
-                                    const Spacer(),
+                                    const SizedBox(width: 4),
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xD018132A),
-                                        borderRadius: BorderRadius.circular(18),
-                                        border: Border.all(color: const Color(0x55A78BFA), width: 1.2),
+                                        color: previewIsDark ? const Color(0xD018132A) : const Color(0xF0FFFFFF),
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(
+                                          color: previewIsDark ? const Color(0x55A78BFA) : const Color(0x358B5CF6),
+                                          width: 1,
+                                        ),
                                       ),
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
@@ -302,37 +433,40 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                                         children: [
                                           Text(
                                             daysCount,
-                                            style: const TextStyle(
-                                              color: Color(0xFFA78BFA),
-                                              fontSize: 14,
+                                            style: TextStyle(
+                                              color: previewIsDark ? const Color(0xFFA78BFA) : const Color(0xFF7C3AED),
+                                              fontSize: 12,
                                               fontWeight: FontWeight.bold,
                                             ),
                                           ),
-                                          const SizedBox(width: 3),
-                                          const Text(
+                                          const SizedBox(width: 2),
+                                          Text(
                                             'gün',
                                             style: TextStyle(
-                                              color: Color(0xFFE2E8F0),
-                                              fontSize: 12,
+                                              color: previewIsDark ? const Color(0xFFE2E8F0) : const Color(0xFF64748B),
+                                              fontSize: 10,
                                               fontWeight: FontWeight.bold,
                                             ),
                                           ),
                                         ],
                                       ),
                                     ),
-                                    const Spacer(),
+                                    const SizedBox(width: 4),
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xD018132A),
-                                        borderRadius: BorderRadius.circular(18),
-                                        border: Border.all(color: const Color(0x55A78BFA), width: 1.2),
+                                        color: previewIsDark ? const Color(0xD018132A) : const Color(0xF0FFFFFF),
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(
+                                          color: previewIsDark ? const Color(0x55A78BFA) : const Color(0x358B5CF6),
+                                          width: 1,
+                                        ),
                                       ),
                                       child: const Text(
                                         'Şimdi aktif',
                                         style: TextStyle(
-                                          color: Color(0xFF34D399),
-                                          fontSize: 11,
+                                          color: Color(0xFF10B981),
+                                          fontSize: 10,
                                           fontWeight: FontWeight.bold,
                                         ),
                                       ),
@@ -350,19 +484,48 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                                       child: Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                                         decoration: BoxDecoration(
-                                          color: const Color(0xD018132A),
+                                          color: previewIsDark ? const Color(0xD018132A) : const Color(0xF0FFFFFF),
                                           borderRadius: BorderRadius.circular(18),
-                                          border: Border.all(color: const Color(0x55A78BFA), width: 1.2),
+                                          border: Border.all(
+                                            color: previewIsDark ? const Color(0x55A78BFA) : const Color(0x358B5CF6),
+                                            width: 1.2,
+                                          ),
                                         ),
                                         child: Row(
                                           mainAxisAlignment: MainAxisAlignment.center,
                                           children: [
-                                            Container(width: 10, height: 16, decoration: BoxDecoration(border: Border.all(color: const Color(0xFF94A3B8), width: 1.2), borderRadius: BorderRadius.circular(2.5)), padding: const EdgeInsets.all(1.5), child: Align(alignment: Alignment.bottomCenter, child: Container(width: double.infinity, height: (12.0 * ((partner?.batteryLevel ?? 80).clamp(0, 100) / 100.0)).clamp(2.0, 12.0), decoration: BoxDecoration(color: (partner?.batteryLevel ?? 80) >= 50 ? const Color(0xFF34D399) : ((partner?.batteryLevel ?? 80) >= 20 ? const Color(0xFFFBBF24) : const Color(0xFFEF4444)), borderRadius: BorderRadius.circular(1.2))))),
+                                            Container(
+                                              width: 10,
+                                              height: 16,
+                                              decoration: BoxDecoration(
+                                                border: Border.all(
+                                                  color: previewIsDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                                                  width: 1.2,
+                                                ),
+                                                borderRadius: BorderRadius.circular(2.5),
+                                              ),
+                                              padding: const EdgeInsets.all(1.5),
+                                              child: Align(
+                                                alignment: Alignment.bottomCenter,
+                                                child: Container(
+                                                  width: double.infinity,
+                                                  height: (12.0 * ((partner?.batteryLevel ?? 80).clamp(0, 100) / 100.0)).clamp(2.0, 12.0),
+                                                  decoration: BoxDecoration(
+                                                    color: (partner?.batteryLevel ?? 80) >= 50
+                                                        ? const Color(0xFF10B981)
+                                                        : ((partner?.batteryLevel ?? 80) >= 20
+                                                            ? const Color(0xFFFBBF24)
+                                                            : const Color(0xFFEF4444)),
+                                                    borderRadius: BorderRadius.circular(1.2),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
                                             const SizedBox(width: 4),
                                             Text(
                                               batteryText,
                                               style: const TextStyle(
-                                                color: Color(0xFF34D399),
+                                                color: Color(0xFF10B981),
                                                 fontSize: 12,
                                                 fontWeight: FontWeight.bold,
                                               ),
@@ -377,19 +540,22 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                                       child: Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                                         decoration: BoxDecoration(
-                                          color: const Color(0xD018132A),
+                                          color: previewIsDark ? const Color(0xD018132A) : const Color(0xF0FFFFFF),
                                           borderRadius: BorderRadius.circular(18),
-                                          border: Border.all(color: const Color(0x55A78BFA), width: 1.2),
+                                          border: Border.all(
+                                            color: previewIsDark ? const Color(0x55A78BFA) : const Color(0x358B5CF6),
+                                            width: 1.2,
+                                          ),
                                         ),
-                                        child: const Row(
+                                        child: Row(
                                           mainAxisAlignment: MainAxisAlignment.center,
                                           children: [
-                                            Text('🏠', style: TextStyle(fontSize: 12)),
-                                            SizedBox(width: 4),
+                                            const Text('🏠', style: TextStyle(fontSize: 12)),
+                                            const SizedBox(width: 4),
                                             Text(
                                               'Evim',
                                               style: TextStyle(
-                                                color: Color(0xFFF3F4F6),
+                                                color: previewIsDark ? const Color(0xFFF3F4F6) : const Color(0xFF1E1B4B),
                                                 fontSize: 12,
                                                 fontWeight: FontWeight.bold,
                                               ),
@@ -409,7 +575,87 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 28),
+
+                // Widget Teması Seçici Kartı
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1A162B) : Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isDark ? const Color(0x25A78BFA) : const Color(0x208B5CF6),
+                      width: 1.2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.palette_rounded,
+                            size: 20,
+                            color: LoveraColors.primary,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Widget Teması',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Ana ekran widget\'larının renk stilini ve görünümünü belirleyin:',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          _buildThemeOption(
+                            context: context,
+                            title: 'Otomatik',
+                            subtitle: 'Uygulama',
+                            icon: Icons.sync_rounded,
+                            isSelected: _widgetTheme == 'app',
+                            onTap: () => _changeWidgetTheme('app'),
+                          ),
+                          const SizedBox(width: 8),
+                          _buildThemeOption(
+                            context: context,
+                            title: 'Koyu',
+                            subtitle: 'Gece',
+                            icon: Icons.dark_mode_rounded,
+                            isSelected: _widgetTheme == 'dark',
+                            onTap: () => _changeWidgetTheme('dark'),
+                          ),
+                          const SizedBox(width: 8),
+                          _buildThemeOption(
+                            context: context,
+                            title: 'Açık',
+                            subtitle: 'Ferah',
+                            icon: Icons.light_mode_rounded,
+                            isSelected: _widgetTheme == 'light',
+                            onTap: () => _changeWidgetTheme('light'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
 
                 // Aksiyon Butonları
                 SizedBox(
@@ -517,6 +763,76 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                 ),
               ],
             ),
+      ),
+    );
+  }
+
+  Widget _buildThemeOption({
+    required BuildContext context,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? LoveraColors.primary.withValues(alpha: isDark ? 0.25 : 0.12)
+                : (isDark ? const Color(0xFF130F23) : const Color(0xFFF8FAFC)),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isSelected
+                  ? LoveraColors.primary
+                  : (isDark ? const Color(0x20FFFFFF) : const Color(0x15000000)),
+              width: isSelected ? 1.8 : 1.0,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 24,
+                color: isSelected
+                    ? LoveraColors.primary
+                    : (isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                  color: isSelected
+                      ? (isDark ? Colors.white : LoveraColors.primary)
+                      : (isDark ? LoveraColors.darkText : LoveraColors.textDark),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w500,
+                  color: isSelected
+                      ? LoveraColors.primary.withValues(alpha: 0.85)
+                      : (isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 1. Katman: Yuvarlatılmış Köşeli Şık Kenarlık ve Zemin Rengi -->
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="26dp" />
+            <solid android:color="#120F20" />
+            <stroke
+                android:width="1.5dp"
+                android:color="#55A78BFA" />
+        </shape>
+    </item>
+
+    <!-- 2. Katman: Çizim Sanatı & Eskiz Deseni (Palet, Fırça, Kalem, Tuval Cetveli) -->
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="26dp" />
+        </shape>
+    </item>
+    <item android:drawable="@drawable/widget_drawing_pattern" />
+</layer-list>

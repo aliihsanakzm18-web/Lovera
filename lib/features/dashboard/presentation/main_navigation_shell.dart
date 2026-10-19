@@ -53,6 +53,9 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
   Map<String, dynamic>? _activeReviewMeetingRequest;
   String? _shownGameRequestId;
   bool _gameSheetOpen = false;
+  int _unreadCount = 0;
+  String? _shownBreakupId;
+  bool _breakupSheetOpen = false;
 
   @override
   void initState() {
@@ -114,6 +117,36 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                 .toList();
             if (undeliveredIds.isNotEmpty) {
               DatabaseService().markMessagesAsDelivered(coupleId, undeliveredIds);
+            }
+
+            final partnerUnreadMessages = messages
+                .where((m) => m.senderId != myUid && !m.isRead)
+                .toList();
+
+            if (mounted) {
+              setState(() {
+                _unreadCount = (_currentIndex == 2) ? 0 : partnerUnreadMessages.length;
+              });
+            }
+
+            // Partnerden gelen okunmamış mesajları widget'a yansıt
+            // Eğer kullanıcı şu anda Sohbet ekranındaysa (_currentIndex == 2) veya bildirim servisi sohbetin açık olduğunu bildiriyorsa
+            // widget'ı her zaman temiz tut!
+            final isChatActive = (_currentIndex == 2) || (NotificationService().isChatScreenActive?.call() == true);
+            if (isChatActive) {
+              WidgetSyncService.clearWidgetMessages();
+            } else {
+              // messagesStream descending: true ile geldiği için kronolojik sıraya çevir
+              partnerUnreadMessages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+              final unreadTexts = partnerUnreadMessages.map((m) {
+                if (m.type == 'heart') return '❤️';
+                if (m.type == 'image' || m.mediaBase64 != null) return '📸 Fotoğraf';
+                if (m.locationTitle != null && m.locationTitle!.isNotEmpty) {
+                  return '📍 ${m.locationTitle}';
+                }
+                return m.text;
+              }).toList();
+              WidgetSyncService.syncWidgetMessages(unreadTexts);
             }
           });
         }
@@ -242,6 +275,12 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
             );
           }
         });
+      } else if (uri != null && uri.host == 'open_chat') {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _goToPage(2);
+          }
+        });
       }
       HomeWidget.widgetClicked.listen((uri) {
         if (uri != null && uri.host == 'open_drawing') {
@@ -249,6 +288,10 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
             Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const DrawingScreen()),
             );
+          }
+        } else if (uri != null && uri.host == 'open_chat') {
+          if (mounted) {
+            _goToPage(2);
           }
         }
       });
@@ -341,6 +384,45 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
         }
       }
 
+      // Gelen Ayrılma İsteği Yanıtı (breakupResult)
+      final breakupRes = data['breakupResult'];
+      if (breakupRes is Map) {
+        DatabaseService().clearBreakupResult();
+        final accepted = breakupRes['status'] == 'accepted';
+        if (accepted) {
+          // Sayaç, partner ve widgetları tamamen sıfırla
+          ref.read(partnerProvider.notifier).state = null;
+          ref.read(partnerUidProvider.notifier).state = null;
+          ref.read(coupleIdProvider.notifier).state = null;
+          ref.read(startDateProvider.notifier).state = null;
+          WidgetSyncService.resetAllWidgets();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Eşleşmeniz karşı tarafça onaylanarak sonlandırıldı. 💔'),
+              backgroundColor: Color(0xFFEF4444),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Partnerin ayrılma isteğini reddetti.'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+
+      // Gelen Ayrılma Talebi (pendingBreakupRequest)
+      final breakupReq = data['pendingBreakupRequest'];
+      if (breakupReq is Map && breakupReq['status'] == 'pending') {
+        final id = breakupReq['fromUid']?.toString();
+        if (id != null && id != _shownBreakupId && !_breakupSheetOpen) {
+          _shownBreakupId = id;
+          _showBreakupRequestSheet(Map<String, dynamic>.from(breakupReq));
+        }
+      }
+
       // Gelen Oyun Daveti (pendingGameRequest)
       final gameReq = data['pendingGameRequest'];
       if (gameReq is Map && gameReq['status'] == 'pending') {
@@ -360,6 +442,137 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
         }
       }
     });
+  }
+
+  void _showBreakupRequestSheet(Map<String, dynamic> req) {
+    final fromName = req['fromName']?.toString() ?? 'Partnerin';
+    final fromUid = req['fromUid']?.toString() ?? '';
+    final coupleId = req['coupleId']?.toString() ?? ref.read(coupleIdProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    _breakupSheetOpen = true;
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isDismissible: false,
+      enableDrag: false,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.fromLTRB(22, 14, 22, 28),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E212B) : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.25),
+              blurRadius: 25,
+              offset: const Offset(0, -5),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 38,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEF4444).withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const Center(
+                  child: Icon(Icons.heart_broken_rounded, color: Color(0xFFEF4444), size: 38),
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'Eşleşmeyi Sonlandırma Talebi',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '$fromName seninle olan çift eşleşmesini sonlandırmak istiyor. Bu talebi kabul ederseniz sayaç, ortak alan ve eşleşmeniz her iki cihazda da kaldırılacaktır.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  height: 1.45,
+                  color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      onPressed: () async {
+                        Navigator.pop(ctx);
+                        _breakupSheetOpen = false;
+                        await DatabaseService().rejectBreakup(fromUid);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Ayrılma talebini reddettiniz.'),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      },
+                      child: const Text('Reddet'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFEF4444),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      onPressed: () async {
+                        Navigator.pop(ctx);
+                        _breakupSheetOpen = false;
+                        await DatabaseService().acceptBreakup(partnerUid: fromUid, coupleId: coupleId);
+                        ref.read(partnerProvider.notifier).state = null;
+                        ref.read(partnerUidProvider.notifier).state = null;
+                        ref.read(coupleIdProvider.notifier).state = null;
+                        ref.read(startDateProvider.notifier).state = null;
+                        WidgetSyncService.resetAllWidgets();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Eşleşme başarıyla sonlandırıldı. 💔'),
+                              backgroundColor: Color(0xFFEF4444),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      },
+                      child: const Text('Kabul Et (Ayrıl)', style: TextStyle(fontWeight: FontWeight.w800)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    ).whenComplete(() => _breakupSheetOpen = false);
   }
 
   Future<void> _answerMeeting(Map<String, dynamic> req, bool accepted) async {
@@ -765,8 +978,14 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
     if (index == _currentIndex) return;
     FocusManager.instance.primaryFocus?.unfocus();
     HapticFeedback.selectionClick();
-    setState(() => _currentIndex = index);
+    setState(() {
+      _currentIndex = index;
+      if (index == 2) _unreadCount = 0;
+    });
     ref.read(activeNavigationIndexProvider.notifier).state = index;
+    if (index == 2) {
+      WidgetSyncService.clearWidgetMessages();
+    }
     _pageController.animateToPage(
       index,
       duration: const Duration(milliseconds: 380),
@@ -788,8 +1007,14 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
             physics: const BouncingScrollPhysics(),
             onPageChanged: (idx) {
               FocusManager.instance.primaryFocus?.unfocus();
-              setState(() => _currentIndex = idx);
+              setState(() {
+                _currentIndex = idx;
+                if (idx == 2) _unreadCount = 0;
+              });
               ref.read(activeNavigationIndexProvider.notifier).state = idx;
+              if (idx == 2) {
+                WidgetSyncService.clearWidgetMessages();
+              }
             },
             children: [
               // Sayfa 0: Canlı Harita
@@ -995,6 +1220,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                 icon: Icons.chat_bubble_outline_rounded,
                 selectedIcon: Icons.chat_bubble_rounded,
                 isSelected: _currentIndex == 2,
+                badgeCount: _unreadCount,
                 activeColor: LoveraColors.secondary,
                 tooltip: 'Sohbet',
                 onTap: () => _goToPage(2),
@@ -1025,6 +1251,7 @@ class _BottomNavItem extends StatelessWidget {
     required this.activeColor,
     required this.tooltip,
     required this.onTap,
+    this.badgeCount = 0,
   });
 
   final IconData icon;
@@ -1033,6 +1260,7 @@ class _BottomNavItem extends StatelessWidget {
   final Color activeColor;
   final String tooltip;
   final VoidCallback onTap;
+  final int badgeCount;
 
   @override
   Widget build(BuildContext context) {
@@ -1061,15 +1289,59 @@ class _BottomNavItem extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              AnimatedScale(
-                scale: isSelected ? 1.15 : 1.0,
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutBack,
-                child: Icon(
-                  isSelected ? selectedIcon : icon,
-                  color: isSelected ? activeColor : inactiveColor,
-                  size: 26,
-                ),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  AnimatedScale(
+                    scale: isSelected ? 1.15 : 1.0,
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOutBack,
+                    child: Icon(
+                      isSelected ? selectedIcon : icon,
+                      color: isSelected ? activeColor : inactiveColor,
+                      size: 26,
+                    ),
+                  ),
+                  if (badgeCount > 0)
+                    Positioned(
+                      top: -4,
+                      right: -7,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4.5, vertical: 2),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF9333EA), Color(0xFF7C3AED)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: isDark ? const Color(0xFF141620) : Colors.white,
+                            width: 1.5,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF8B5CF6).withValues(alpha: 0.5),
+                              blurRadius: 6,
+                              offset: const Offset(0, 1.5),
+                            ),
+                          ],
+                        ),
+                        constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                        child: Center(
+                          child: Text(
+                            badgeCount > 99 ? '99+' : badgeCount.toString(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w900,
+                              height: 1.0,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(height: 3),
               AnimatedContainer(

@@ -341,7 +341,8 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
       }
       updateData['currentPlaceTitle'] = currentMatchedPlace?.title ?? '';
       updateData['currentPlaceEmoji'] = currentMatchedPlace?.iconEmoji ?? '';
-      updateData['lastActive'] = FieldValue.serverTimestamp();
+      // NOT: lastActive burada güncellenmemeli! Kullanıcı uygulamayı açmadığı veya ekran başında olmadığı sürece
+      // arka plan GPS veya şarj kontrolleri partnerin son aktiflik saatini 'şimdi aktif' veya '1 dk önce' yapmamalıdır.
 
       await FirebaseFirestore.instance
           .collection('users')
@@ -521,6 +522,7 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
   });
 
   // 4. Periyodik olarak 15 saniyede bir saati, şarjı ve konumu canlı tut (Pil değiştiğinde anında tetiklenir)
+  int bgTickCounter = 0;
   Timer.periodic(const Duration(seconds: 15), (timer) async {
     final prefs = await SharedPreferences.getInstance();
     final uid = prefs.getString('saved_uid');
@@ -530,6 +532,13 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
       return;
     }
     await performLiveSync();
+
+    // Her 60 saniyede bir (4 x 15 sn) veritabanına HİÇ gitmeden yerel saat ile widget sürelerini ilerlet
+    bgTickCounter++;
+    if (bgTickCounter >= 4) {
+      bgTickCounter = 0;
+      await WidgetSyncService.updateWidgetFromLocalCache();
+    }
   });
 
   // 5. 7/24 Kesintisiz Partner Dinleyicisi (Uygulama tamamen kapalı olsa dahi Widget'ı canlı tutar)

@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -27,6 +26,8 @@ import '../../settings/presentation/settings_view.dart';
 import '../../drawing/presentation/drawing_screen.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../../core/services/widget_sync_service.dart';
+import '../../../core/widgets/avatar_cache.dart';
+import '../../../core/widgets/lovera_theme_background.dart';
 
 class DashboardView extends ConsumerStatefulWidget {
   const DashboardView({super.key, this.onOpenMap, this.onOpenChat});
@@ -47,6 +48,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
   StreamSubscription? _drawingSub;
   List<SavedPlace> _savedPlaces = [];
   Timer? _statusSyncTimer;
+  Timer? _widgetRefreshTimer;
   int? _lastHeartTimestamp;
   int? _lastChargeTimestamp;
   String? _lastPartnerDetectedPlaceId;
@@ -126,14 +128,22 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
       DeviceService().syncStatusToFirebase();
     });
 
+    // Her dakika başı masaüstü widget'larını veritabanını hiç yormadan yerel saat ile yeniden tetikle
+    _widgetRefreshTimer?.cancel();
+    _widgetRefreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      WidgetSyncService.updateWidgetFromLocalCache();
+    });
+
     // Uygulama alta atıldığında veya kapatılmak üzereyken durumu güncelle
     _lifecycleListener = AppLifecycleListener(
       onPause: () {
         _statusSyncTimer?.cancel();
+        _widgetRefreshTimer?.cancel();
         DatabaseService().setAppPresence(false);
       },
       onDetach: () {
         _statusSyncTimer?.cancel();
+        _widgetRefreshTimer?.cancel();
         DatabaseService().setAppPresence(false);
       },
       onResume: () {
@@ -142,6 +152,10 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
         _statusSyncTimer?.cancel();
         _statusSyncTimer = Timer.periodic(const Duration(seconds: 15), (_) {
           DeviceService().syncStatusToFirebase();
+        });
+        _widgetRefreshTimer?.cancel();
+        _widgetRefreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+          WidgetSyncService.updateWidgetFromLocalCache();
         });
       },
     );
@@ -197,10 +211,25 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
             }
           });
         }
+        if (data['widgetBgUrl'] != null && (data['widgetBgUrl'] as String).isNotEmpty) {
+          final bgBase64 = data['widgetBgUrl'] as String;
+          getApplicationDocumentsDirectory().then((appDir) async {
+            final targetPath = '${appDir.path}/widget_bg_custom.jpg';
+            final file = File(targetPath);
+            if (!file.existsSync() || file.lengthSync() == 0) {
+              final clean = bgBase64.contains(',') ? bgBase64.split(',').last : bgBase64;
+              await file.writeAsBytes(base64Decode(clean));
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString('widget_custom_bg_path', targetPath);
+              await WidgetSyncService.setWidgetBackgroundImage(targetPath);
+            }
+          });
+        }
         final meUser = AppUser(
           id: doc.id,
           name: data['name'] ?? ref.read(userNameProvider),
           avatarUrl: data['avatarUrl'],
+          widgetBgUrl: data['widgetBgUrl'] as String?,
           batteryLevel: data['batteryLevel'] as int?,
           weather: data['weather'] as String?,
           city: data['city'] as String?,
@@ -238,7 +267,28 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
             _listenedCoupleId = cId;
             _listenToCouple(cId);
           }
-        } else if (data['relationshipStartDate'] != null) {
+        } else {
+          // coupleId yoksa veya ayrılma sonucu silindiyse çift bağlantısını sıfırla
+          _coupleSub?.cancel();
+          _coupleSub = null;
+          _listenedCoupleId = null;
+          _drawingSub?.cancel();
+          _drawingSub = null;
+          _savedPlacesSub?.cancel();
+          _savedPlacesSub = null;
+          _milestonesSub?.cancel();
+          _milestonesSub = null;
+          if (ref.read(coupleIdProvider) != null) {
+            ref.read(coupleIdProvider.notifier).state = null;
+          }
+          SharedPreferences.getInstance().then((p) => p.remove('saved_couple_id'));
+          if (data['relationshipStartDate'] == null) {
+            ref.read(startDateProvider.notifier).state = null;
+            SharedPreferences.getInstance().then((p) => p.remove('saved_start_date'));
+          }
+        }
+        
+        if (data['relationshipStartDate'] != null) {
           final sDate = DateTime.tryParse(data['relationshipStartDate']);
           ref.read(startDateProvider.notifier).state = sDate;
           if (sDate != null) {
@@ -310,6 +360,17 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
             // Partnerin telefonu kapalıysa bile arka planda hemen şarj ve konumunu güncellemesi için sessiz uyandır
             NotificationService().requestPartnerStatusSync(partnerUid);
           }
+        } else {
+          // partnerUid yoksa veya ayrılma sonucu silindiyse partner dinleyicisini ve durumunu sıfırla
+          _partnerSub?.cancel();
+          _partnerSub = null;
+          if (ref.read(partnerUidProvider) != null) {
+            ref.read(partnerUidProvider.notifier).state = null;
+          }
+          if (ref.read(partnerProvider) != null) {
+            ref.read(partnerProvider.notifier).state = null;
+          }
+          WidgetSyncService.resetAllWidgets();
         }
       });
     });
@@ -1246,6 +1307,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
   void dispose() {
     _lifecycleListener?.dispose();
     _statusSyncTimer?.cancel();
+    _widgetRefreshTimer?.cancel();
     _userSub?.cancel();
     _partnerSub?.cancel();
     _coupleSub?.cancel();
@@ -1259,18 +1321,44 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     HapticFeedback.mediumImpact();
     final partnerUid = ref.read(partnerUidProvider) ?? ref.read(partnerProvider)?.id;
     final myName = ref.read(userNameProvider);
-    if (partnerUid != null && partnerUid.isNotEmpty) {
-      await DatabaseService().sendHeart(partnerUid);
-      NotificationService().sendPushToPartner(
-        partnerUid: partnerUid,
-        title: '🥺 Seni Çok Özledim!',
-        body: '${myName.isEmpty ? 'Partnerin' : myName} şu an seni çok özlediğini hissettirdi 💕',
-        data: {
-          'type': 'heart_ping',
-          'fromName': myName.isEmpty ? 'Partnerin' : myName,
-        },
-      );
+
+    if (partnerUid == null || partnerUid.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.info_outline_rounded, color: Colors.white),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text('Henüz biriyle eşleşmedin. Önce partnerinle eşleşmelisin! 💕'),
+                ),
+              ],
+            ),
+            backgroundColor: LoveraColors.primary,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            action: SnackBarAction(
+              label: 'Eşleş',
+              textColor: Colors.white,
+              onPressed: () => _push(const PairingView()),
+            ),
+          ),
+        );
+      }
+      return;
     }
+
+    await DatabaseService().sendHeart(partnerUid);
+    NotificationService().sendPushToPartner(
+      partnerUid: partnerUid,
+      title: '🥺 Seni Çok Özledim!',
+      body: '${myName.isEmpty ? 'Partnerin' : myName} şu an seni çok özlediğini hissettirdi 💕',
+      data: {
+        'type': 'heart_ping',
+        'fromName': myName.isEmpty ? 'Partnerin' : myName,
+      },
+    );
     setState(() => _showHeart = true);
     await Future<void>.delayed(const Duration(milliseconds: 1400));
     if (mounted) setState(() => _showHeart = false);
@@ -1287,8 +1375,9 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     final milestones = ref.watch(milestonesProvider);
 
     return Scaffold(
-      body: Stack(
-        children: [
+      body: LoveraThemeBackground(
+        child: Stack(
+          children: [
           SafeArea(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
@@ -1428,8 +1517,9 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
             ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 class _BentoCard extends StatelessWidget {
@@ -1876,20 +1966,10 @@ class _PartnerCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              CircleAvatar(
+              LoveraAvatar(
+                avatarUrl: p.avatarUrl,
+                fallbackLetter: p.name,
                 radius: 28,
-                backgroundColor: LoveraColors.secondary.withValues(alpha: 0.3),
-                backgroundImage: p.avatarUrl != null
-                    ? (p.avatarUrl!.startsWith('data:image')
-                        ? MemoryImage(base64Decode(p.avatarUrl!.split(',').last)) as ImageProvider
-                        : (p.avatarUrl!.startsWith('http')
-                            ? CachedNetworkImageProvider(p.avatarUrl!)
-                            : FileImage(File(p.avatarUrl!)) as ImageProvider))
-                    : null,
-                child: p.avatarUrl == null
-                    ? Text(p.name.isEmpty ? '?' : p.name[0],
-                        style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700))
-                    : null,
               ),
               const SizedBox(width: 14),
               Expanded(

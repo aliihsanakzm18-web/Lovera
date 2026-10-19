@@ -10,6 +10,8 @@ import '../../../core/theme/app_theme.dart';
 import '../../onboarding/presentation/onboarding_flow.dart';
 import 'account_settings_view.dart';
 import 'widget_settings_view.dart';
+import '../../../core/widgets/avatar_cache.dart';
+import '../../../core/widgets/lovera_theme_background.dart';
 
 class SettingsView extends ConsumerStatefulWidget {
   const SettingsView({super.key});
@@ -20,23 +22,7 @@ class SettingsView extends ConsumerStatefulWidget {
 
 class _SettingsViewState extends ConsumerState<SettingsView> {
   ImageProvider? _getAvatarProvider(String? path) {
-    if (path == null || path.isEmpty) return null;
-    if (path.startsWith('data:image')) {
-      try {
-        final base64String = path.split(',').last;
-        return MemoryImage(base64Decode(base64String));
-      } catch (_) {
-        return null;
-      }
-    } else if (path.startsWith('http')) {
-      return NetworkImage(path);
-    } else {
-      final f = File(path);
-      if (f.existsSync()) {
-        return FileImage(f);
-      }
-      return null;
-    }
+    return AvatarCache.getProvider(path);
   }
   // Bildirim ayarları durumları
   bool _notifHeart = true;
@@ -392,9 +378,10 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
         title: const Text('Ayarlar'),
         centerTitle: true,
       ),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        children: [
+      body: LoveraThemeBackground(
+        child: ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          children: [
           // Profil Özeti Kartı - Tıklanabilir
           Material(
             color: theme.colorScheme.surface,
@@ -415,19 +402,35 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 ),
                 child: Row(
                   children: [
-                    CircleAvatar(
-                      radius: 32,
-                      backgroundColor: LoveraColors.primarySoft.withValues(alpha: 0.18),
-                      backgroundImage: _getAvatarProvider(avatarPath),
-                      child: _getAvatarProvider(avatarPath) == null
-                          ? Text(
-                              userName.isNotEmpty ? userName[0].toUpperCase() : '?',
-                              style: theme.textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.w800,
-                                color: LoveraColors.primary,
-                              ),
-                            )
-                          : null,
+                    Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: LoveraColors.primary.withValues(alpha: 0.4),
+                          width: 2.2,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.08),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: CircleAvatar(
+                        radius: 32,
+                        backgroundColor: LoveraColors.primarySoft.withValues(alpha: 0.18),
+                        backgroundImage: _getAvatarProvider(avatarPath),
+                        child: _getAvatarProvider(avatarPath) == null
+                            ? Text(
+                                userName.isNotEmpty ? userName[0].toUpperCase() : '?',
+                                style: theme.textTheme.headlineSmall?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  color: LoveraColors.primary,
+                                ),
+                              )
+                            : null,
+                      ),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -553,7 +556,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
           ),
         ],
       ),
-    );
+    ),
+  );
   }
 }
 

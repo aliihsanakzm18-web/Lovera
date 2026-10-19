@@ -97,6 +97,20 @@ Future<void> main() async {
         savedPlaces: cachedPlaces,
       );
     }
+    // Uygulama temasına göre widget temasını erkenden doğrula ve senkronize et
+    final savedWidgetTheme = prefs.getString('widget_theme') ?? 'app';
+    if (savedWidgetTheme != 'dark' && savedWidgetTheme != 'light') {
+      String effectiveWidgetTheme;
+      if (initialThemeMode == ThemeMode.light) {
+        effectiveWidgetTheme = 'light';
+      } else if (initialThemeMode == ThemeMode.dark) {
+        effectiveWidgetTheme = 'dark';
+      } else {
+        final brightness = WidgetsBinding.instance.platformDispatcher.platformBrightness;
+        effectiveWidgetTheme = brightness == Brightness.dark ? 'dark' : 'light';
+      }
+      await WidgetSyncService.setWidgetTheme(effectiveWidgetTheme, savedPreferenceMode: 'app');
+    }
   } catch (e) {
     debugPrint('[Main] Widget early sync error: $e');
   }
@@ -124,6 +138,7 @@ class LoveraApp extends ConsumerWidget {
     final themeMode = ref.watch(themeModeProvider);
 
     return MaterialApp(
+      scaffoldMessengerKey: rootScaffoldMessengerKey,
       title: 'Lovera',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,

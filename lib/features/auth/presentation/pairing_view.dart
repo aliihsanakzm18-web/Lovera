@@ -8,6 +8,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/lovera_theme_background.dart';
 
 /// Eşleşme içeriği (onboarding ve ayrı ekranda ortak kullanılır).
 class PairingContent extends ConsumerStatefulWidget {
@@ -68,9 +69,19 @@ class _PairingContentState extends ConsumerState<PairingContent> {
       // 2. Durum: Gönderdiğimiz istek kabul edildi mi?
       if (data['outgoingPairRequest'] != null) {
         final outReq = Map<String, dynamic>.from(data['outgoingPairRequest']);
+        final coupleId = data['coupleId'] as String?;
         if (outReq['status'] == 'accepted') {
-          _handlePairSuccess(data['coupleId'], outReq['toUid']);
+          // Eğer eşleşme gerçekten aktifse (coupleId doluysa) başarılı göster ve isteği tüket
+          if (coupleId != null && coupleId.isNotEmpty && !_dialogOpen) {
+            _dialogOpen = true;
+            DatabaseService().clearOutgoingPairRequest();
+            _handlePairSuccess(coupleId, outReq['toUid']);
+          } else if (coupleId == null || coupleId.isEmpty) {
+            // Eski/geçersiz accepted isteği kalmışsa sessizce temizle
+            DatabaseService().clearOutgoingPairRequest();
+          }
         } else if (outReq['status'] == 'rejected') {
+          DatabaseService().clearOutgoingPairRequest();
           setState(() {
             _isLoading = false;
             _waitingMessage = null;
@@ -97,6 +108,37 @@ class _PairingContentState extends ConsumerState<PairingContent> {
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) setState(() => _copied = false);
     });
+  }
+
+  bool _isRefreshingCode = false;
+  Future<void> _refreshCode() async {
+    if (_isRefreshingCode) return;
+    setState(() => _isRefreshingCode = true);
+    HapticFeedback.mediumImpact();
+    try {
+      final myName = ref.read(userNameProvider);
+      final myAvatar = ref.read(userAvatarProvider);
+      final newCode = await DatabaseService().refreshInviteCode(myName, myAvatar);
+      if (mounted) {
+        setState(() {
+          _myCode = newCode;
+          _isRefreshingCode = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Eski kod iptal edildi ve yepyeni tek seferlik bir kod üretildi! 🔐'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isRefreshingCode = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Kod yenilenemedi: $e')),
+        );
+      }
+    }
   }
 
   // Gelen Eşleşme İsteği Onay Penceresi (Fotoğraf ve İsim ile)
@@ -443,10 +485,27 @@ class _PairingContentState extends ConsumerState<PairingContent> {
                   style: theme.textTheme.headlineMedium?.copyWith(
                       fontWeight: FontWeight.w900, letterSpacing: 6, color: LoveraColors.primary)),
               const SizedBox(height: 10),
-              TextButton.icon(
-                onPressed: _copy,
-                icon: Icon(_copied ? Icons.check_rounded : Icons.copy_rounded, size: 18),
-                label: Text(_copied ? 'Kopyalandı' : 'Kodu kopyala'),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  TextButton.icon(
+                    onPressed: _copy,
+                    icon: Icon(_copied ? Icons.check_rounded : Icons.copy_rounded, size: 18),
+                    label: Text(_copied ? 'Kopyalandı' : 'Kodu kopyala'),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    onPressed: _isRefreshingCode ? null : _refreshCode,
+                    icon: _isRefreshingCode
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: LoveraColors.primary),
+                          )
+                        : const Icon(Icons.refresh_rounded, size: 18),
+                    label: const Text('Kodu Yenile'),
+                  ),
+                ],
               ),
             ],
           ),
@@ -531,8 +590,10 @@ class PairingView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Eşleşme')),
-      body: SafeArea(
-        child: PairingContent(onDone: () => Navigator.of(context).pop(), skipLabel: 'Kapat'),
+      body: LoveraThemeBackground(
+        child: SafeArea(
+          child: PairingContent(onDone: () => Navigator.of(context).pop(), skipLabel: 'Kapat'),
+        ),
       ),
     );
   }

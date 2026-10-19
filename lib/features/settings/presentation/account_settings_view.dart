@@ -13,6 +13,8 @@ import '../../../core/services/database_service.dart';
 import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../onboarding/presentation/onboarding_flow.dart';
+import '../../../core/widgets/avatar_cache.dart';
+import '../../../core/widgets/lovera_theme_background.dart';
 
 class AccountSettingsView extends ConsumerStatefulWidget {
   const AccountSettingsView({super.key});
@@ -26,23 +28,7 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
   bool _isDeleting = false;
 
   ImageProvider? _getAvatarProvider(String? path) {
-    if (path == null || path.isEmpty) return null;
-    if (path.startsWith('data:image')) {
-      try {
-        final base64String = path.split(',').last;
-        return MemoryImage(base64Decode(base64String));
-      } catch (_) {
-        return null;
-      }
-    } else if (path.startsWith('http')) {
-      return NetworkImage(path);
-    } else {
-      final f = File(path);
-      if (f.existsSync()) {
-        return FileImage(f);
-      }
-      return null;
-    }
+    return AvatarCache.getProvider(path);
   }
 
   // Profil fotoğrafı seçme
@@ -321,26 +307,43 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
         title: const Text('Hesap Bilgileri'),
         centerTitle: true,
       ),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-        children: [
+      body: LoveraThemeBackground(
+        child: ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+          children: [
           // Profil Fotoğrafı Alanı
           Center(
             child: Stack(
               children: [
-                CircleAvatar(
-                  radius: 54,
-                  backgroundColor: LoveraColors.primarySoft.withValues(alpha: 0.2),
-                  backgroundImage: _getAvatarProvider(avatarPath),
-                  child: _getAvatarProvider(avatarPath) == null
-                      ? Text(
-                          userName.isNotEmpty ? userName[0].toUpperCase() : '?',
-                          style: theme.textTheme.displaySmall?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            color: LoveraColors.primary,
-                          ),
-                        )
-                      : null,
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: LoveraColors.primary.withValues(alpha: 0.45),
+                      width: 3.0,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.12),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: CircleAvatar(
+                    radius: 54,
+                    backgroundColor: LoveraColors.primarySoft.withValues(alpha: 0.2),
+                    backgroundImage: _getAvatarProvider(avatarPath),
+                    child: _getAvatarProvider(avatarPath) == null
+                        ? Text(
+                            userName.isNotEmpty ? userName[0].toUpperCase() : '?',
+                            style: theme.textTheme.displaySmall?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              color: LoveraColors.primary,
+                            ),
+                          )
+                        : null,
+                  ),
                 ),
                 Positioned(
                   bottom: 0,
@@ -484,7 +487,8 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
           const SizedBox(height: 24),
         ],
       ),
-    );
+    ),
+  );
   }
 
   // Oturumu Kapatma Akışı
