@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/localization/app_strings.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
@@ -35,16 +36,17 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
   bool _showOnlineStatus = true;
 
   Future<void> _signOut(BuildContext context, WidgetRef ref) async {
+    final s = ref.read(stringsProvider);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Oturumu Kapat'),
-        content: const Text('Hesabınızdan çıkış yapmak istediğinize emin misiniz?'),
+        title: Text(s.signOutConfirmTitle),
+        content: Text(s.signOutConfirmDesc),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Vazgeç'),
+            child: Text(s.cancel),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
@@ -53,7 +55,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
               minimumSize: const Size(100, 44),
             ),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Çıkış Yap'),
+            child: Text(s.signOut),
           ),
         ],
       ),
@@ -226,6 +228,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
 
   // 3. Lovera Hakkında Penceresi
   void _openAboutDialog() {
+    final s = ref.read(stringsProvider);
     showDialog<void>(
       context: context,
       builder: (ctx) {
@@ -251,20 +254,20 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 4),
-              const Text(
-                'Sürüm 1.0.0 (Beta)',
-                style: TextStyle(color: LoveraColors.textMuted, fontSize: 13, fontWeight: FontWeight.w600),
+              Text(
+                s.aboutVersion,
+                style: const TextStyle(color: LoveraColors.textMuted, fontSize: 13, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 16),
               Text(
-                'Çiftler için tasarlanmış sakin, samimi ve güvenli özel dijital alanınız. Birlikte geçirilen her anı ölümsüzleştirmek için sevgiyle geliştirildi.',
+                s.aboutDesc,
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium?.copyWith(color: LoveraColors.textMuted, height: 1.45),
               ),
               const SizedBox(height: 20),
               const Divider(),
               Text(
-                '© 2026 Lovera App • Tüm hakları saklıdır.',
+                s.copyrightNotice,
                 style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted, fontSize: 11),
               ),
             ],
@@ -273,7 +276,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
             Center(
               child: TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('Tamam', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                child: Text(s.ok, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
               ),
             ),
           ],
@@ -282,8 +285,78 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     );
   }
 
+  // Dil Seçimi BottomSheet
+  void _openLanguageSettings() {
+    final s = ref.read(stringsProvider);
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (ctx) {
+        return Consumer(
+          builder: (context, ref, _) {
+            final theme = Theme.of(context);
+            final currentLang = ref.watch(appLanguageProvider);
+
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Text(
+                      s.selectLanguage,
+                      style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Center(
+                    child: Text(
+                      s.languageSubtitle,
+                      style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  _ThemeOptionTile(
+                    icon: Icons.language_rounded,
+                    iconColor: const Color(0xFFE11D48),
+                    title: 'Türkçe',
+                    subtitle: 'Türkçe (TR)',
+                    isSelected: currentLang == AppLanguage.tr,
+                    onTap: () {
+                      ref.read(appLanguageProvider.notifier).setLanguage(AppLanguage.tr);
+                      Navigator.pop(ctx);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _ThemeOptionTile(
+                    icon: Icons.language_rounded,
+                    iconColor: const Color(0xFF2563EB),
+                    title: 'English',
+                    subtitle: 'English (US/UK)',
+                    isSelected: currentLang == AppLanguage.en,
+                    onTap: () {
+                      ref.read(appLanguageProvider.notifier).setLanguage(AppLanguage.en);
+                      Navigator.pop(ctx);
+                    },
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   // 4. Görünüm ve Tema Seçimi
   void _openThemeSettings() {
+    final s = ref.read(stringsProvider);
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -305,14 +378,14 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 children: [
                   Center(
                     child: Text(
-                      'Görünüm ve Tema',
+                      s.themeAndAppearance,
                       style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
                     ),
                   ),
                   const SizedBox(height: 6),
                   Center(
                     child: Text(
-                      'Uygulama temasını tercihinize göre ayarlayın',
+                      s.themeSubtitle,
                       style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted),
                     ),
                   ),
@@ -321,8 +394,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   _ThemeOptionTile(
                     icon: Icons.light_mode_rounded,
                     iconColor: const Color(0xFFF59E0B),
-                    title: 'Açık Mod',
-                    subtitle: 'Aydınlık ve ferah görünüm',
+                    title: s.themeLight,
+                    subtitle: s.themeLightSub,
                     isSelected: activeMode == ThemeMode.light,
                     onTap: () {
                       ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.light);
@@ -333,8 +406,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   _ThemeOptionTile(
                     icon: Icons.dark_mode_rounded,
                     iconColor: LoveraColors.primary,
-                    title: 'Koyu Mod',
-                    subtitle: 'Göz yormayan asil gece teması',
+                    title: s.themeDark,
+                    subtitle: s.themeDarkSub,
                     isSelected: activeMode == ThemeMode.dark,
                     onTap: () {
                       ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.dark);
@@ -345,8 +418,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   _ThemeOptionTile(
                     icon: Icons.settings_brightness_rounded,
                     iconColor: const Color(0xFF388AF6),
-                    title: 'Sistem Varsayılanı',
-                    subtitle: 'Telefonunuzun ayarlarına göre otomatik değişir',
+                    title: s.themeSystem,
+                    subtitle: s.themeSystemSub,
                     isSelected: activeMode == ThemeMode.system,
                     onTap: () {
                       ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.system);
@@ -364,19 +437,22 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
 
   @override
   Widget build(BuildContext context) {
+    final s = ref.watch(stringsProvider);
     final theme = Theme.of(context);
     final userName = ref.watch(userNameProvider);
     final avatarPath = ref.watch(userAvatarProvider);
     final currentThemeMode = ref.watch(themeModeProvider);
+    final currentLang = ref.watch(appLanguageProvider);
     final auth = AuthService();
     final String themeModeLabel = currentThemeMode == ThemeMode.light
-        ? 'Açık Mod'
-        : (currentThemeMode == ThemeMode.dark ? 'Koyu Mod' : 'Sistem');
-    final email = auth.currentUser?.email ?? 'Giriş yapılmadı';
+        ? s.themeLight
+        : (currentThemeMode == ThemeMode.dark ? s.themeDark : s.themeSystem);
+    final String languageLabel = currentLang == AppLanguage.en ? 'English' : 'Türkçe';
+    final email = auth.currentUser?.email ?? s.notLoggedIn;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Ayarlar'),
+        title: Text(s.settingsTitle),
         centerTitle: true,
       ),
       body: LoveraThemeBackground(
@@ -439,7 +515,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            userName.isNotEmpty ? userName : 'Lovera Kullanıcısı',
+                            userName.isNotEmpty ? userName : s.defaultUser,
                             style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                           ),
                           const SizedBox(height: 2),
@@ -463,7 +539,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
           Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 8),
             child: Text(
-              'UYGULAMA',
+              s.appSection,
               style: theme.textTheme.labelMedium?.copyWith(
                 color: LoveraColors.textMuted,
                 letterSpacing: 1.2,
@@ -482,8 +558,29 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
             child: Column(
               children: [
                 _SettingsTile(
+                  icon: Icons.language_rounded,
+                  title: s.languageOption,
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        languageLabel,
+                        style: const TextStyle(
+                          color: LoveraColors.textMuted,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                    ],
+                  ),
+                  onTap: _openLanguageSettings,
+                ),
+                Divider(height: 1, indent: 56, color: theme.dividerColor),
+                _SettingsTile(
                   icon: Icons.palette_outlined,
-                  title: 'Görünüm ve Tema',
+                  title: s.themeAndAppearance,
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -504,7 +601,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 Divider(height: 1, indent: 56, color: theme.dividerColor),
                 _SettingsTile(
                   icon: Icons.widgets_outlined,
-                  title: 'Widget Ayarları',
+                  title: s.widgetSettings,
                   trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
                   onTap: () {
                     Navigator.of(context).push(
@@ -515,21 +612,21 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 Divider(height: 1, indent: 56, color: theme.dividerColor),
                 _SettingsTile(
                   icon: Icons.notifications_none_rounded,
-                  title: 'Bildirimler',
+                  title: s.notifications,
                   trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
                   onTap: _openNotificationsSettings,
                 ),
                 Divider(height: 1, indent: 56, color: theme.dividerColor),
                 _SettingsTile(
                   icon: Icons.shield_outlined,
-                  title: 'Gizlilik ve Güvenlik',
+                  title: s.privacySecurity,
                   trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
                   onTap: _openPrivacySettings,
                 ),
                 Divider(height: 1, indent: 56, color: theme.dividerColor),
                 _SettingsTile(
                   icon: Icons.description_outlined,
-                  title: 'Kullanım Koşulları (EULA)',
+                  title: s.termsOfUse,
                   trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
                   onTap: () {
                     Navigator.of(context).push(
@@ -542,7 +639,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 Divider(height: 1, indent: 56, color: theme.dividerColor),
                 _SettingsTile(
                   icon: Icons.privacy_tip_outlined,
-                  title: 'Gizlilik Politikası',
+                  title: s.privacyPolicy,
                   trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
                   onTap: () {
                     Navigator.of(context).push(
@@ -555,7 +652,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 Divider(height: 1, indent: 56, color: theme.dividerColor),
                 _SettingsTile(
                   icon: Icons.info_outline_rounded,
-                  title: 'Lovera Hakkında',
+                  title: s.aboutLovera,
                   trailing: const Text('v1.0.0', style: TextStyle(color: LoveraColors.textMuted)),
                   onTap: _openAboutDialog,
                 ),
@@ -575,7 +672,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
             ),
             child: _SettingsTile(
               icon: Icons.logout_rounded,
-              title: 'Oturumu Kapat',
+              title: s.signOut,
               titleColor: Colors.redAccent,
               iconColor: Colors.redAccent,
               onTap: () => _signOut(context, ref),

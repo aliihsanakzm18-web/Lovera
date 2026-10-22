@@ -38,6 +38,9 @@ dependencies:
   home_widget: ^0.10.0
   exif: ^3.3.0
   sign_in_with_apple: ^8.2.0
+  flutter_localizations:
+    sdk: flutter
+  intl: ^0.20.3
 dev_dependencies:
   flutter_test:
     sdk: flutter

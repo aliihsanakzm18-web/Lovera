@@ -9,6 +9,7 @@ import 'dart:convert';
 
 import 'package:home_widget/home_widget.dart';
 
+import 'core/localization/app_strings.dart';
 import 'core/models/models.dart';
 import 'core/services/background_tracking_service.dart';
 import 'core/services/connectivity_service.dart';
@@ -138,11 +139,13 @@ class LoveraApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
+    final appLanguage = ref.watch(appLanguageProvider);
 
     return MaterialApp(
       scaffoldMessengerKey: rootScaffoldMessengerKey,
       title: 'Lovera',
       debugShowCheckedModeBanner: false,
+      locale: Locale(appLanguage == AppLanguage.en ? 'en' : 'tr'),
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: themeMode,
@@ -206,9 +209,9 @@ class _OfflineBannerWrapper extends ConsumerWidget {
                     size: 18,
                   ),
                   const SizedBox(width: 8),
-                  const Text(
-                    'İnternete bağlı değilsiniz',
-                    style: TextStyle(
+                  Text(
+                    ref.watch(stringsProvider).offlineBanner,
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
@@ -227,14 +230,14 @@ class _OfflineBannerWrapper extends ConsumerWidget {
                         color: Colors.white.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.refresh_rounded, color: Colors.white, size: 13),
-                          SizedBox(width: 4),
+                          const Icon(Icons.refresh_rounded, color: Colors.white, size: 13),
+                          const SizedBox(width: 4),
                           Text(
-                            'Tekrar Dene',
-                            style: TextStyle(
+                            ref.watch(stringsProvider).retry,
+                            style: const TextStyle(
                               color: Colors.white,
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
