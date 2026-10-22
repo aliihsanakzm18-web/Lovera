@@ -11,6 +11,7 @@ import '../../onboarding/presentation/onboarding_flow.dart';
 import 'account_settings_view.dart';
 import 'widget_settings_view.dart';
 import '../../../core/widgets/avatar_cache.dart';
+import '../../../core/widgets/legal_document_view.dart';
 import '../../../core/widgets/lovera_theme_background.dart';
 
 class SettingsView extends ConsumerStatefulWidget {
@@ -524,6 +525,32 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   title: 'Gizlilik ve Güvenlik',
                   trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
                   onTap: _openPrivacySettings,
+                ),
+                Divider(height: 1, indent: 56, color: theme.dividerColor),
+                _SettingsTile(
+                  icon: Icons.description_outlined,
+                  title: 'Kullanım Koşulları (EULA)',
+                  trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const LegalDocumentView(type: LegalDocType.termsOfUse),
+                      ),
+                    );
+                  },
+                ),
+                Divider(height: 1, indent: 56, color: theme.dividerColor),
+                _SettingsTile(
+                  icon: Icons.privacy_tip_outlined,
+                  title: 'Gizlilik Politikası',
+                  trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const LegalDocumentView(type: LegalDocType.privacyPolicy),
+                      ),
+                    );
+                  },
                 ),
                 Divider(height: 1, indent: 56, color: theme.dividerColor),
                 _SettingsTile(

@@ -7,9 +7,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/models/models.dart';
+import '../../../core/services/background_tracking_service.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/device_service.dart';
 import '../../../core/services/notification_service.dart';
@@ -38,8 +40,13 @@ class DashboardView extends ConsumerStatefulWidget {
   ConsumerState<DashboardView> createState() => _DashboardViewState();
 }
 
-class _DashboardViewState extends ConsumerState<DashboardView> {
+class _DashboardViewState extends ConsumerState<DashboardView> with TickerProviderStateMixin {
+  late final AnimationController _heartAnimController;
+  late final Animation<double> _heartScaleAnim;
+  late final Animation<double> _heartOpacityAnim;
+  late final Animation<double> _heartSlideAnim;
   bool _showHeart = false;
+  DateTime? _lastHeartSentTime;
   StreamSubscription? _userSub;
   StreamSubscription? _partnerSub;
   StreamSubscription? _coupleSub;
@@ -85,7 +92,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
       builder: (ctx) => AlertDialog(
         title: const Row(
           children: [
-            Icon(Icons.phone_android_rounded, color: Colors.orangeAccent),
+            Icon(Icons.devices_rounded, color: Colors.orangeAccent),
             SizedBox(width: 8),
             Text('Oturum Kapatıldı'),
           ],
@@ -109,9 +116,348 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     );
   }
 
+  bool _isSettingsDialogShowing = false;
+  bool _isCheckingPermissions = false;
+  bool _waitingForSettingsReturn = false;
+
+  void _showBackgroundLocationGuideDialog() {
+    if (_isSettingsDialogShowing || !mounted) return;
+    _isSettingsDialogShowing = true;
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = isDark ? LoveraColors.primaryDark : LoveraColors.primary;
+    final surfaceColor = isDark ? LoveraColors.darkSurface : LoveraColors.lightSurface;
+    final textColor = isDark ? LoveraColors.darkText : LoveraColors.textDark;
+    final textMutedColor = isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted;
+    final borderColor = isDark ? LoveraColors.darkBorder : LoveraColors.lightBorder;
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: surfaceColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(28),
+          side: BorderSide(color: borderColor, width: 1),
+        ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: primaryColor.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.location_on_rounded, color: primaryColor, size: 24),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Kesintisiz Konum',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: textColor,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Uygulama kapalıyken partnerinizin sizi canlı haritada ve masaüstü widget\'ında görebilmesi için:',
+              style: TextStyle(fontSize: 14, height: 1.45, color: textMutedColor),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: primaryColor.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: primaryColor.withOpacity(0.2)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.check_circle_rounded, color: primaryColor, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Açılan sayfada "İzinler > Konum > Her zaman izin ver" seçeneğini işaretleyin.',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: textColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _isSettingsDialogShowing = false;
+            },
+            child: Text('Şimdilik Atla', style: TextStyle(color: textMutedColor)),
+          ),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: primaryColor,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              _isSettingsDialogShowing = false;
+              _waitingForSettingsReturn = true;
+              await openAppSettings();
+            },
+            icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+            label: const Text('İzni Ayarla', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showLocationGrantedSuccessSnackbar() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: const Color(0xFF1E2024),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Color(0xFF34D399), width: 1),
+        ),
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+        duration: const Duration(seconds: 4),
+        content: const Row(
+          children: [
+            Icon(Icons.favorite_rounded, color: Color(0xFFFF5E7E), size: 24),
+            SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Konum Paylaşımı Aktif 💕',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: Colors.white,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Artık partneriniz uygulama kapalı olsa bile sizi haritada ve widget\'ta kesintisiz görebilecek.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white70,
+                      height: 1.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _checkAndRequestPermissionsSequentially() async {
+    if (_isCheckingPermissions) return;
+    _isCheckingPermissions = true;
+    try {
+      // 1. Konum İzni Kontrolü
+      var locStatus = await Geolocator.checkPermission();
+
+      // Ayarlara gidip geri dönüldüyse ve izin "Her zaman" veya "Uygulama kullanılırken" yapıldıysa bildirim mesajı göster
+      if (_waitingForSettingsReturn) {
+        _waitingForSettingsReturn = false;
+        if (locStatus == LocationPermission.always || locStatus == LocationPermission.whileInUse) {
+          _showLocationGrantedSuccessSnackbar();
+        }
+      }
+
+      if (locStatus == LocationPermission.denied) {
+        // Google Play "Prominent Disclosure": sistem izin penceresinden ÖNCE kullanım amacı açıkça gösterilir.
+        if (!mounted) return;
+        final accepted = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Konum erişimi'),
+            content: const Text(
+              'Lovera, konumunu ve pil seviyeni yalnızca eşleştiğin partnerinle paylaşmak için '
+              'kullanır; uygulama kapalıyken veya arka plandayken de toplanabilir.\n\n'
+              'Veri reklam için kullanılmaz ve üçüncü kişilerle paylaşılmaz. '
+              'Paylaşımı Ayarlar\'dan kapatabilir veya hesabını silerek tüm verini kaldırabilirsin.',
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Şimdi değil')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Kabul ediyorum')),
+            ],
+          ),
+        );
+        if (accepted != true) return;
+        // İzin henüz hiç verilmemiş: Standart açılır pencere ile sor ("Uygulamayı kullanırken")
+        locStatus = await Geolocator.requestPermission();
+        if (locStatus == LocationPermission.whileInUse) {
+          // Kullanıcı "Uygulama kullanılırken" seçti! Şimdi WhatsApp tarzı açıklayıcı dialog gösterip "Her zaman"a yönlendir
+          if (mounted) {
+            _showBackgroundLocationGuideDialog();
+          }
+        }
+        if (locStatus == LocationPermission.always || locStatus == LocationPermission.whileInUse) {
+          DeviceService().startContinuousLocationTracking();
+          BackgroundTrackingService().initialize();
+        }
+        await Future.delayed(const Duration(milliseconds: 400));
+      } else if (locStatus == LocationPermission.whileInUse) {
+        // İzin "Uygulama kullanılırken" modunda kalmışsa açıklayıcı dialog ile "Her zaman" seçmesini öner
+        if (mounted && !_isSettingsDialogShowing) {
+          _showBackgroundLocationGuideDialog();
+        }
+        DeviceService().startContinuousLocationTracking();
+        BackgroundTrackingService().initialize();
+      } else if (locStatus == LocationPermission.deniedForever) {
+        // Ayarlardan tamamen kapatılmışsa dialog göster
+        if (mounted && !_isSettingsDialogShowing) {
+          _showLocationSettingsDialog();
+        }
+      } else {
+        // İzin zaten "Always" (Her zaman), servisi sürdür
+        DeviceService().startContinuousLocationTracking();
+        BackgroundTrackingService().initialize();
+      }
+
+      // 2. Bildirim İzni Kontrolü: Yalnızca eksikse iste!
+      final notifStatus = await Permission.notification.status;
+      if (!notifStatus.isGranted && !notifStatus.isPermanentlyDenied) {
+        await NotificationService().requestNotificationPermission();
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
+
+      // Servisleri hazırla
+      await NotificationService().init(requestPermissions: false);
+      if (locStatus == LocationPermission.always || locStatus == LocationPermission.whileInUse) {
+        await BackgroundTrackingService().initialize();
+      }
+    } catch (e) {
+      debugPrint('[PERM-CHECK-ERROR] $e');
+    } finally {
+      _isCheckingPermissions = false;
+    }
+  }
+
+  void _showLocationSettingsDialog() {
+    _isSettingsDialogShowing = true;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Row(
+          children: [
+            Icon(Icons.location_off_rounded, color: Colors.orangeAccent),
+            SizedBox(width: 10),
+            Text('Konum İzni Gerekli', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: const Text(
+          'Partnerinizin haritada konumunuzu görebilmesi ve aranızdaki mesafenin hesaplanabilmesi için konum iznini ayarlardan etkinleştirmeniz gerekmektedir.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _isSettingsDialogShowing = false;
+            },
+            child: const Text('Daha Sonra'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _isSettingsDialogShowing = false;
+              Geolocator.openAppSettings();
+            },
+            child: const Text('Ayarları Aç'),
+          ),
+        ],
+      ),
+    ).then((_) => _isSettingsDialogShowing = false);
+  }
+
   @override
   void initState() {
     super.initState();
+    _heartAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    );
+
+    _heartScaleAnim = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0.2, end: 1.25).chain(CurveTween(curve: Curves.elasticOut)),
+        weight: 35,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.25, end: 1.0).chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 20,
+      ),
+      TweenSequenceItem(
+        tween: ConstantTween<double>(1.0),
+        weight: 25,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.0, end: 0.8).chain(CurveTween(curve: Curves.easeInBack)),
+        weight: 20,
+      ),
+    ]).animate(_heartAnimController);
+
+    _heartOpacityAnim = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeOut)),
+        weight: 15,
+      ),
+      TweenSequenceItem(
+        tween: ConstantTween<double>(1.0),
+        weight: 65,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeIn)),
+        weight: 20,
+      ),
+    ]).animate(_heartAnimController);
+
+    _heartSlideAnim = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: ConstantTween<double>(0.0),
+        weight: 70,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0.0, end: -60.0).chain(CurveTween(curve: Curves.easeIn)),
+        weight: 30,
+      ),
+    ]).animate(_heartAnimController);
+
+    _heartAnimController.addStatusListener((status) {
+      if (status == AnimationStatus.completed && mounted) {
+        setState(() => _showHeart = false);
+      }
+    });
+
     final startupTime = DateTime.now().millisecondsSinceEpoch;
     _lastHeartTimestamp = startupTime;
     _lastChargeTimestamp = startupTime;
@@ -157,18 +503,22 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
         _widgetRefreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
           WidgetSyncService.updateWidgetFromLocalCache();
         });
+        // Ayarlardan izin değiştirilip geri dönüldüyse anında algıla ve gerekirse izin iste
+        _checkAndRequestPermissionsSequentially();
       },
     );
 
     // FCM üzerinden gelen doğrudan sıfır-maliyetli kalp ve şarj bildirimlerini UI'a bağla
-    NotificationService().onHeartPingReceived = () {
-      if (mounted) _receiveHeartPulse();
+    NotificationService().onHeartPingReceived = (senderName) {
+      if (mounted) _receiveHeartPulse(senderName: senderName);
     };
     NotificationService().onChargePingReceived = (senderName) {
       if (mounted) _receiveChargeReminder(senderName);
     };
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Uygulama içine girdikten sonra izinleri sırasıyla iste
+      _checkAndRequestPermissionsSequentially();
       NotificationService().updateFcmTokenInFirestore();
       // 1. Kendi profilimizi dinle
       _userSub = DatabaseService().userStream()?.listen((doc) async {
@@ -296,7 +646,34 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
           }
         }
 
-        // Bize partnerden tarih değiştirme isteği geldi mi?
+        // Partner tarihi doğrudan güncellediyse bilgi mesajı göster
+        if (data['dateUpdatedNotice'] != null) {
+          final notice = Map<String, dynamic>.from(data['dateUpdatedNotice']);
+          DatabaseService().clearDateUpdatedNotice();
+          if (mounted) {
+            final updater = notice['updaterName'] ?? 'Partneriniz';
+            final dStr = notice['newDate'];
+            final d = dStr != null ? DateTime.tryParse(dStr) : null;
+            final dateText = d != null ? '${d.day}.${d.month}.${d.year}' : '';
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('$updater birliktelik başlangıç tarihinizi $dateText olarak güncelledi. 💕'),
+                backgroundColor: LoveraColors.secondary,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        }
+
+        // Karşı taraf bize yeni eşleşme isteği attı mı?
+        if (data['pendingPairRequest'] != null && !_pairRequestDialogOpen) {
+          final req = Map<String, dynamic>.from(data['pendingPairRequest']);
+          if (req['status'] == 'pending') {
+            _showIncomingPairRequestSheet(req);
+          }
+        }
+
+        // Bize partnerden tarih değiştirme isteği geldi mi? (Eski sürüm istekleri için)
         if (data['pendingDateChangeRequest'] != null && !_dateDialogOpen) {
           final req = Map<String, dynamic>.from(data['pendingDateChangeRequest']);
           if (req['status'] == 'pending') {
@@ -332,7 +709,8 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
           if (ts != null && (_lastHeartTimestamp == null || ts > _lastHeartTimestamp!)) {
             _lastHeartTimestamp = ts;
             DatabaseService().clearHeartPing();
-            _receiveHeartPulse();
+            final fromName = ping['fromName']?.toString();
+            _receiveHeartPulse(senderName: fromName);
           }
         }
 
@@ -377,6 +755,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
   }
 
   bool _dateDialogOpen = false;
+  bool _pairRequestDialogOpen = false;
 
   StreamSubscription? _milestonesSub;
 
@@ -498,6 +877,243 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     });
   }
 
+  // Gelen Eşleşme İsteği Onay Penceresi (Dashboard üzerindeyken anında açılır)
+  Future<void> _showIncomingPairRequestSheet(Map<String, dynamic> req) async {
+    _pairRequestDialogOpen = true;
+    final requesterUid = req['fromUid'] as String;
+    final requesterName = req['fromName'] as String? ?? 'Partnerin';
+    final requesterAvatar = req['fromAvatar'] as String?;
+
+    DateTime? selectedDate;
+    bool showErrorBorder = false;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+      ),
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (sheetCtx, setSheetState) {
+          final theme = Theme.of(sheetCtx);
+          final days = selectedDate != null
+              ? (DateTime.now().difference(selectedDate!).inHours / 24).floor() + 1
+              : null;
+
+          return Padding(
+            padding: EdgeInsets.fromLTRB(24, 20, 24, MediaQuery.of(sheetCtx).viewInsets.bottom + 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 44,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                CircleAvatar(
+                  radius: 38,
+                  backgroundColor: LoveraColors.primary.withValues(alpha: 0.15),
+                  backgroundImage: AvatarCache.getProvider(requesterAvatar),
+                  child: (requesterAvatar == null || AvatarCache.getProvider(requesterAvatar) == null)
+                      ? Text(
+                          requesterName.isNotEmpty ? requesterName[0].toUpperCase() : '?',
+                          style: theme.textTheme.headlineMedium?.copyWith(
+                            color: LoveraColors.primary,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        )
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  '$requesterName Seninle Eşleşmek İstiyor! 💕',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Onayladığında ikinize özel ortak alanınız açılacak. Lütfen birliktelik başlangıç tarihinizi seçin.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(color: LoveraColors.textMuted, height: 1.3),
+                ),
+                const SizedBox(height: 20),
+                GestureDetector(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: sheetCtx,
+                      initialDate: selectedDate ?? DateTime.now(),
+                      firstDate: DateTime(1990),
+                      lastDate: DateTime.now(),
+                      helpText: 'İlişki Başlangıç Tarihi',
+                    );
+                    if (picked != null) {
+                      setSheetState(() {
+                        selectedDate = picked;
+                        showErrorBorder = false;
+                      });
+                    }
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: Theme.of(sheetCtx).brightness == Brightness.dark
+                          ? LoveraColors.darkSurfaceAlt
+                          : LoveraColors.lightSurfaceAlt,
+                      borderRadius: BorderRadius.circular(AppTheme.radius),
+                      border: Border.all(
+                        color: showErrorBorder
+                            ? Colors.redAccent
+                            : (Theme.of(sheetCtx).brightness == Brightness.dark
+                                ? Colors.white.withValues(alpha: 0.12)
+                                : Colors.black.withValues(alpha: 0.08)),
+                        width: showErrorBorder ? 1.5 : 1.0,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.calendar_month_rounded,
+                              color: showErrorBorder ? Colors.redAccent : LoveraColors.primary,
+                            ),
+                            const SizedBox(width: 12),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'BİRLİKTELİK BAŞLANGICI *',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: showErrorBorder ? Colors.redAccent : LoveraColors.textMuted,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                Text(
+                                  selectedDate != null
+                                      ? '${selectedDate!.day}.${selectedDate!.month}.${selectedDate!.year}'
+                                      : 'Tarih seçmek için dokunun',
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: selectedDate != null
+                                        ? null
+                                        : (showErrorBorder ? Colors.redAccent : LoveraColors.textMuted),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        if (selectedDate != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: LoveraColors.primary.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              '$days Gündür',
+                              style: const TextStyle(
+                                color: LoveraColors.primary,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
+                              ),
+                            ),
+                          )
+                        else
+                          Icon(
+                            Icons.arrow_forward_ios_rounded,
+                            size: 16,
+                            color: showErrorBorder ? Colors.redAccent : LoveraColors.textMuted,
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (showErrorBorder) ...[
+                  const SizedBox(height: 6),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Padding(
+                      padding: EdgeInsets.only(left: 4),
+                      child: Text(
+                        '⚠️ Devam etmek için birliktelik başlangıç tarihini seçmelisiniz.',
+                        style: TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 22),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () async {
+                          Navigator.pop(sheetCtx);
+                          _pairRequestDialogOpen = false;
+                          await DatabaseService().rejectPairRequest(requesterUid);
+                        },
+                        child: const Text('Reddet'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: FilledButton.icon(
+                        icon: const Icon(Icons.favorite_rounded, size: 18),
+                        label: const Text('Kabul Et ve Bağlan'),
+                        onPressed: () async {
+                          if (selectedDate == null) {
+                            HapticFeedback.vibrate();
+                            setSheetState(() => showErrorBorder = true);
+                            ScaffoldMessenger.of(sheetCtx).showSnackBar(
+                              const SnackBar(
+                                content: Text('Lütfen birliktelik başlangıç tarihinizi seçin! 📅'),
+                                backgroundColor: Colors.redAccent,
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                            return;
+                          }
+
+                          Navigator.pop(sheetCtx);
+                          _pairRequestDialogOpen = false;
+
+                          final coupleId = await DatabaseService().acceptPairRequest(
+                            requesterUid: requesterUid,
+                            relationshipStartDate: selectedDate!,
+                          );
+
+                          if (coupleId.isNotEmpty && mounted) {
+                            HapticFeedback.heavyImpact();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('$requesterName ile başarıyla eşleşildi! 💕'),
+                                backgroundColor: LoveraColors.secondary,
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    _pairRequestDialogOpen = false;
+  }
+
   void _showIncomingDateChangeDialog(Map<String, dynamic> req, String? coupleId) {
     _dateDialogOpen = true;
     final partnerUid = req['fromUid'] as String;
@@ -587,12 +1203,10 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     ).then((_) => _dateDialogOpen = false);
   }
 
-  void _receiveHeartPulse() {
+  void _receiveHeartPulse({String? senderName}) {
     HapticFeedback.heavyImpact();
     setState(() => _showHeart = true);
-    Future.delayed(const Duration(milliseconds: 1600), () {
-      if (mounted) setState(() => _showHeart = false);
-    });
+    _heartAnimController.forward(from: 0.0);
   }
 
   void _receiveChargeReminder(String fromName) {
@@ -1305,6 +1919,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
 
   @override
   void dispose() {
+    _heartAnimController.dispose();
     _lifecycleListener?.dispose();
     _statusSyncTimer?.cancel();
     _widgetRefreshTimer?.cancel();
@@ -1319,6 +1934,11 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
 
   Future<void> _sendThought() async {
     HapticFeedback.mediumImpact();
+
+    // 1. Ekrandaki kalbi her basışta anında ve pürüzsüzce yeniden patlat
+    setState(() => _showHeart = true);
+    _heartAnimController.forward(from: 0.0);
+
     final partnerUid = ref.read(partnerUidProvider) ?? ref.read(partnerProvider)?.id;
     final myName = ref.read(userNameProvider);
 
@@ -1349,6 +1969,14 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
       return;
     }
 
+    // 2. Karşı tarafa istek gönderimini 10 saniyede bire sınırla (throttle)
+    final now = DateTime.now();
+    if (_lastHeartSentTime != null && now.difference(_lastHeartSentTime!).inSeconds < 10) {
+      debugPrint('[HEART] İstek 10 saniyelik limit içinde olduğu için bildirim sessizce filtrelendi.');
+      return;
+    }
+    _lastHeartSentTime = now;
+
     await DatabaseService().sendHeart(partnerUid);
     NotificationService().sendPushToPartner(
       partnerUid: partnerUid,
@@ -1359,9 +1987,6 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
         'fromName': myName.isEmpty ? 'Partnerin' : myName,
       },
     );
-    setState(() => _showHeart = true);
-    await Future<void>.delayed(const Duration(milliseconds: 1400));
-    if (mounted) setState(() => _showHeart = false);
   }
 
   void _push(Widget page) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
@@ -1473,7 +2098,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                         icon: Icons.brush_rounded,
                         title: 'Çizim Tuvali',
                         subtitle: 'Widget\'a çizim gönder',
-                        color: const Color(0xFFA78BFA),
+                        color: LoveraColors.accentPink,
                         onTap: () => _push(const DrawingScreen()),
                       ),
                     ),
@@ -1501,17 +2126,26 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
             Positioned.fill(
               child: IgnorePointer(
                 child: Center(
-                  child: const Icon(Icons.favorite_rounded, size: 120, color: LoveraColors.primarySoft)
-                      .animate()
-                      .scale(
-                          begin: const Offset(0.3, 0.3),
-                          end: const Offset(1.1, 1.1),
-                          duration: 500.ms,
-                          curve: Curves.elasticOut)
-                      .fadeIn(duration: 200.ms)
-                      .then(delay: 500.ms)
-                      .fadeOut(duration: 400.ms)
-                      .moveY(end: -60, duration: 400.ms),
+                  child: AnimatedBuilder(
+                    animation: _heartAnimController,
+                    builder: (context, child) {
+                      return Transform.translate(
+                        offset: Offset(0, _heartSlideAnim.value),
+                        child: Transform.scale(
+                          scale: _heartScaleAnim.value,
+                          child: Opacity(
+                            opacity: _heartOpacityAnim.value.clamp(0.0, 1.0),
+                            child: child,
+                          ),
+                        ),
+                      );
+                    },
+                    child: const Icon(
+                      Icons.favorite_rounded,
+                      size: 135,
+                      color: LoveraColors.primarySoft,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -2189,6 +2823,7 @@ class _ThinkingButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       decoration: BoxDecoration(
         gradient: isDark ? LoveraColors.darkPrimaryGradient : LoveraColors.primaryGradient,
@@ -2218,11 +2853,14 @@ class _ThinkingButton extends StatelessWidget {
                     .animate(onPlay: (c) => c.repeat(reverse: true))
                     .scale(end: const Offset(1.25, 1.25), duration: 800.ms),
                 const SizedBox(width: 12),
-                Text('Özledim 💕',
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(color: Colors.white, fontWeight: FontWeight.w800, letterSpacing: 0.3)),
+                Text(
+                  'Özledim 💕',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.3,
+                      ),
+                ),
               ],
             ),
           ),

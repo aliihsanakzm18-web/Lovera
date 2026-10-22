@@ -31,10 +31,6 @@ Future<void> main() async {
     debugPrint('Firebase init error: $e');
   }
 
-  // Arka plan ve bildirim servislerini UI render'ı bloke etmeden asenkron başlat
-  NotificationService().init().catchError((e) => debugPrint('Notification init error: $e'));
-  BackgroundTrackingService().initialize().catchError((e) => debugPrint('BG init error: $e'));
-
   // Sayfa geçişlerinde anlık render aksaklıklarında kırmızı hata ekranı (Red Screen of Death)
   // flaşlamasını önle; hatayı sessizce konsola bas ve UI'ı temiz/şeffaf tut
   FlutterError.onError = (FlutterErrorDetails details) {
@@ -45,9 +41,15 @@ Future<void> main() async {
     debugPrint('[ERROR-WIDGET-TRIGGERED] ${details.exceptionAsString()}\n${details.stack}');
     return const SizedBox.shrink();
   };
-  
+
   final prefs = await SharedPreferences.getInstance();
   final currentUid = FirebaseAuth.instance.currentUser?.uid;
+  // Not: Bildirim ve Konum izinleri kullanıcı hesaba giriş yaptıktan sonra (DashboardView içinde)
+  // zarifçe ve sırayla istenir. Giriş öncesinde izin popup'ı ASLA açılmaz.
+  if (currentUid != null && currentUid.isNotEmpty) {
+    NotificationService().init(requestPermissions: false).catchError((e) => debugPrint('Notification init error: $e'));
+    BackgroundTrackingService().initialize().catchError((e) => debugPrint('BG init error: $e'));
+  }
   if (currentUid != null && currentUid.isNotEmpty) {
     await prefs.setString('saved_uid', currentUid);
   } else {

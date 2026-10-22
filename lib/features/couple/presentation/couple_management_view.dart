@@ -19,9 +19,10 @@ class CoupleManagementView extends ConsumerStatefulWidget {
 class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
   bool _requesting = false;
 
-  Future<void> _proposeNewDate() async {
+  Future<void> _changeRelationshipDate() async {
     final partner = ref.read(partnerProvider);
     final partnerUid = ref.read(partnerUidProvider);
+    final coupleId = ref.read(coupleIdProvider);
     final currentStart = ref.read(startDateProvider) ?? DateTime.now();
 
     if (partner == null || partnerUid == null) {
@@ -45,17 +46,30 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
 
     try {
       final myName = ref.read(userNameProvider);
-      await DatabaseService().proposeDateChange(
-        partnerUid: partnerUid,
+      final effectiveName = myName.isEmpty ? 'Partnerin' : myName;
+
+      await DatabaseService().updateRelationshipDateDirectly(
         newDate: picked,
-        requesterName: myName.isEmpty ? 'Partnerin' : myName,
+        partnerUid: partnerUid,
+        coupleId: coupleId,
+        updaterName: effectiveName,
       );
+
+      // Partnere push bildirim gönder
+      NotificationService().sendPushToPartner(
+        partnerUid: partnerUid,
+        title: '🗓️ Birliktelik Tarihi Güncellendi',
+        body: '$effectiveName birliktelik başlangıç tarihinizi ${picked.day}.${picked.month}.${picked.year} olarak güncelledi 💕',
+        data: {'type': 'date_updated'},
+      );
+
+      ref.read(startDateProvider.notifier).state = picked;
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Tarih değişikliği isteği ${partner.name} adlı partnere iletildi! Onayladığında iki telefonda da güncellenecektir. 💌',
+            'Birliktelik tarihi güncellendi ve ${partner.name} adlı partnere bildirildi! 💕',
           ),
           backgroundColor: LoveraColors.secondary,
         ),
@@ -63,14 +77,139 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('İstek gönderilemedi: $e')),
+        SnackBar(content: Text('Tarih güncellenemedi: $e')),
       );
     } finally {
       if (mounted) setState(() => _requesting = false);
     }
   }
 
-  Future<void> _confirmAndProposeBreakup() async {
+  Future<void> _blockAndDisconnectImmediately() async {
+    final partner = ref.read(partnerProvider);
+    final partnerUid = ref.read(partnerUidProvider);
+    final coupleId = ref.read(coupleIdProvider);
+    final partnerName = partner?.name ?? 'Partnerin';
+
+    if (partner == null || partnerUid == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Aktif bir eşleşme bulunamadı.')),
+      );
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dCtx) => AlertDialog(
+        title: const Text('Partneri Engelle'),
+        content: Text(
+          '$partnerName adlı kullanıcıyı engellediğinizde eşleşmeniz ve konum paylaşımınız sonlandırılır. Bu kullanıcı size tekrar eşleşme isteği gönderemez.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dCtx, false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
+            onPressed: () => Navigator.pop(dCtx, true),
+            child: const Text('Engelle'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    setState(() => _requesting = true);
+    try {
+      await DatabaseService().blockAndUnpairPartner(
+        partnerUid: partnerUid,
+        coupleId: coupleId,
+      );
+      ref.read(coupleIdProvider.notifier).state = null;
+      ref.read(partnerUidProvider.notifier).state = null;
+      ref.read(partnerProvider.notifier).state = null;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Kullanıcı engellendi ve tüm bağlantınız anında sonlandırıldı.'),
+          backgroundColor: Color(0xFFEF4444),
+        ),
+      );
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('İşlem sırasında hata oluştu: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _requesting = false);
+    }
+  }
+
+  Future<void> _reportPartnerDialog() async {
+    final partnerUid = ref.read(partnerUidProvider);
+    final coupleId = ref.read(coupleIdProvider);
+    final reasonCtrl = TextEditingController();
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dCtx) => AlertDialog(
+        title: const Text('Kullanıcıyı Şikayet Et'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Rahatsız edici davranış veya uygunsuz içerik bildirimleriniz güvenlik ekibimiz tarafından en geç 24 saat içinde incelenir.',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonCtrl,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                hintText: 'Şikayet nedeninizi kısaca yazın...',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dCtx, false),
+            child: const Text('İptal'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
+            onPressed: () => Navigator.pop(dCtx, true),
+            child: const Text('Gönder'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await DatabaseService().reportContent(
+        contentType: 'user',
+        contentId: partnerUid ?? 'unknown_partner',
+        coupleId: coupleId,
+        reportedUserId: partnerUid,
+        reason: reasonCtrl.text.trim().isEmpty
+            ? 'Eş yönetim panelinden kullanıcı şikayeti'
+            : reasonCtrl.text.trim(),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Şikayetiniz güvenlik ekibimize iletildi. 24 saat içinde incelenecektir.'),
+          ),
+        );
+      }
+    }
+    reasonCtrl.dispose();
+  }
+
+  Future<void> _unpairImmediately() async {
     final partner = ref.read(partnerProvider);
     final partnerUid = ref.read(partnerUidProvider);
     final coupleId = ref.read(coupleIdProvider);
@@ -128,12 +267,12 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  'Eşleşmeden Ayrıl',
+                  'Eşleşmeyi Sonlandır',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '$partnerName adlı partnerine ayrılma isteği gönderilecek. Karşı taraf alt menüden onayladığında eşleşmeniz kalıcı olarak sonlanacaktır.',
+                  '$partnerName ile olan eşleşmeniz anında sonlandırılacak; sayaç ve ortak bağlantı her iki cihazda da kapatılacaktır. Onaylıyor musunuz?',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 13.5,
@@ -165,7 +304,7 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         ),
                         onPressed: () => Navigator.pop(bCtx, true),
-                        child: const Text('İstek Gönder 💔', style: TextStyle(fontWeight: FontWeight.w800)),
+                        child: const Text('Ayrıl 💔', style: TextStyle(fontWeight: FontWeight.w800)),
                       ),
                     ),
                   ],
@@ -183,34 +322,36 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
 
     try {
       final myName = ref.read(userNameProvider);
-      await DatabaseService().proposeBreakup(
+      await DatabaseService().acceptBreakup(
         partnerUid: partnerUid,
-        requesterName: myName.isEmpty ? 'Partnerin' : myName,
         coupleId: coupleId,
       );
 
-      // Partnere anlık push bildirim gönder
+      // Partnere anlık bilgi bildirimi
       NotificationService().sendPushToPartner(
         partnerUid: partnerUid,
-        title: '💔 Eşleşme Ayrılma Talebi',
-        body: '${myName.isEmpty ? "Partnerin" : myName} seninle olan eşleşmeyi sonlandırmak istiyor.',
-        data: {'type': 'breakup_request'},
+        title: '💔 Eşleşme Sonlandırıldı',
+        body: '${myName.isEmpty ? "Partnerin" : myName} seninle olan eşleşmeyi sonlandırdı.',
+        data: {'type': 'breakup_completed'},
       );
+
+      ref.read(coupleIdProvider.notifier).state = null;
+      ref.read(partnerUidProvider.notifier).state = null;
+      ref.read(partnerProvider.notifier).state = null;
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Ayrılma isteği $partnerName adlı partnere iletildi. Onayladığında eşleşmeniz sonlanacaktır.',
-          ),
-          backgroundColor: const Color(0xFFEF4444),
+        const SnackBar(
+          content: Text('Eşleşmeniz sonlandırıldı.'),
+          backgroundColor: Color(0xFFEF4444),
           behavior: SnackBarBehavior.floating,
         ),
       );
+      Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ayrılma isteği gönderilemedi: $e')),
+        SnackBar(content: Text('Ayrılma işlemi sırasında hata oluştu: $e')),
       );
     } finally {
       if (mounted) setState(() => _requesting = false);
@@ -336,14 +477,14 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  'Aşk sayacınızın tarihi ana ekrandan doğrudan değiştirilemez. Değişiklik yaptığınızda eşinizin onaylaması gerekir.',
+                  'Aşk sayacınızın tarihini doğrudan güncelleyebilirsiniz. Güncellediğinizde partnerinize anında bilgilendirme bildirimi iletilir.',
                   style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted, height: 1.4),
                 ),
                 const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.tonalIcon(
-                    onPressed: _requesting ? null : _proposeNewDate,
+                    onPressed: _requesting ? null : _changeRelationshipDate,
                     icon: _requesting
                         ? const SizedBox(
                             width: 16,
@@ -351,7 +492,7 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.edit_calendar_rounded, size: 20),
-                    label: const Text('Tarih Değiştirme İsteği Gönder'),
+                    label: const Text('Birliktelik Tarihini Değiştir'),
                   ),
                 ),
               ],
@@ -407,24 +548,64 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  'Ayrılma isteği gönderildiğinde karşı tarafa onaylama için özel bir alt menü çıkar. Eşin onayladığında sayaç ve çift bağlantısı her iki cihazda da sonlandırılır.',
+                  'Eşleşmeden ayrıldığınızda ortak sayaç, anılar ve canlı bağlantı iki tarafta da sonlandırılır. Engellediğinizde ise kullanıcı size tekrar istek gönderemez.',
                   style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted, height: 1.4),
                 ),
                 const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFFEF4444),
-                      side: const BorderSide(color: Color(0xFFEF4444), width: 1.2),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFFEF4444),
+                          side: const BorderSide(color: Color(0xFFEF4444), width: 1.2),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                        onPressed: _requesting ? null : _unpairImmediately,
+                        icon: const Icon(Icons.heart_broken_outlined, size: 20),
+                        label: const Text(
+                          'Eşleşmeden Ayrıl',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
                     ),
-                    onPressed: _requesting ? null : _confirmAndProposeBreakup,
-                    icon: const Icon(Icons.heart_broken_outlined, size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFFEF4444).withValues(alpha: 0.12),
+                          foregroundColor: const Color(0xFFEF4444),
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            side: const BorderSide(color: Color(0xFFEF4444), width: 1.2),
+                          ),
+                        ),
+                        onPressed: _requesting ? null : _blockAndDisconnectImmediately,
+                        icon: const Icon(Icons.block_rounded, size: 20),
+                        label: const Text(
+                          'Engelle',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.center,
+                  child: TextButton.icon(
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFFF59E0B),
+                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                    ),
+                    onPressed: _requesting ? null : _reportPartnerDialog,
+                    icon: const Icon(Icons.flag_outlined, size: 16),
                     label: const Text(
-                      'Eşleşmeden Ayrıl',
-                      style: TextStyle(fontWeight: FontWeight.w700),
+                      'Kullanıcıyı Şikayet Et',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                     ),
                   ),
                 ),

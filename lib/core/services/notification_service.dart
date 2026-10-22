@@ -278,7 +278,7 @@ class NotificationService {
   void Function()? onNotificationTap;
 
   /// Doğrudan gelen kalp (özledim) push mesajını UI'da canlandırmak için callback
-  void Function()? onHeartPingReceived;
+  void Function(String fromName)? onHeartPingReceived;
 
   /// Doğrudan gelen şarj hatırlatma push mesajını UI'da canlandırmak için callback
   void Function(String fromName)? onChargePingReceived;
@@ -286,7 +286,30 @@ class NotificationService {
   /// Soğuk başlatmada (Cold start) bildirime tıklandığında uygulamanın doğrudan sohbete geçmesini sağlayan bayrak
   bool hasPendingNotificationTap = false;
 
-  Future<void> init() async {
+  /// Bildirim iznini kontrollü ve tek seferlik istemek için fonksiyon
+  Future<bool> requestNotificationPermission() async {
+    try {
+      final androidPlugin = _localPlugin
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      final localGranted = await androidPlugin?.requestNotificationsPermission() ?? true;
+
+      final fcmSettings = await _fcm.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+        provisional: false,
+      );
+      final fcmGranted = fcmSettings.authorizationStatus == AuthorizationStatus.authorized ||
+          fcmSettings.authorizationStatus == AuthorizationStatus.provisional;
+
+      return localGranted && fcmGranted;
+    } catch (e) {
+      debugPrint('[NOTIFICATION-PERM-ERR] $e');
+      return false;
+    }
+  }
+
+  Future<void> init({bool requestPermissions = false}) async {
     if (_ready) return;
 
     // 1. Yerel bildirim yöneticisini başlat
@@ -304,16 +327,20 @@ class NotificationService {
               (payload.contains('game_result') ||
                   payload.contains('game_request') ||
                   payload.contains('meeting_request') ||
-                  payload.contains('meeting_result'))) {
+                  payload.contains('meeting_result') ||
+                  payload.contains('pair_request') ||
+                  payload.contains('breakup_completed'))) {
             return;
           }
           hasPendingNotificationTap = true;
           onNotificationTap?.call();
         },
       );
+      if (requestPermissions) {
       await _localPlugin
           .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
           ?.requestNotificationsPermission();
+      }
     } catch (_) {}
 
     // Bildirime tıklanarak uygulama kapalıyken veya arka plandayken açıldıysa:
@@ -321,7 +348,12 @@ class NotificationService {
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
         debugPrint('[FCM-OPEN] Bildirime tıklanarak açıldı: ${message.data}');
         final type = message.data['type'];
-        if (type == 'meeting_request' || type == 'meeting_result' || type == 'game_result' || type == 'game_request') {
+        if (type == 'meeting_request' ||
+            type == 'meeting_result' ||
+            type == 'game_result' ||
+            type == 'game_request' ||
+            type == 'pair_request' ||
+            type == 'breakup_completed') {
           return;
         }
         hasPendingNotificationTap = true;
@@ -332,7 +364,12 @@ class NotificationService {
         if (message != null) {
           debugPrint('[FCM-INITIAL] Uygulama bildirimle başlatıldı: ${message.data}');
           final type = message.data['type'];
-          if (type == 'meeting_request' || type == 'meeting_result' || type == 'game_result' || type == 'game_request') {
+          if (type == 'meeting_request' ||
+              type == 'meeting_result' ||
+              type == 'game_result' ||
+              type == 'game_request' ||
+              type == 'pair_request' ||
+              type == 'breakup_completed') {
             return;
           }
           hasPendingNotificationTap = true;
@@ -343,12 +380,14 @@ class NotificationService {
 
     // 2. FCM İzinleri (iOS & Android 13+)
     try {
+      if (requestPermissions) {
       await _fcm.requestPermission(
         alert: true,
         badge: true,
         sound: true,
         provisional: false,
       );
+      }
       await _fcm.setForegroundNotificationPresentationOptions(
         alert: true,
         badge: true,
@@ -393,7 +432,8 @@ class NotificationService {
 
         // Anlık Kalp (Özledim) push bildirimi geldiyse doğrudan ekranda patlat
         if (message.data['type'] == 'heart_ping') {
-          onHeartPingReceived?.call();
+          final senderName = message.data['fromName']?.toString() ?? 'Partnerin';
+          onHeartPingReceived?.call(senderName);
         }
 
         // Anlık Şarj hatırlatması push bildirimi geldiyse UI'da göster

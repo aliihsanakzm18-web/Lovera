@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/legal_document_view.dart';
 
 final authServiceProvider = Provider<AuthService>((ref) => AuthService());
 
@@ -35,6 +39,38 @@ class LoginPage extends ConsumerWidget {
         );
       }
     }
+  }
+
+  Future<void> _handleAppleSignIn(BuildContext context, WidgetRef ref) async {
+    try {
+      final auth = ref.read(authServiceProvider);
+      final cred = await auth.signInWithApple();
+      if (cred != null && cred.user != null) {
+        final name = cred.user!.displayName ?? '';
+        if (name.isNotEmpty) {
+          ref.read(userNameProvider.notifier).state = name;
+        }
+        final isNew = cred.additionalUserInfo?.isNewUser ?? false;
+        onSignedIn(isNew);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Apple ile giriş yapılamadı: $e'),
+            backgroundColor: LoveraColors.primary,
+          ),
+        );
+      }
+    }
+  }
+
+  void _openLegalDoc(BuildContext context, LegalDocType type) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => LegalDocumentView(type: type),
+      ),
+    );
   }
 
   void _openEmailSheet(BuildContext context, WidgetRef ref) {
@@ -87,6 +123,15 @@ class LoginPage extends ConsumerWidget {
               style: theme.textTheme.bodyLarge?.copyWith(color: LoveraColors.textMuted, height: 1.45),
             ).animate(delay: 150.ms).fadeIn(),
             const Spacer(flex: 3),
+            // Apple ile Giriş & Google ile Giriş (Guideline 4.8: Her iki platformda da görünür)
+            _AuthButton(
+              label: 'Apple ile devam et',
+              icon: const Icon(Icons.apple, color: Colors.white, size: 24),
+              background: const Color(0xFF1C1C1E),
+              foreground: Colors.white,
+              onTap: () => _handleAppleSignIn(context, ref),
+            ).animate(delay: 250.ms).fadeIn().slideY(begin: 0.2),
+            const SizedBox(height: 12),
             _AuthButton(
               label: 'Google ile devam et',
               icon: const Text('G',
@@ -95,37 +140,50 @@ class LoginPage extends ConsumerWidget {
               foreground: theme.colorScheme.onSurface,
               bordered: true,
               onTap: () => _handleGoogleSignIn(context, ref),
-            ).animate(delay: 250.ms).fadeIn().slideY(begin: 0.2),
-            const SizedBox(height: 14),
-            _AuthButton(
-              label: 'Apple ile devam et',
-              icon: const Icon(Icons.apple, color: Colors.white, size: 24),
-              background: const Color(0xFF1C1C1E),
-              foreground: Colors.white,
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('Apple ile giriş yakında aktif olacak. Lütfen e-posta ile devam edin.'),
-                    backgroundColor: LoveraColors.textDark,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                );
-              },
-            ).animate(delay: 350.ms).fadeIn().slideY(begin: 0.2),
-            const SizedBox(height: 14),
+            ).animate(delay: 300.ms).fadeIn().slideY(begin: 0.2),
+            const SizedBox(height: 12),
             _AuthButton(
               label: 'E-posta ile devam et',
               icon: const Icon(Icons.mail_outline_rounded, color: LoveraColors.primary, size: 22),
               background: LoveraColors.primary.withValues(alpha: 0.12),
               foreground: LoveraColors.primary,
               onTap: () => _openEmailSheet(context, ref),
-            ).animate(delay: 450.ms).fadeIn().slideY(begin: 0.2),
+            ).animate(delay: 350.ms).fadeIn().slideY(begin: 0.2),
             const SizedBox(height: 20),
-            Text(
-              'Devam ederek Kullanım Koşulları ve Gizlilik Politikası’nı kabul etmiş olursun.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted),
+            // Guideline 5.1.1 & 5.1.2: Tıklanabilir Gizlilik Politikası ve Kullanım Koşulları (EULA)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: RichText(
+                textAlign: TextAlign.center,
+                text: TextSpan(
+                  style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted, height: 1.4),
+                  children: [
+                    const TextSpan(text: 'Devam ederek '),
+                    TextSpan(
+                      text: 'Kullanım Koşulları',
+                      style: const TextStyle(
+                        color: LoveraColors.primary,
+                        fontWeight: FontWeight.w600,
+                        decoration: TextDecoration.underline,
+                      ),
+                      recognizer: TapGestureRecognizer()
+                        ..onTap = () => _openLegalDoc(context, LegalDocType.termsOfUse),
+                    ),
+                    const TextSpan(text: ' ve '),
+                    TextSpan(
+                      text: 'Gizlilik Politikası',
+                      style: const TextStyle(
+                        color: LoveraColors.primary,
+                        fontWeight: FontWeight.w600,
+                        decoration: TextDecoration.underline,
+                      ),
+                      recognizer: TapGestureRecognizer()
+                        ..onTap = () => _openLegalDoc(context, LegalDocType.privacyPolicy),
+                    ),
+                    const TextSpan(text: '’nı kabul etmiş olursun.'),
+                  ],
+                ),
+              ),
             ),
             const SizedBox(height: 16),
           ],
@@ -198,6 +256,7 @@ class _EmailSheetState extends State<_EmailSheet> {
   final _password = TextEditingController();
   bool _register = false;
   bool _obscure = true;
+  bool _ageConfirmed = false;
 
   @override
   void dispose() {
@@ -212,6 +271,10 @@ class _EmailSheetState extends State<_EmailSheet> {
 
   Future<void> _submit() async {
     if (!_form.currentState!.validate()) return;
+    if (_register && !_ageConfirmed) {
+      setState(() => _error = 'Devam etmek için 18 yaşından büyük olduğunu onaylamalısın.');
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
@@ -289,6 +352,15 @@ class _EmailSheetState extends State<_EmailSheet> {
                 },
               ),
               const SizedBox(height: 12),
+              CheckboxListTile(
+                value: _ageConfirmed,
+                onChanged: (v) => setState(() => _ageConfirmed = v ?? false),
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: const Text('18 yaşından büyük olduğumu onaylıyorum.',
+                    style: TextStyle(fontSize: 13)),
+              ),
             ],
             TextFormField(
               controller: _email,

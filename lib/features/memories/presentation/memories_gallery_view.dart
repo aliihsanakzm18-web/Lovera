@@ -1609,6 +1609,48 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                               _editMemoryDialog(memory);
                             },
                           ),
+                          // Uygunsuz İçerik Bildir (UGC Moderation - Apple Guideline 1.2)
+                          IconButton(
+                            icon: const Icon(Icons.flag_outlined, color: Color(0xFFF59E0B)),
+                            tooltip: 'İçeriği Şikayet Et',
+                            onPressed: () async {
+                              final confirm = await showDialog<bool>(
+                                context: context,
+                                builder: (dCtx) => AlertDialog(
+                                  title: const Text('Fotoğrafı Şikayet Et'),
+                                  content: const Text(
+                                    'Bu fotoğrafın veya notun uygunsuz içerik barındırdığını düşünüyorsanız inceleme ekibimize bildirebilirsiniz. Bildirilen içerikler 24 saat içinde incelenir.',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(dCtx, false),
+                                      child: const Text('İptal'),
+                                    ),
+                                    FilledButton(
+                                      style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
+                                      onPressed: () => Navigator.pop(dCtx, true),
+                                      child: const Text('Şikayet Et'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (confirm == true) {
+                                await DatabaseService().reportContent(
+                                  contentType: 'memory_photo',
+                                  contentId: memory.id,
+                                  coupleId: coupleId,
+                                  reason: 'Anı galerisi üzerinden uygunsuz fotoğraf bildirimi',
+                                );
+                                if (mounted) {
+                                  ScaffoldMessenger.of(this.context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Şikayetiniz güvenlik ekibimize iletildi. En geç 24 saat içinde incelenecektir.'),
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                          ),
                           // Silme Butonu
                           IconButton(
                             icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444)),

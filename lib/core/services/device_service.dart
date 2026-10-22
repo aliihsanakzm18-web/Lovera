@@ -195,11 +195,11 @@ class DeviceService {
     if (_isBackgroundTrackingActive) return;
 
     try {
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
+      final permission = await Geolocator.checkPermission();
+      if (permission != LocationPermission.always &&
+          permission != LocationPermission.whileInUse) {
+        return;
       }
-      if (permission == LocationPermission.deniedForever) return;
 
       late LocationSettings locationSettings;
 
@@ -208,6 +208,12 @@ class DeviceService {
           accuracy: LocationAccuracy.high,
           distanceFilter: 10, // 10 metre: Adım attığı anda akıcı takip, sensör gürültüsünü filtreler
           intervalDuration: const Duration(seconds: 4),
+          foregroundNotificationConfig: const ForegroundNotificationConfig(
+            notificationTitle: 'Lovera · Canlı Bağlantı Aktif 💕',
+            notificationText: 'Partnerinle canlı şarj ve konum eşitleniyor',
+            enableWakeLock: true,
+            setOngoing: true,
+          ),
         );
       } else if (defaultTargetPlatform == TargetPlatform.iOS) {
         locationSettings = AppleSettings(

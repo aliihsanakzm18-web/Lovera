@@ -423,6 +423,14 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
                   trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
                   onTap: _changePasswordDialog,
                 ),
+                Divider(height: 1, indent: 56, color: theme.dividerColor),
+                ListTile(
+                  leading: const Icon(Icons.block_rounded, color: Colors.orangeAccent),
+                  title: const Text('Engellenen Kullanıcılar', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('Engellediğiniz kişileri yönetin', style: TextStyle(color: LoveraColors.textMuted)),
+                  trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                  onTap: _showBlockedUsersSheet,
+                ),
               ],
             ),
           ),
@@ -489,6 +497,193 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
       ),
     ),
   );
+  }
+
+  // Engellenen Kullanıcıları Görme ve Engel Kaldırma Menüsü
+  Future<void> _showBlockedUsersSheet() async {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (bCtx) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return StatefulBuilder(
+          builder: (sheetCtx, setSheetState) {
+            return Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.75,
+              ),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF161820) : Colors.white,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                border: Border.all(
+                  color: isDark ? LoveraColors.darkBorder : LoveraColors.lightBorder,
+                  width: 1,
+                ),
+              ),
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+              child: SafeArea(
+                top: false,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.orangeAccent.withOpacity(0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.block_rounded, color: Colors.orangeAccent, size: 22),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          'Engellenen Kullanıcılar',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? LoveraColors.darkText : LoveraColors.textDark,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Expanded(
+                      child: FutureBuilder<List<Map<String, dynamic>>>(
+                        future: DatabaseService().getBlockedUsersProfiles(),
+                        builder: (ctx, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return const Center(child: CircularProgressIndicator());
+                          }
+                          final blockedList = snapshot.data ?? [];
+                          if (blockedList.isEmpty) {
+                            return Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.check_circle_outline_rounded,
+                                      size: 52, color: LoveraColors.secondary.withOpacity(0.7)),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    'Engellenen kimse yok',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 16,
+                                      color: isDark ? LoveraColors.darkText : LoveraColors.textDark,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'Engellediğiniz kullanıcılar burada listelenir.',
+                                    style: TextStyle(fontSize: 13, color: LoveraColors.textMuted),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+
+                          return ListView.separated(
+                            itemCount: blockedList.length,
+                            separatorBuilder: (_, __) => Divider(
+                              height: 1,
+                              color: isDark ? LoveraColors.darkBorder : LoveraColors.lightBorder,
+                            ),
+                            itemBuilder: (ctx, i) {
+                              final user = blockedList[i];
+                              final uid = user['uid'] as String;
+                              final name = user['name'] as String;
+                              final avatar = user['avatarUrl'] as String?;
+
+                              return ListTile(
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                                leading: CircleAvatar(
+                                  radius: 22,
+                                  backgroundColor: LoveraColors.primary.withOpacity(0.12),
+                                  backgroundImage: _getAvatarProvider(avatar),
+                                  child: avatar == null
+                                      ? const Icon(Icons.person_rounded, color: LoveraColors.primary)
+                                      : null,
+                                ),
+                                title: Text(
+                                  name,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    color: isDark ? LoveraColors.darkText : LoveraColors.textDark,
+                                  ),
+                                ),
+                                subtitle: const Text(
+                                  'Engellendi',
+                                  style: TextStyle(fontSize: 12, color: Colors.redAccent),
+                                ),
+                                trailing: OutlinedButton(
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: LoveraColors.primary,
+                                    side: const BorderSide(color: LoveraColors.primary),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                  ),
+                                  onPressed: () async {
+                                    final confirm = await showDialog<bool>(
+                                      context: context,
+                                      builder: (dCtx) => AlertDialog(
+                                        title: const Text('Engeli Kaldır'),
+                                        content: Text(
+                                          '$name adlı kullanıcının engelini kaldırmak istediğinize emin misiniz? Tekrar size istek gönderebilir.',
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () => Navigator.pop(dCtx, false),
+                                            child: const Text('Vazgeç'),
+                                          ),
+                                          FilledButton(
+                                            style: FilledButton.styleFrom(backgroundColor: LoveraColors.primary),
+                                            onPressed: () => Navigator.pop(dCtx, true),
+                                            child: const Text('Engeli Kaldır'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+
+                                    if (confirm == true) {
+                                      await DatabaseService().unblockUser(uid);
+                                      setSheetState(() {});
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text('$name kullanıcısının engeli kaldırıldı.'),
+                                            backgroundColor: LoveraColors.secondary,
+                                            behavior: SnackBarBehavior.floating,
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                                  child: const Text('Engeli Kaldır', style: TextStyle(fontWeight: FontWeight.w700)),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   // Oturumu Kapatma Akışı
@@ -572,68 +767,73 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
 
     if (confirm != true || !mounted) return;
 
-    // 2. Şifre Doğrulama Diyaloğu
-    final passwordController = TextEditingController();
-    bool obscure = true;
+    final providerId = AuthService().getSignInProvider();
+    String? password;
 
-    final shouldProceed = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-          title: const Text('Güvenlik Doğrulaması', style: TextStyle(fontWeight: FontWeight.w800)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Hesabınızı silmek için lütfen mevcut hesap şifrenizi girin:',
-                style: TextStyle(fontSize: 13, color: LoveraColors.textMuted),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: passwordController,
-                obscureText: obscure,
-                decoration: InputDecoration(
-                  hintText: 'Şifreniz',
-                  prefixIcon: const Icon(Icons.lock_outline_rounded),
-                  suffixIcon: IconButton(
-                    icon: Icon(obscure ? Icons.visibility_off : Icons.visibility),
-                    onPressed: () => setDialogState(() => obscure = !obscure),
+    // Eğer kullanıcı klasik e-posta/şifre ile giriş yaptıysa şifre sor.
+    // Google veya Apple ile giriş yaptıysa şifre sormadan doğrudan devam et (Guideline 5.1.1(v) uyumlu).
+    if (providerId == 'password') {
+      final passwordController = TextEditingController();
+      bool obscure = true;
+
+      final shouldProceed = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+            title: const Text('Güvenlik Doğrulaması', style: TextStyle(fontWeight: FontWeight.w800)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Hesabınızı silmek için lütfen mevcut hesap şifrenizi girin:',
+                  style: TextStyle(fontSize: 13, color: LoveraColors.textMuted),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: passwordController,
+                  obscureText: obscure,
+                  decoration: InputDecoration(
+                    hintText: 'Şifreniz',
+                    prefixIcon: const Icon(Icons.lock_outline_rounded),
+                    suffixIcon: IconButton(
+                      icon: Icon(obscure ? Icons.visibility_off : Icons.visibility),
+                      onPressed: () => setDialogState(() => obscure = !obscure),
+                    ),
                   ),
                 ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Vazgeç'),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+                onPressed: () {
+                  if (passwordController.text.trim().isEmpty) return;
+                  Navigator.pop(ctx, true);
+                },
+                child: const Text('Hesabı Kalıcı Olarak Sil'),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Vazgeç'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
-              onPressed: () {
-                if (passwordController.text.trim().isEmpty) return;
-                Navigator.pop(ctx, true);
-              },
-              child: const Text('Hesabı Kalıcı Olarak Sil'),
-            ),
-          ],
         ),
-      ),
-    );
+      );
 
-    if (shouldProceed != true || !mounted) return;
-
-    final password = passwordController.text.trim();
-    if (password.isEmpty) return;
+      if (shouldProceed != true || !mounted) return;
+      password = passwordController.text.trim();
+      if (password.isEmpty) return;
+    }
 
     setState(() => _isDeleting = true);
 
     try {
-      // AuthService ile hesabı sil
-      await AuthService().deleteAccount(password);
+      // AuthService ile hesabı sil (Sosyal giriş veya şifre ile)
+      await AuthService().deleteAccount(password: password);
 
       // Riverpod durumlarını sıfırla
       ref.read(userNameProvider.notifier).state = '';

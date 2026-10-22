@@ -345,6 +345,50 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
             tooltip: 'Tuvali Temizle',
             onPressed: (_lines.isEmpty && _currentLine.isEmpty) ? null : _clearCanvas,
           ),
+          IconButton(
+            icon: const Icon(Icons.flag_outlined),
+            tooltip: 'Çizimi Şikayet Et',
+            onPressed: () async {
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (dCtx) => AlertDialog(
+                  title: const Text('Çizimi Şikayet Et'),
+                  content: const Text(
+                    'Ortak çizim alanında uygunsuz bir içerik paylaşıldığını düşünüyorsanız güvenlik ekibimize bildirebilirsiniz. Bildirilen içerikler 24 saat içinde incelenir.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(dCtx, false),
+                      child: const Text('İptal'),
+                    ),
+                    FilledButton(
+                      style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
+                      onPressed: () => Navigator.pop(dCtx, true),
+                      child: const Text('Şikayet Et'),
+                    ),
+                  ],
+                ),
+              );
+              if (confirm == true) {
+                final coupleId = ref.read(coupleIdProvider);
+                final partnerUid = ref.read(partnerUidProvider);
+                await DatabaseService().reportContent(
+                  contentType: 'drawing',
+                  contentId: coupleId ?? 'shared_canvas',
+                  coupleId: coupleId,
+                  reportedUserId: partnerUid,
+                  reason: 'Ortak çizim tuvali üzerinden uygunsuz içerik bildirimi',
+                );
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Şikayetiniz güvenlik ekibimize iletildi. 24 saat içinde incelenecektir.'),
+                    ),
+                  );
+                }
+              }
+            },
+          ),
           const SizedBox(width: 8),
         ],
       ),

@@ -1,7 +1,7 @@
 name: lovera
 description: Çiftler için özel, samimi ve premium mobil uygulama.
 publish_to: none
-version: 0.1.0+1
+version: 1.0.0+1
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
@@ -32,14 +32,12 @@ dependencies:
   firebase_messaging: ^15.2.10
   flutter_background_service: ^5.1.0
   dart_jsonwebtoken: ^2.14.0
-  record: ^7.1.1
-  audioplayers: ^6.8.1
-  video_player: ^2.14.1
   gal: ^2.3.3
   path_provider: ^2.1.5
   url_launcher: ^6.3.3
   home_widget: ^0.10.0
   exif: ^3.3.0
+  sign_in_with_apple: ^8.2.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

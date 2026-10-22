@@ -3,6 +3,13 @@ const admin = require("firebase-admin");
 
 admin.initializeApp();
 
+// Cift belgelerinde uyeler user1/user2 alanlarinda (eski surumlerde users dizisi) tutulur.
+function coupleMembers(c) {
+  if (!c) return [];
+  const list = Array.isArray(c.users) ? c.users : [];
+  return [...new Set([...list, c.user1, c.user2].filter(Boolean))];
+}
+
 /**
  * Kullanıcı belgesi güncellendiğinde (Şarj pingi, Kalp pingi veya Düşük Pil)
  * partnerin kapalı olan telefonuna doğrudan Google FCM HTTP v1 üzerinden Push Bildirimi yollar.
@@ -85,9 +92,9 @@ exports.onNewMessage = onDocumentCreated("couples/{coupleId}/messages/{messageId
 
   const coupleDoc = await admin.firestore().collection("couples").doc(coupleId).get();
   const coupleData = coupleDoc.data();
-  if (!coupleData || !coupleData.users) return null;
+  if (!coupleData) return null;
 
-  const partnerId = coupleData.users.find((uid) => uid !== senderId);
+  const partnerId = coupleMembers(coupleData).find((uid) => uid !== senderId);
   if (!partnerId) return null;
 
   const partnerDoc = await admin.firestore().collection("users").doc(partnerId).get();
@@ -146,3 +153,82 @@ async function sendFcmPush(token, title, body, dataPayload = {}) {
     console.error("FCM Push gönderme hatası:", error);
   }
 }
+
+/**
+ * Istemci `pushRequests` koleksiyonuna istek yazar; sunucu gondericinin aliciyla ayni ciftte
+ * oldugunu dogrular, FCM gonderir ve istegi siler. Istemcide servis hesabi anahtari yoktur.
+ */
+exports.onPushRequest = onDocumentCreated("pushRequests/{requestId}", async (event) => {
+  const ref = event.data.ref;
+  const req = event.data.data();
+  try {
+    if (!req || !req.fromUid || !req.toUid) return null;
+    const db = admin.firestore();
+    const fromDoc = await db.collection("users").doc(req.fromUid).get();
+    const coupleId = fromDoc.data()?.coupleId;
+    if (!coupleId) return null;
+    const coupleDoc = await db.collection("couples").doc(coupleId).get();
+    const members = coupleMembers(coupleDoc.data());
+    if (!members.includes(req.fromUid) || !members.includes(req.toUid)) return null;
+
+    const toDoc = await db.collection("users").doc(req.toUid).get();
+    const token = toDoc.data()?.fcmToken;
+    if (!token) return null;
+
+    const data = {};
+    for (const [k, v] of Object.entries(req.data || {})) data[k] = String(v);
+
+    if (req.silent) {
+      await admin.messaging().send({
+        token,
+        data,
+        android: { priority: "high" },
+        apns: { headers: { "apns-priority": "5" }, payload: { aps: { contentAvailable: true } } },
+      });
+    } else {
+      await sendFcmPush(token, String(req.title || "").slice(0, 100), String(req.body || "").slice(0, 300), data);
+    }
+  } catch (e) {
+    console.error("onPushRequest hata:", e);
+  } finally {
+    await ref.delete().catch(() => {});
+  }
+  return null;
+});
+
+/**
+ * Hesap silindiginde kullaniciya ait tum Firestore verisini temizler
+ * (Apple 5.1.1(v) / Google Play hesap silme politikasi).
+ */
+const functionsV1 = require("firebase-functions/v1");
+exports.onAccountDeleted = functionsV1.auth.user().onDelete(async (user) => {
+  const db = admin.firestore();
+  const uid = user.uid;
+  try {
+    const userRef = db.collection("users").doc(uid);
+    const userSnap = await userRef.get();
+    const data = userSnap.data() || {};
+    if (data.inviteCode) await db.collection("inviteCodes").doc(data.inviteCode).delete().catch(() => {});
+    if (data.coupleId) {
+      const coupleRef = db.collection("couples").doc(data.coupleId);
+      const coupleSnap = await coupleRef.get();
+      const partner = coupleMembers(coupleSnap.data()).find((u) => u !== uid);
+      if (partner) {
+        await db.collection("users").doc(partner).update({
+          coupleId: admin.firestore.FieldValue.delete(),
+          partnerUid: admin.firestore.FieldValue.delete(),
+        }).catch(() => {});
+      }
+      await db.recursiveDelete(coupleRef);
+    }
+    await db.recursiveDelete(userRef);
+    for (const col of ["blocks", "reports", "pushRequests"]) {
+      for (const field of ["uid", "fromUid", "reporterUid", "blockerUid"]) {
+        const snap = await db.collection(col).where(field, "==", uid).get();
+        await Promise.all(snap.docs.map((d) => d.ref.delete()));
+      }
+    }
+  } catch (e) {
+    console.error("onAccountDeleted hata:", e);
+  }
+});

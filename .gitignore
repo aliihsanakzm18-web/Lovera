@@ -49,3 +49,12 @@ app.*.map.json
 
 build/
 .dart_tool/
+
+# Gizli / yerel dosyalar
+android/key.properties
+*.jks
+*.keystore
+emulator_screen_*.png
+test_splash_transition*.png
+install_flutter.ps1
+scratch/

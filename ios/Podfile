@@ -44,6 +44,28 @@ post_install do |installer|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
       # Fix for Xcode 15 / 16 Swift sending/concurrency syntax with FirebaseSharedSwift
       config.build_settings['SWIFT_VERSION'] = '5.0'
+
+      # Apple App Store Guideline 5.1.1 / ITMS-90683 compliance for permission_handler_apple:
+      # Enable ONLY the permissions actually used by Lovera.
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= [
+        '$(inherited)',
+        'PERMISSION_CAMERA=1',
+        'PERMISSION_PHOTOS=1',
+        'PERMISSION_PHOTOS_ADD_ONLY=1',
+        'PERMISSION_LOCATION=1',
+        'PERMISSION_LOCATION_WHENINUSE=1',
+        'PERMISSION_NOTIFICATIONS=1',
+        'PERMISSION_MICROPHONE=0',
+        'PERMISSION_CONTACTS=0',
+        'PERMISSION_EVENTS=0',
+        'PERMISSION_REMINDERS=0',
+        'PERMISSION_SPEECH_RECOGNIZER=0',
+        'PERMISSION_MEDIA_LIBRARY=0',
+        'PERMISSION_SENSORS=0',
+        'PERMISSION_BLUETOOTH=0',
+        'PERMISSION_APP_TRACKING_TRANSPARENCY=0',
+        'PERMISSION_CRITICAL_ALERTS=0',
+      ]
     end
   end
 end

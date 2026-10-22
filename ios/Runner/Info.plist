@@ -24,22 +24,22 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Lovera, canlı konumunuzu ve partnerinizle aranızdaki mesafeyi haritada göstermek için konumunuza ihtiyaç duyar.</string>
+	<string>Lovera, canlı konumunuzu ve partnerinizle aranızdaki mesafeyi ortak haritada göstermek için konumunuza ihtiyaç duyar.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Lovera, ekran kapalıyken bile partnerinizin sizi canlı haritada görebilmesi için arka planda konumunuza ihtiyaç duyar.</string>
+	<string>Lovera, uygulama kapalıyken bile partnerinizin sizi canlı haritada ve ana ekran widget'ında görebilmesi için arka planda konum erişimine ihtiyaç duyar.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
-	<string>Lovera, partnerinizle kesintisiz konum paylaşımı için konum erişimine ihtiyaç duyar.</string>
+	<string>Lovera, partnerinizle kesintisiz canlı konum ve mesafe paylaşımı için arka plan konum erişimine ihtiyaç duyar.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Lovera, partnerinizle ortak anı albümüne fotoğraf yüklemek ve karekod taramak için kameraya ihtiyaç duyar.</string>
+	<string>Lovera, profil fotoğrafı çekmek, sohkette fotoğraf paylaşmak ve ortak anı albümünüze fotoğraf yüklemek için kameraya ihtiyaç duyar.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Lovera, anı albümüne fotoğraf eklemek için galerinize erişim ister.</string>
+	<string>Lovera, profil fotoğrafı seçmek, sohbette fotoğraf göndermek ve ortak anı albümüne fotoğraf eklemek için galerinize erişim ister.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Lovera, anı albümündeki fotoğrafları telefonunuza kaydetmek için galerinize erişim ister.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Lovera, partnerinize sesli mesaj gönderebilmeniz için mikrofona erişim ister.</string>
+	<string>Lovera, ortak anı albümündeki, sohbetteki ve çizim tuvalindeki görselleri telefonunuza kaydetmek için galerinize erişim ister.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>

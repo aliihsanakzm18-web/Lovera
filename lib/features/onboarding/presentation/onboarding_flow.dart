@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/services/auth_service.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/widget_sync_service.dart';
 import '../../../core/state/app_state.dart';
@@ -42,22 +43,11 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
 
   Future<void> _next() async {
     if (!_page.hasClients) return;
-    // Eğer sıradaki adım PermissionsPage ise ve tüm izinler zaten verilmişse doğrudan _finish() çağır
     final nextPageIndex = (_page.page?.round() ?? 0) + 1;
     // Son adımdaysak (ör. eşleşmeyi 'Şimdilik atla' ile geçmek) doğrudan ana ekrana geç.
     if (nextPageIndex >= _steps.length) {
       await _finish();
       return;
-    }
-    if (nextPageIndex < _steps.length && _steps[nextPageIndex] is PermissionsPage) {
-      final locWhenInUse = await Permission.locationWhenInUse.isGranted;
-      final locAlways = await Permission.locationAlways.isGranted;
-      final notif = await Permission.notification.isGranted;
-      final hasMissing = !(locWhenInUse || locAlways) || !notif;
-      if (!hasMissing) {
-        await _finish();
-        return;
-      }
     }
 
     _page.nextPage(
@@ -88,26 +78,112 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
 
     String? name;
     String? coupleId;
+    String? partnerUid;
+    String? relationshipStartDate;
     String? avatarUrl;
     String? widgetBgUrl;
+    String? birthDate;
 
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .get()
-          .timeout(const Duration(seconds: 4));
-      if (doc.exists) {
-        final data = doc.data()!;
-        name = data['name'] as String?;
-        coupleId = data['coupleId'] as String?;
-        avatarUrl = data['avatarUrl'] as String?;
-        widgetBgUrl = data['widgetBgUrl'] as String?;
+    DocumentSnapshot<Map<String, dynamic>>? doc;
+    // Taze kurulum sonrasında Android'de Google Play Services SSL (ProviderInstaller)
+    // ilk birkaç yüz milisaniye içinde hazırlandığı için doğrudan sunucudan (Source.server)
+    // yeniden denemeli (retry) olarak oku; böylece eksik yerel önbelleğe düşülmez!
+    for (int attempt = 0; attempt < 3; attempt++) {
+      try {
+        doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .get(const GetOptions(source: Source.server))
+            .timeout(const Duration(seconds: 4));
+        break;
+      } catch (_) {
+        if (attempt < 2) {
+          await Future.delayed(const Duration(milliseconds: 400));
+        }
       }
-    } catch (_) {}
+    }
+    if (doc == null) {
+      try {
+        doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .get()
+            .timeout(const Duration(seconds: 3));
+      } catch (_) {}
+    }
+
+    if (doc != null && doc.exists && doc.data() != null) {
+      final data = doc.data()!;
+      name = data['name'] as String?;
+      coupleId = data['coupleId'] as String?;
+      partnerUid = data['partnerUid'] as String?;
+      relationshipStartDate = data['relationshipStartDate'] as String?;
+      avatarUrl = data['avatarUrl'] as String?;
+      widgetBgUrl = data['widgetBgUrl'] as String?;
+      birthDate = data['birthDate'] as String?;
+    }
+
+    // Ekstra güvenlik ağı: Eğer kullanıcı belgesinde coupleId herhangi bir sebeple boş görünüyorsa,
+    // couples koleksiyonunda bu kullanıcının aktif bir eşleşmesi var mı diye kontrol et!
+    if (coupleId == null || coupleId.isEmpty) {
+      try {
+        var q = await FirebaseFirestore.instance
+            .collection('couples')
+            .where('user1', isEqualTo: uid)
+            .where('status', isEqualTo: 'active')
+            .limit(1)
+            .get(const GetOptions(source: Source.server))
+            .timeout(const Duration(seconds: 3));
+        if (q.docs.isEmpty) {
+          q = await FirebaseFirestore.instance
+              .collection('couples')
+              .where('user2', isEqualTo: uid)
+              .where('status', isEqualTo: 'active')
+              .limit(1)
+              .get(const GetOptions(source: Source.server))
+              .timeout(const Duration(seconds: 3));
+        }
+        if (q.docs.isNotEmpty) {
+          final cDoc = q.docs.first;
+          final cData = cDoc.data();
+          coupleId = cDoc.id;
+          final u1 = cData['user1'] as String?;
+          final u2 = cData['user2'] as String?;
+          partnerUid = (u1 == uid) ? u2 : u1;
+          relationshipStartDate ??= cData['relationshipStartDate'] as String?;
+          // Kullanıcı belgesine de geri senkronize et
+          FirebaseFirestore.instance.collection('users').doc(uid).set({
+            'coupleId': coupleId,
+            if (partnerUid != null) 'partnerUid': partnerUid,
+            if (relationshipStartDate != null) 'relationshipStartDate': relationshipStartDate,
+          }, SetOptions(merge: true));
+        }
+      } catch (_) {}
+    }
+
+    // Sunucudan tam profil okunduktan sonra cihaz oturumunu bağla
+    AuthService().registerDeviceSession(uid);
 
     final prefs = await SharedPreferences.getInstance();
-    name ??= prefs.getString('name');
+    name ??= prefs.getString('name') ?? FirebaseAuth.instance.currentUser?.displayName;
+    if (birthDate != null && birthDate.isNotEmpty) {
+      await prefs.setString('birthDate', birthDate);
+    }
+    if (coupleId != null && coupleId.isNotEmpty) {
+      await prefs.setString('saved_couple_id', coupleId);
+      ref.read(coupleIdProvider.notifier).state = coupleId;
+    }
+    if (partnerUid != null && partnerUid.isNotEmpty) {
+      await prefs.setString('saved_partner_uid', partnerUid);
+      ref.read(partnerUidProvider.notifier).state = partnerUid;
+    }
+    if (relationshipStartDate != null && relationshipStartDate.isNotEmpty) {
+      await prefs.setString('saved_start_date', relationshipStartDate);
+      final parsedStart = DateTime.tryParse(relationshipStartDate);
+      if (parsedStart != null) {
+        ref.read(startDateProvider.notifier).state = parsedStart;
+      }
+    }
 
     // Kullanıcı adı ve profil fotoğrafını Riverpod ve SharedPreferences'a hemen yükle
     if (name != null && name.trim().isNotEmpty) {
@@ -140,17 +216,16 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       } catch (_) {}
     }
 
-    // Hoş geldin ekranı: Sadece ilk kez kayıt olan ya da henüz ismi hiç girilmemiş kullanıcıya sorulur.
-    // Giriş yapan mevcut kullanıcılara ASLA tekrar sorulmaz!
-    final bool needsWelcome = isNewUser || name == null || name.trim().isEmpty;
+    // Hoş geldin ekranı: SADECE Firestore'da veya yerel hafızada ismi hiç bulunmayan yeni kullanıcılara gösterilir.
+    // Eğer kullanıcının daha önceden kayıtlı bir ismi varsa ASLA tekrar sorulmaz!
+    final bool hasExistingName = (name != null && name.trim().isNotEmpty) ||
+        (FirebaseAuth.instance.currentUser?.displayName != null &&
+            FirebaseAuth.instance.currentUser!.displayName!.trim().isNotEmpty);
+
+    final bool needsWelcome = !hasExistingName;
+
     // Eşleşme ekranı: Sadece henüz bir çifte bağlı olmayanlara sorulur.
     final bool needsPairing = coupleId == null || coupleId.isEmpty;
-
-    // İzinleri kontrol et: Eksik izin yoksa ASLA izin ekranını gösterme!
-    final locWhenInUse = await Permission.locationWhenInUse.isGranted;
-    final locAlways = await Permission.locationAlways.isGranted;
-    final notif = await Permission.notification.isGranted;
-    final bool hasMissingPermissions = !(locWhenInUse || locAlways) || !notif;
 
     final List<Widget> dynamicSteps = [
       LoginPage(onSignedIn: _handleSignedIn),
@@ -164,12 +239,11 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       dynamicSteps.add(SafeArea(child: PairingContent(onDone: _next, onBack: _back)));
     }
 
-    if (hasMissingPermissions) {
-      dynamicSteps.add(PermissionsPage(onFinish: _finish, onBack: _back));
-    }
+    // Kullanıcı isteği: Eksik izinler sayfası giriş akışından tamamen kaldırıldı!
+    // İzinler uygulama içine girdikten sonra teker teker ve zarifçe istenecek.
 
     // Eğer hiçbir ara adıma ihtiyaç yoksa doğrudan ana ekrana git!
-    if (!needsWelcome && !needsPairing && !hasMissingPermissions) {
+    if (!needsWelcome && !needsPairing) {
       await _finish();
       return;
     }

@@ -3,7 +3,6 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
-  audioplayers_windows
   battery_plus
   cloud_firestore
   file_selector_windows
@@ -12,7 +11,6 @@ list(APPEND FLUTTER_PLUGIN_LIST
   gal
   geolocator_windows
   permission_handler_windows
-  record_windows
   url_launcher_windows
 )
 

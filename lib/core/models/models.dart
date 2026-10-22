@@ -129,6 +129,7 @@ class Milestone {
   final MilestoneType type;
   /// Hatırlatıcı kuralları: gün cinsinden önce (7, 1, 0).
   final List<int> reminderDaysBefore;
+  final bool isSystem;
 
   const Milestone({
     required this.id,
@@ -137,6 +138,7 @@ class Milestone {
     required this.date,
     this.type = MilestoneType.other,
     this.reminderDaysBefore = const [7, 1, 0],
+    this.isSystem = false,
   });
 
   int get daysLeft {
@@ -151,7 +153,7 @@ class Milestone {
 
   factory Milestone.fromJson(Map<String, dynamic> j) => Milestone(
         id: j['id'] as String,
-        coupleId: j['couple_id'] as String,
+        coupleId: j['couple_id'] as String? ?? '',
         title: j['title'] as String,
         date: DateTime.parse(j['date']),
         type: MilestoneType.values.firstWhere(
@@ -160,6 +162,7 @@ class Milestone {
         ),
         reminderDaysBefore:
             (j['reminders'] as List?)?.cast<int>() ?? const [7, 1, 0],
+        isSystem: (j['is_system'] ?? j['isSystem']) as bool? ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -169,6 +172,7 @@ class Milestone {
         'date': date.toIso8601String(),
         'type': type.name,
         'reminders': reminderDaysBefore,
+        'is_system': isSystem,
       };
 }
 

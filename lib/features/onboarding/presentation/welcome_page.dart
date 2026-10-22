@@ -46,7 +46,8 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final valid = _name.text.trim().isNotEmpty && _selectedBirthDate != null;
+    // Apple Guideline 5.1.1(i)/(ii) Veri Minimizasyonu: Doğum tarihi isteğe bağlıdır, zorunlu tutulamaz.
+    final valid = _name.text.trim().isNotEmpty;
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -124,7 +125,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                       Expanded(
                         child: Text(
                           _selectedBirthDate == null
-                              ? 'Doğum Tarihini Seç'
+                              ? 'Doğum Tarihini Seç (İsteğe Bağlı)'
                               : '${_selectedBirthDate!.day}.${_selectedBirthDate!.month}.${_selectedBirthDate!.year}',
                           style: TextStyle(
                             fontSize: 15,
@@ -150,9 +151,11 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                         await prefs.setString('name', n);
                         await DatabaseService().updateUserName(n);
 
-                        final bDate = _selectedBirthDate!;
-                        final bStr = '${bDate.year.toString().padLeft(4, '0')}-${bDate.month.toString().padLeft(2, '0')}-${bDate.day.toString().padLeft(2, '0')}';
-                        await DatabaseService().updateBirthDate(bStr, userName: n);
+                        if (_selectedBirthDate != null) {
+                          final bDate = _selectedBirthDate!;
+                          final bStr = '${bDate.year.toString().padLeft(4, '0')}-${bDate.month.toString().padLeft(2, '0')}-${bDate.day.toString().padLeft(2, '0')}';
+                          await DatabaseService().updateBirthDate(bStr, userName: n);
+                        }
 
                         widget.onNext();
                       }

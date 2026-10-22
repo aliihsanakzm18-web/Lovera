@@ -67,6 +67,26 @@ class _PermissionsPageState extends State<PermissionsPage> with WidgetsBindingOb
   Future<void> _request(Permission p) async {
     // Android/iOS: Arka plan izni için önce ön plan, ardından her zaman izin istenir
     if (p == Permission.locationAlways) {
+      // Google Play "Prominent Disclosure" ve Apple 5.1.1: sistem izin penceresinden ÖNCE
+      // arka plan konum kullanımının açıkça anlatılması ve kullanıcının onayı gerekir.
+      final accepted = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Arka plan konum erişimi'),
+          content: const Text(
+            'Lovera, uygulama kapalıyken veya kullanımda değilken bile konumunu ve '
+            'pil seviyeni yalnızca eşleştiğin partnerinle paylaşmak için konum verini toplar.\n\n'
+            'Bu veri reklam için kullanılmaz, üçüncü kişilerle paylaşılmaz. '
+            'Paylaşımı istediğin zaman Ayarlar\'dan kapatabilir veya hesabını silebilirsin.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Şimdi değil')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Kabul ediyorum')),
+          ],
+        ),
+      );
+      if (accepted != true) return;
       final whenInUse = await Permission.locationWhenInUse.request();
       if (whenInUse.isGranted) {
         final status = await Permission.locationAlways.request();
@@ -78,9 +98,16 @@ class _PermissionsPageState extends State<PermissionsPage> with WidgetsBindingOb
           }
         }
         return;
+      } else if (whenInUse.isPermanentlyDenied) {
+        await openAppSettings();
+        return;
       }
     }
     final status = await p.request();
+    if (status.isPermanentlyDenied) {
+      await openAppSettings();
+      return;
+    }
     if (mounted) {
       setState(() => _granted[p] = status.isGranted);
       if (status.isGranted && (_granted[Permission.locationAlways] ?? false)) {
@@ -93,7 +120,7 @@ class _PermissionsPageState extends State<PermissionsPage> with WidgetsBindingOb
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final allItems = [
-      (Permission.locationAlways, Icons.location_on_rounded, 'Canlı Konum & Snap Map',
+      (Permission.locationAlways, Icons.location_on_rounded, 'Canlı Konum & Ortak Harita',
           'Uygulama kapalıyken bile partnerinin seni haritada görebilmesi için.'),
       (Permission.notification, Icons.notifications_rounded, 'Bildirimler',
           '“Seni düşünüyorum” mesajları ve özel gün hatırlatıcıları için.'),

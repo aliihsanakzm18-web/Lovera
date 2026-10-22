@@ -2552,7 +2552,11 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                 }
               },
               interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.all, // 60 FPS pan/pinch & Google Maps yön dönüşü
+                flags: InteractiveFlag.pinchZoom |
+                    InteractiveFlag.drag |
+                    InteractiveFlag.doubleTapZoom |
+                    InteractiveFlag.doubleTapDragZoom |
+                    InteractiveFlag.scrollWheelZoom, // Haritanın dönmesini engelle (Kuzey her zaman yukarıda sabit)
               ),
             ),
             children: [

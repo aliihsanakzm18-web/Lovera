@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:ui';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -10,6 +11,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../firebase_options.dart';
@@ -29,10 +31,21 @@ class BackgroundTrackingService {
   static bool _initialized = false;
 
   Future<void> initialize() async {
-    if (_initialized) return;
-
     try {
+      final locPerm = await Geolocator.checkPermission();
+      if (locPerm != LocationPermission.always && locPerm != LocationPermission.whileInUse) {
+        // Konum izni henüz verilmeden location tipinde Foreground Service başlatılamaz (Android 14 kuralı)
+        return;
+      }
+
       final service = FlutterBackgroundService();
+      if (_initialized) {
+        final running = await service.isRunning();
+        if (!running) {
+          await service.startService();
+        }
+        return;
+      }
 
       // 1. Bildirim kanalını oluştur
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
@@ -69,6 +82,11 @@ class BackgroundTrackingService {
           onBackground: onIosBackground,
         ),
       );
+
+      final running = await service.isRunning();
+      if (!running) {
+        await service.startService();
+      }
 
       _initialized = true;
     } catch (e) {
@@ -606,6 +624,63 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
         debugPrint('[BG-WIDGET-SYNC] Partner (${partnerUser.name}) widget verisi arka planda güncellendi: Pil=${partnerUser.batteryLevel}, Hız=${partnerUser.speed}');
       }, onError: (e) {
         debugPrint('[BG-PARTNER-STREAM-ERR] $e');
+      });
+    }
+
+    // 6. 7/24 Kesintisiz Çizim Dinleyicisi (Uygulama tamamen kapalı olsa dahi Çizim Widget'ını anında günceller)
+    final coupleId = prefs.getString('saved_couple_id');
+    if (coupleId != null && coupleId.isNotEmpty) {
+      FirebaseFirestore.instance
+          .collection('couples')
+          .doc(coupleId)
+          .collection('drawings')
+          .doc('latest')
+          .snapshots()
+          .listen((doc) async {
+        if (!doc.exists || doc.data() == null) return;
+        try {
+          final data = doc.data()!;
+          final imageBase64 = data['imageBase64'] as String?;
+          final senderName = data['senderName'] as String? ?? 'Partnerin';
+          final myName = prefs.getString('saved_user_name') ?? '';
+          final isMe = (myName.isNotEmpty && senderName.toLowerCase() == myName.toLowerCase());
+
+          if (imageBase64 != null && imageBase64.isNotEmpty) {
+            final raw = imageBase64.split(',').last;
+            final bytes = base64Decode(raw);
+            final dir = await getApplicationDocumentsDirectory();
+            final drawingPath = '${dir.path}/partner_drawing_latest.png';
+            final f = File(drawingPath);
+            await f.writeAsBytes(bytes);
+
+            int tsMillis = DateTime.now().millisecondsSinceEpoch;
+            final rawTs = data['timestamp'];
+            if (rawTs != null) {
+              try {
+                if (rawTs is DateTime) {
+                  tsMillis = rawTs.millisecondsSinceEpoch;
+                } else if (rawTs is String) {
+                  tsMillis = DateTime.tryParse(rawTs)?.millisecondsSinceEpoch ?? tsMillis;
+                } else {
+                  tsMillis = (rawTs as dynamic).toDate().millisecondsSinceEpoch;
+                }
+              } catch (_) {}
+            }
+
+            await WidgetSyncService.syncDrawingWidget(
+              imagePath: drawingPath,
+              imageBase64: imageBase64,
+              senderName: isMe ? 'Sen' : senderName,
+              timeAgo: 'Şimdi',
+              timestampMillis: tsMillis,
+            );
+            debugPrint('[BG-DRAWING-WIDGET-SYNC] Uygulama kapalıyken yeni çizim widget\'a yazıldı: $senderName (isMe=$isMe)');
+          }
+        } catch (e) {
+          debugPrint('[BG-DRAWING-WIDGET-SYNC-ERR] $e');
+        }
+      }, onError: (e) {
+        debugPrint('[BG-DRAWING-STREAM-ERR] $e');
       });
     }
   } catch (e) {

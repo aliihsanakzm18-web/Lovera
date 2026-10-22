@@ -8,6 +8,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/avatar_cache.dart';
 import '../../../core/widgets/lovera_theme_background.dart';
 
 /// Eşleşme içeriği (onboarding ve ayrı ekranda ortak kullanılır).
@@ -57,6 +58,22 @@ class _PairingContentState extends ConsumerState<PairingContent> {
     _userSub = DatabaseService().userStream()?.listen((doc) {
       if (!doc.exists || doc.data() == null || !mounted) return;
       final data = doc.data()!;
+
+      // 0. Durum: Kullanıcı zaten bir partnerle eşleşmiş durumdaysa (ve yeni bir giden istek sonucu beklenmiyorsa)
+      // doğrudan eşleşme ekranını geç!
+      final existingCoupleId = data['coupleId'] as String?;
+      if (existingCoupleId != null &&
+          existingCoupleId.isNotEmpty &&
+          data['outgoingPairRequest'] == null &&
+          !_dialogOpen) {
+        ref.read(coupleIdProvider.notifier).state = existingCoupleId;
+        final existingPartnerUid = data['partnerUid'] as String?;
+        if (existingPartnerUid != null && existingPartnerUid.isNotEmpty) {
+          ref.read(partnerUidProvider.notifier).state = existingPartnerUid;
+        }
+        widget.onDone();
+        return;
+      }
 
       // 1. Durum: Bize gelen bir eşleşme isteği var mı?
       if (data['pendingPairRequest'] != null && !_dialogOpen) {
@@ -148,7 +165,8 @@ class _PairingContentState extends ConsumerState<PairingContent> {
     final requesterName = req['fromName'] as String? ?? 'Partnerin';
     final requesterAvatar = req['fromAvatar'] as String?;
 
-    DateTime selectedDate = DateTime.now();
+    DateTime? selectedDate;
+    bool showErrorBorder = false;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -161,8 +179,9 @@ class _PairingContentState extends ConsumerState<PairingContent> {
       builder: (sheetCtx) => StatefulBuilder(
         builder: (sheetCtx, setSheetState) {
           final theme = Theme.of(sheetCtx);
-          final diff = DateTime.now().difference(selectedDate);
-          final days = (diff.inHours / 24).floor() + 1;
+          final days = selectedDate != null
+              ? (DateTime.now().difference(selectedDate!).inHours / 24).floor() + 1
+              : null;
 
           return Padding(
             padding: EdgeInsets.fromLTRB(24, 20, 24, MediaQuery.of(sheetCtx).viewInsets.bottom + 28),
@@ -180,17 +199,18 @@ class _PairingContentState extends ConsumerState<PairingContent> {
                 const SizedBox(height: 18),
                 // Profil Fotoğrafı ve Eşleşme Bildirimi
                 CircleAvatar(
-                  radius: 36,
+                  radius: 38,
                   backgroundColor: LoveraColors.primary.withValues(alpha: 0.15),
-                  child: requesterAvatar != null
-                      ? ClipOval(child: Image.network(requesterAvatar, width: 72, height: 72, fit: BoxFit.cover))
-                      : Text(
+                  backgroundImage: AvatarCache.getProvider(requesterAvatar),
+                  child: (requesterAvatar == null || AvatarCache.getProvider(requesterAvatar) == null)
+                      ? Text(
                           requesterName.isNotEmpty ? requesterName[0].toUpperCase() : '?',
                           style: theme.textTheme.headlineMedium?.copyWith(
                             color: LoveraColors.primary,
                             fontWeight: FontWeight.w800,
                           ),
-                        ),
+                        )
+                      : null,
                 ),
                 const SizedBox(height: 12),
                 Text(
@@ -200,7 +220,7 @@ class _PairingContentState extends ConsumerState<PairingContent> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Onayladığında ikinize özel ortak alanınız açılacak. İlişki başlangıç tarihinizi seçebilirsiniz.',
+                  'Onayladığında ikinize özel ortak alanınız açılacak. Lütfen birliktelik başlangıç tarihinizi seçin.',
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodyMedium?.copyWith(color: LoveraColors.textMuted, height: 1.3),
                 ),
@@ -211,62 +231,109 @@ class _PairingContentState extends ConsumerState<PairingContent> {
                   onTap: () async {
                     final picked = await showDatePicker(
                       context: sheetCtx,
-                      initialDate: selectedDate,
+                      initialDate: selectedDate ?? DateTime.now(),
                       firstDate: DateTime(1990),
                       lastDate: DateTime.now(),
                       helpText: 'İlişki Başlangıç Tarihi',
                     );
                     if (picked != null) {
-                      setSheetState(() => selectedDate = picked);
+                      setSheetState(() {
+                        selectedDate = picked;
+                        showErrorBorder = false;
+                      });
                     }
                   },
-                  child: Container(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
                     padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                     decoration: BoxDecoration(
-                      color: LoveraColors.lightSurfaceAlt,
+                      color: Theme.of(sheetCtx).brightness == Brightness.dark
+                          ? LoveraColors.darkSurfaceAlt
+                          : LoveraColors.lightSurfaceAlt,
                       borderRadius: BorderRadius.circular(AppTheme.radius),
-                      border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
+                      border: Border.all(
+                        color: showErrorBorder
+                            ? Colors.redAccent
+                            : (Theme.of(sheetCtx).brightness == Brightness.dark
+                                ? Colors.white.withValues(alpha: 0.12)
+                                : Colors.black.withValues(alpha: 0.08)),
+                        width: showErrorBorder ? 1.5 : 1.0,
+                      ),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Row(
                           children: [
-                            const Icon(Icons.calendar_month_rounded, color: LoveraColors.primary),
+                            Icon(
+                              Icons.calendar_month_rounded,
+                              color: showErrorBorder ? Colors.redAccent : LoveraColors.primary,
+                            ),
                             const SizedBox(width: 12),
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('BİRLİKTELİK BAŞLANGICI',
-                                    style: theme.textTheme.labelSmall?.copyWith(
-                                        color: LoveraColors.textMuted, fontWeight: FontWeight.w700)),
                                 Text(
-                                  '${selectedDate.day}.${selectedDate.month}.${selectedDate.year}',
-                                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                                  'BİRLİKTELİK BAŞLANGICI *',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: showErrorBorder ? Colors.redAccent : LoveraColors.textMuted,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                Text(
+                                  selectedDate != null
+                                      ? '${selectedDate!.day}.${selectedDate!.month}.${selectedDate!.year}'
+                                      : 'Tarih seçmek için dokunun',
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: selectedDate != null
+                                        ? null
+                                        : (showErrorBorder ? Colors.redAccent : LoveraColors.textMuted),
+                                  ),
                                 ),
                               ],
                             ),
                           ],
                         ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: LoveraColors.primary.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            '$days Gündür',
-                            style: const TextStyle(
-                              color: LoveraColors.primary,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 12,
+                        if (selectedDate != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: LoveraColors.primary.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(12),
                             ),
+                            child: Text(
+                              '$days Gündür',
+                              style: const TextStyle(
+                                color: LoveraColors.primary,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
+                              ),
+                            ),
+                          )
+                        else
+                          Icon(
+                            Icons.arrow_forward_ios_rounded,
+                            size: 16,
+                            color: showErrorBorder ? Colors.redAccent : LoveraColors.textMuted,
                           ),
-                        ),
                       ],
                     ),
                   ),
                 ),
+                if (showErrorBorder) ...[
+                  const SizedBox(height: 6),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Padding(
+                      padding: EdgeInsets.only(left: 4),
+                      child: Text(
+                        '⚠️ Devam etmek için birliktelik başlangıç tarihini seçmelisiniz.',
+                        style: TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 22),
 
                 // Onayla & Reddet Butonları
@@ -289,13 +356,26 @@ class _PairingContentState extends ConsumerState<PairingContent> {
                         icon: const Icon(Icons.favorite_rounded, size: 18),
                         label: const Text('Kabul Et ve Bağlan'),
                         onPressed: () async {
+                          if (selectedDate == null) {
+                            HapticFeedback.vibrate();
+                            setSheetState(() => showErrorBorder = true);
+                            ScaffoldMessenger.of(sheetCtx).showSnackBar(
+                              const SnackBar(
+                                content: Text('Lütfen birliktelik başlangıç tarihinizi seçin! 📅'),
+                                backgroundColor: Colors.redAccent,
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                            return;
+                          }
+
                           Navigator.pop(sheetCtx);
                           _dialogOpen = false;
                           setState(() => _isLoading = true);
 
                           final coupleId = await DatabaseService().acceptPairRequest(
                             requesterUid: requesterUid,
-                            relationshipStartDate: selectedDate,
+                            relationshipStartDate: selectedDate!,
                           );
 
                           _handlePairSuccess(coupleId, requesterUid);
@@ -416,8 +496,25 @@ class _PairingContentState extends ConsumerState<PairingContent> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
+      String errorMsg = e.toString().replaceAll('Exception: ', '').trim();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Hata: $e')),
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.info_outline_rounded, color: Colors.white, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  errorMsg,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: errorMsg.contains('engellediği') ? const Color(0xFFEF4444) : const Color(0xFF333333),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
       );
     }
   }

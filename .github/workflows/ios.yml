@@ -50,6 +50,8 @@ jobs:
 
       - name: Package Payload as IPA
         run: |
+          cp ios/Runner/PrivacyInfo.xcprivacy build/ios/iphoneos/Runner.app/
+          cp ios/LoveraWidgets/PrivacyInfo.xcprivacy build/ios/iphoneos/Runner.app/PlugIns/LoveraWidgets.appex/
           mkdir -p build/ios/iphoneos/Payload
           cp -r build/ios/iphoneos/Runner.app build/ios/iphoneos/Payload/
           cd build/ios/iphoneos

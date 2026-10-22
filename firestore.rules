@@ -1,0 +1,185 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- Helpers ----------
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function coupleDoc(coupleId) {
+      return get(/databases/$(database)/documents/couples/$(coupleId)).data;
+    }
+
+    function dataIsMember(d) {
+      return d.get('user1', '') == request.auth.uid
+          || d.get('user2', '') == request.auth.uid
+          || (d.get('users', []) is list && request.auth.uid in d.get('users', []));
+    }
+
+    function isCoupleMember(coupleId) {
+      return signedIn()
+          && coupleId is string
+          && exists(/databases/$(database)/documents/couples/$(coupleId))
+          && dataIsMember(coupleDoc(coupleId));
+    }
+
+    function shortStr(v, max) {
+      return v is string && v.size() <= max;
+    }
+
+    // Fields a partner / handshake counterpart may touch on ANOTHER user's doc.
+    function partnerKeys() {
+      return ['pendingDateChangeRequest', 'dateChangeResult', 'relationshipStartDate',
+              'pendingBreakupRequest', 'outgoingBreakupRequest', 'breakupResult',
+              'outgoingPairRequest', 'pendingPairRequest', 'coupleId', 'partnerUid',
+              'inviteCode', 'updatedAt', 'chargePing', 'heartPing', 'gameRequest', 'gameResult'];
+    }
+
+    // ---------- Default deny ----------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ---------- users ----------
+    match /users/{userId} {
+      // Owner, or the linked partner (partnerUid on the target doc points to me).
+      allow get: if isOwner(userId)
+                 || (signedIn() && resource != null && resource.data.get('partnerUid', '') == request.auth.uid);
+      allow list: if false;
+
+      allow create: if isOwner(userId)
+                    && request.resource.data.keys().size() <= 60;
+
+      allow update: if isOwner(userId)
+                    ? request.resource.data.keys().size() <= 60
+                    : (signedIn() && (
+                        // Partner handshake (date change, breakup, unpair cleanup)
+                        (resource.data.get('partnerUid', '') == request.auth.uid
+                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(partnerKeys()))
+                        // Requester doc: acceptor/rejector of my outgoing pair request
+                        || (resource.data.get('outgoingPairRequest', {}).get('toUid', '') == request.auth.uid
+                          && request.resource.data.diff(resource.data).affectedKeys()
+                               .hasOnly(['outgoingPairRequest', 'coupleId', 'partnerUid',
+                                         'relationshipStartDate', 'inviteCode']))
+                        // Send a new pair request to someone who has not blocked me
+                        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pendingPairRequest'])
+                          && request.resource.data.pendingPairRequest.fromUid == request.auth.uid
+                          && request.resource.data.pendingPairRequest.status == 'pending'
+                          && !(request.auth.uid in resource.data.get('blockedUsers', [])))
+                      ));
+
+      allow delete: if isOwner(userId);
+
+      match /milestones/{id} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // ---------- inviteCodes ----------
+    match /inviteCodes/{code} {
+      // Lookup by exact code only (contains uid, name, avatar of code owner)
+      allow get: if signedIn();
+      allow list: if false;
+
+      allow create: if signedIn()
+                    && request.resource.data.uid == request.auth.uid
+                    && shortStr(request.resource.data.get('name', ''), 100);
+
+      allow update: if signedIn() && (
+                      (resource.data.uid == request.auth.uid
+                        && request.resource.data.uid == resource.data.uid)
+                      || (request.resource.data.diff(resource.data).affectedKeys()
+                            .hasOnly(['isUsed', 'usedAt', 'usedByCoupleId'])
+                          && request.resource.data.get('usedByCoupleId', '') is string
+                          && isCoupleMember(request.resource.data.get('usedByCoupleId', '')))
+                    );
+
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // ---------- couples ----------
+    match /couples/{coupleId} {
+      allow get: if signedIn() && dataIsMember(resource.data);
+      // Queries must filter on user1 / user2 == auth.uid
+      allow list: if signedIn() && dataIsMember(resource.data);
+
+      // Acceptor creates the couple; requester must have an outgoing request to me.
+      allow create: if signedIn()
+                    && request.resource.data.user2 == request.auth.uid
+                    && request.resource.data.user1 is string
+                    && request.resource.data.user1 != request.auth.uid
+                    && request.resource.data.id == coupleId
+                    && request.resource.data.status == 'active'
+                    && request.resource.data.keys().hasOnly(['id', 'user1', 'user2',
+                         'relationshipStartDate', 'status', 'createdAt'])
+                    && get(/databases/$(database)/documents/users/$(request.resource.data.user1))
+                         .data.get('outgoingPairRequest', {}).get('toUid', '') == request.auth.uid;
+
+      allow update: if signedIn() && dataIsMember(resource.data)
+                    && request.resource.data.get('user1', '') == resource.data.get('user1', '')
+                    && request.resource.data.get('user2', '') == resource.data.get('user2', '')
+                    && request.resource.data.get('createdAt', null) == resource.data.get('createdAt', null);
+
+      allow delete: if signedIn() && dataIsMember(resource.data);
+
+      match /messages/{id} {
+        allow read, create, update, delete: if isCoupleMember(coupleId);
+      }
+      match /saved_places/{id} {
+        allow read, create, update, delete: if isCoupleMember(coupleId);
+      }
+      match /milestones/{id} {
+        allow read, create, update, delete: if isCoupleMember(coupleId);
+      }
+      match /games/{id} {
+        allow read, create, update, delete: if isCoupleMember(coupleId);
+      }
+      match /drawings/{id} {
+        allow read, create, update, delete: if isCoupleMember(coupleId);
+      }
+      match /drawings_history/{id} {
+        allow read, create, update, delete: if isCoupleMember(coupleId);
+      }
+      match /memories/{id} {
+        allow read, create, update, delete: if isCoupleMember(coupleId);
+      }
+      match /memory_albums/{id} {
+        allow read, create, update, delete: if isCoupleMember(coupleId);
+      }
+    }
+
+    // ---------- reports (create-only) ----------
+    match /reports/{id} {
+      allow create: if signedIn()
+                    && request.resource.data.reporterUid == request.auth.uid
+                    && request.resource.data.status == 'pending_review'
+                    && shortStr(request.resource.data.get('reason', ''), 1000)
+                    && shortStr(request.resource.data.get('contentType', ''), 50)
+                    && shortStr(request.resource.data.get('contentId', ''), 200)
+                    && request.resource.data.keys().hasOnly(['reporterUid', 'reportedUserId',
+                         'coupleId', 'contentType', 'contentId', 'reason', 'status', 'createdAt']);
+      allow read, update, delete: if false;
+    }
+
+    // ---------- pushRequests (create-only; Cloud Function consumes via Admin SDK) ----------
+    match /pushRequests/{id} {
+      allow create: if signedIn()
+                    && request.resource.data.fromUid == request.auth.uid
+                    && request.resource.data.toUid is string
+                    && request.resource.data.toUid.size() <= 128
+                    && shortStr(request.resource.data.get('title', ''), 200)
+                    && shortStr(request.resource.data.get('body', ''), 1000)
+                    && request.resource.data.get('data', {}) is map
+                    && request.resource.data.get('silent', false) is bool
+                    && request.resource.data.keys().hasOnly(['fromUid', 'toUid', 'title',
+                         'body', 'data', 'silent', 'createdAt']);
+      allow read, update, delete: if false;
+    }
+  }
+}

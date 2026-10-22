@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/models.dart';
+import 'notification_service.dart';
 
 class DatabaseService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -204,6 +205,18 @@ class DatabaseService {
     required String? myAvatar,
   }) async {
     if (uid == null) return;
+
+    // Engellenen kullanıcı kontrolü (Guideline 1.2)
+    try {
+      final targetDoc = await _db.collection('users').doc(targetUid).get();
+      final blockedList = List<String>.from(targetDoc.data()?['blockedUsers'] ?? []);
+      if (blockedList.contains(uid)) {
+        throw Exception('Bu kullanıcı sizi engellediği için eşleşme isteği gönderilemiyor.');
+      }
+    } catch (e) {
+      if (e.toString().contains('engellediği')) rethrow;
+    }
+
     // Hedef kullanıcının gelen isteklerine ve kendi kullanıcımıza yaz
     final batch = _db.batch();
 
@@ -229,6 +242,20 @@ class DatabaseService {
     }, SetOptions(merge: true));
 
     await batch.commit();
+
+    // Hedef kullanıcıya anlık Push Bildirim gönder (Uygulama kapalı olsa bile!)
+    try {
+      NotificationService().sendPushToPartner(
+        partnerUid: targetUid,
+        title: '💕 Yeni Eşleşme İsteği!',
+        body: '$myName seninle eşleşmek istiyor! Bağlantıyı onaylamak için dokun.',
+        data: {
+          'type': 'pair_request',
+          'fromUid': uid ?? '',
+          'fromName': myName,
+        },
+      );
+    } catch (_) {}
   }
 
   /// 2. Adım: Gelen isteği kabul et ve ortak Çift (Couple) oluştur
@@ -306,8 +333,9 @@ class DatabaseService {
 
     await batch.commit();
 
-    // Otomatik Özel Günler: Yıldönümü ve her iki tarafın doğum günlerini ekle
+    // Otomatik Özel Günler: Yıldönümü, Doğum Günleri ve Kültürel Özel Günler (Sevgililer Günü, Kadınlar Günü, Erkekler Günü)
     await syncDefaultAnniversary(relationshipStartDate, coupleId: coupleId);
+    await syncDefaultCulturalMilestones(coupleId: coupleId);
 
     try {
       final user1Doc = await _db.collection('users').doc(requesterUid).get();
@@ -581,6 +609,149 @@ class DatabaseService {
     }).catchError((_) {});
   }
 
+  /// Kullanıcıyı engelle ve eşleşmeyi derhal sonlandır (Apple Guideline 1.2 UGC)
+  Future<void> blockAndUnpairPartner({
+    required String partnerUid,
+    String? coupleId,
+  }) async {
+    if (uid == null) return;
+    try {
+      await _db.collection('users').doc(uid).set({
+        'blockedUsers': FieldValue.arrayUnion([partnerUid]),
+      }, SetOptions(merge: true));
+    } catch (_) {}
+    await acceptBreakup(partnerUid: partnerUid, coupleId: coupleId);
+  }
+
+  /// Kullanıcı engelini kaldır
+  Future<void> unblockUser(String targetUid) async {
+    if (uid == null) return;
+    try {
+      await _db.collection('users').doc(uid).set({
+        'blockedUsers': FieldValue.arrayRemove([targetUid]),
+      }, SetOptions(merge: true));
+    } catch (_) {}
+  }
+
+  /// Engellenen kullanıcıların ID listesini al
+  Future<List<String>> getBlockedUserIds() async {
+    if (uid == null) return [];
+    try {
+      final doc = await _db.collection('users').doc(uid).get();
+      return List<String>.from(doc.data()?['blockedUsers'] ?? []);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Engellenen kullanıcıların profil bilgilerini getir
+  Future<List<Map<String, dynamic>>> getBlockedUsersProfiles() async {
+    final ids = await getBlockedUserIds();
+    if (ids.isEmpty) return [];
+    final List<Map<String, dynamic>> list = [];
+    for (final id in ids) {
+      try {
+        final doc = await _db.collection('users').doc(id).get();
+        if (doc.exists && doc.data() != null) {
+          final data = doc.data()!;
+          list.add({
+            'uid': id,
+            'name': data['name'] ?? 'Kullanıcı',
+            'avatarUrl': data['avatarUrl'],
+            'email': data['email'] ?? '',
+          });
+        } else {
+          list.add({
+            'uid': id,
+            'name': 'Kullanıcı ($id)',
+            'avatarUrl': null,
+            'email': '',
+          });
+        }
+      } catch (_) {
+        list.add({
+          'uid': id,
+          'name': 'Kullanıcı ($id)',
+          'avatarUrl': null,
+          'email': '',
+        });
+      }
+    }
+    return list;
+  }
+
+  /// Sakıncalı içerik veya kullanıcı şikayetini Firestore'a kaydet (Apple Guideline 1.2 UGC)
+  Future<void> reportContent({
+    required String contentType,
+    required String contentId,
+    String? coupleId,
+    String? reportedUserId,
+    String? reason,
+  }) async {
+    if (uid == null) return;
+    try {
+      await _db.collection('reports').add({
+        'reporterUid': uid,
+        'reportedUserId': reportedUserId ?? '',
+        'coupleId': coupleId ?? '',
+        'contentType': contentType, // 'message', 'memory', 'user'
+        'contentId': contentId,
+        'reason': reason ?? 'Sakıncalı veya uygunsuz içerik',
+        'status': 'pending_review',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {}
+  }
+
+  /// Doğrudan birliktelik başlangıç tarihini güncelle ve partneri anında haberdar et
+  Future<void> updateRelationshipDateDirectly({
+    required DateTime newDate,
+    required String partnerUid,
+    String? coupleId,
+    required String updaterName,
+  }) async {
+    if (uid == null) return;
+    final batch = _db.batch();
+
+    // 1. Kendi kullanıcımız
+    final myRef = _db.collection('users').doc(uid);
+    batch.set(myRef, {
+      'relationshipStartDate': newDate.toIso8601String(),
+      'pendingDateChangeRequest': FieldValue.delete(),
+    }, SetOptions(merge: true));
+
+    // 2. Partner (bilgilendirme bayrağı ile)
+    final partnerRef = _db.collection('users').doc(partnerUid);
+    batch.set(partnerRef, {
+      'relationshipStartDate': newDate.toIso8601String(),
+      'pendingDateChangeRequest': FieldValue.delete(),
+      'dateUpdatedNotice': {
+        'updaterName': updaterName,
+        'newDate': newDate.toIso8601String(),
+        'timestamp': FieldValue.serverTimestamp(),
+      },
+    }, SetOptions(merge: true));
+
+    // 3. Ortak çift (couple)
+    if (coupleId != null && coupleId.isNotEmpty) {
+      final cRef = _db.collection('couples').doc(coupleId);
+      batch.set(cRef, {
+        'relationshipStartDate': newDate.toIso8601String(),
+      }, SetOptions(merge: true));
+    }
+
+    await batch.commit();
+    await syncDefaultAnniversary(newDate, coupleId: coupleId);
+  }
+
+  /// Tarih güncellendi bildirimini temizle
+  Future<void> clearDateUpdatedNotice() async {
+    if (uid == null) return;
+    await _db.collection('users').doc(uid).update({
+      'dateUpdatedNotice': FieldValue.delete(),
+    }).catchError((_) {});
+  }
+
   // ---------------------------------------------------------------------------
   // BULUŞMA TALEBİ (Partnerin kullanıcı belgesi üzerinden, tarih değişikliği ile aynı kanıtlanmış yöntem)
   // ---------------------------------------------------------------------------
@@ -759,15 +930,25 @@ class DatabaseService {
 
     if (collection == null) return const Stream.empty();
 
-    return collection.orderBy('date').snapshots().map((snap) => snap.docs.map((doc) {
-          final data = doc.data();
-          return Milestone(
-            id: doc.id,
-            coupleId: coupleId ?? '',
-            title: data['title'] ?? '',
-            date: DateTime.parse(data['date']),
-          );
-        }).toList());
+    return collection.snapshots().map((snap) {
+      final list = snap.docs.map((doc) {
+        final data = doc.data();
+        final docId = doc.id;
+        final isSys = (data['isSystem'] ?? data['is_system']) as bool? ??
+            (docId == 'valentines_day' || docId == 'womens_day' || docId == 'mens_day');
+        return Milestone(
+          id: doc.id,
+          coupleId: coupleId ?? '',
+          title: data['title'] ?? '',
+          date: DateTime.parse(data['date']),
+          isSystem: isSys,
+        );
+      }).toList();
+
+      // Tüm özel günleri kalan güne (en yakından en uzağa) göre otomatik sırala
+      list.sort((a, b) => a.daysLeft.compareTo(b.daysLeft));
+      return list;
+    });
   }
 
   Future<void> addMilestone({required String title, required DateTime date, String? coupleId}) async {
@@ -832,6 +1013,52 @@ class DatabaseService {
           'createdBy': uid,
           'createdAt': FieldValue.serverTimestamp(),
         });
+      }
+    } catch (_) {}
+  }
+
+  /// Sevgililer Günü, Kadınlar Günü ve Erkekler Günü gibi evrensel özel günleri çiftin havuzuna ekler
+  Future<void> syncDefaultCulturalMilestones({String? coupleId}) async {
+    try {
+      final collection = (coupleId != null && coupleId.isNotEmpty)
+          ? _db.collection('couples').doc(coupleId).collection('milestones')
+          : (uid != null ? _db.collection('users').doc(uid).collection('milestones') : null);
+
+      if (collection == null) return;
+
+      final currentYear = DateTime.now().year;
+
+      final defaults = [
+        {
+          'id': 'valentines_day',
+          'title': 'Sevgililer Günü 💘',
+          'date': DateTime(currentYear, 2, 14).toIso8601String(),
+        },
+        {
+          'id': 'womens_day',
+          'title': 'Kadınlar Günü 💐',
+          'date': DateTime(currentYear, 3, 8).toIso8601String(),
+        },
+        {
+          'id': 'mens_day',
+          'title': 'Erkekler Günü 👔',
+          'date': DateTime(currentYear, 11, 19).toIso8601String(),
+        },
+      ];
+
+      for (final item in defaults) {
+        final docRef = collection.doc(item['id'] as String);
+        final doc = await docRef.get();
+        if (!doc.exists) {
+          await docRef.set({
+            'title': item['title'],
+            'date': item['date'],
+            'isDefault': true,
+            'isSystem': true,
+            'createdBy': uid,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        }
       }
     } catch (_) {}
   }

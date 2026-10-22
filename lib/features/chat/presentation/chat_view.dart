@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -430,6 +431,89 @@ class _ChatViewState extends ConsumerState<ChatView> {
                     }
                   },
                 ),
+                const Divider(height: 1),
+                // Guideline 1.2: Kullanıcıyı Engelleme / Eşleşmeyi Sonlandırma (Block User)
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.block_rounded, color: Colors.orange, size: 22),
+                  ),
+                  title: const Text(
+                    'Kullanıcıyı Engelle',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Colors.orange,
+                      fontSize: 16,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Partnerinizle eşleşmeyi ve iletişimi sonlandırır',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
+                    ),
+                  ),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (dCtx) => AlertDialog(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        title: const Text('Kullanıcıyı Engelle'),
+                        content: const Text(
+                          'Bu kullanıcıyı engellemek ve eşleşmeyi derhal sonlandırmak istediğinize emin misiniz? Karşılıklı konum ve mesajlaşma anında durdurulur.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(dCtx, false),
+                            child: const Text('Vazgeç'),
+                          ),
+                          FilledButton(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Colors.orange,
+                              foregroundColor: Colors.white,
+                            ),
+                            onPressed: () => Navigator.pop(dCtx, true),
+                            child: const Text('Engelle ve Ayrıl'),
+                          ),
+                        ],
+                      ),
+                    );
+
+                    final pUid = ref.read(partnerUidProvider) ?? ref.read(partnerProvider)?.id;
+                    if (confirm == true && mounted && pUid != null) {
+                      try {
+                        await DatabaseService().blockAndUnpairPartner(
+                          partnerUid: pUid,
+                          coupleId: coupleId,
+                        );
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Kullanıcı engellendi ve eşleşme sonlandırıldı.'),
+                              backgroundColor: Colors.orange,
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('İşlem başarısız: $e'),
+                              backgroundColor: const Color(0xFFEF4444),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      }
+                    }
+                  },
+                ),
               ],
             ),
           ),
@@ -480,10 +564,29 @@ class _ChatViewState extends ConsumerState<ChatView> {
           onTap: () => FocusScope.of(context).unfocus(),
           behavior: HitTestBehavior.opaque,
           child: Scaffold(
-            backgroundColor: isDark ? const Color(0xFF0F1015) : const Color(0xFFF7F8FA),
+            backgroundColor: Colors.transparent,
+            extendBodyBehindAppBar: true,
             appBar: AppBar(
-              backgroundColor: isDark ? const Color(0xFF161822) : Colors.white,
-              elevation: 0.5,
+              backgroundColor: isDark
+                  ? const Color(0xFF0D0E15).withValues(alpha: 0.82)
+                  : Colors.white.withValues(alpha: 0.85),
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              flexibleSpace: ClipRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                  child: Container(color: Colors.transparent),
+                ),
+              ),
+              bottom: PreferredSize(
+                preferredSize: const Size.fromHeight(1),
+                child: Container(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.08)
+                      : Colors.black.withValues(alpha: 0.06),
+                  height: 1,
+                ),
+              ),
               titleSpacing: 0,
               leading: IconButton(
                 icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
@@ -649,7 +752,12 @@ class _ChatViewState extends ConsumerState<ChatView> {
         ),
         body: Stack(
           children: [
-            // Ortak Sohbet Arka Planı (Dünya standartları: Telegram & WhatsApp tarzı canlı ve net)
+            // Her zaman en altta Lovera'nın özel aurora & desen teması yer alır
+            const Positioned.fill(
+              child: LoveraThemeBackground(),
+            ),
+
+            // Ortak Sohbet Fotoğrafı (Eğer ayarlandıysa tema üzerinde şık bir şekilde durur)
             if (chatBackgroundUrl != null && chatBackgroundUrl.isNotEmpty) ...[
               Positioned.fill(
                 child: Image(
@@ -679,10 +787,6 @@ class _ChatViewState extends ConsumerState<ChatView> {
                     ),
                   ),
                 ),
-              ),
-            ] else ...[
-              const Positioned.fill(
-                child: LoveraThemeBackground(),
               ),
             ],
             SafeArea(
@@ -911,16 +1015,26 @@ class _ChatViewState extends ConsumerState<ChatView> {
                 ),
               ).animate().slideY(begin: 0.2, duration: 200.ms).fadeIn(),
 
-            // Giriş Alanı (Input Bar)
+            // Giriş Alanı (Input Bar - Temaya uyumlu hafif cam/translucent tasarım)
             Container(
               padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF161822) : Colors.white,
+                color: isDark
+                    ? const Color(0xFF0D0E15).withValues(alpha: 0.90)
+                    : Colors.white.withValues(alpha: 0.92),
+                border: Border(
+                  top: BorderSide(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.08)
+                        : Colors.black.withValues(alpha: 0.06),
+                    width: 1,
+                  ),
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
+                    color: Colors.black.withValues(alpha: isDark ? 0.30 : 0.05),
                     offset: const Offset(0, -2),
-                    blurRadius: 10,
+                    blurRadius: 12,
                   ),
                 ],
               ),
@@ -948,8 +1062,16 @@ class _ChatViewState extends ConsumerState<ChatView> {
                   Expanded(
                     child: Container(
                       decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF232635) : const Color(0xFFF1F3F7),
+                        color: isDark
+                            ? const Color(0xFF1B1D28)
+                            : const Color(0xFFF1F3F7),
                         borderRadius: BorderRadius.circular(24),
+                        border: Border.all(
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.08)
+                              : Colors.black.withValues(alpha: 0.05),
+                          width: 0.8,
+                        ),
                       ),
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: TextField(
@@ -1115,7 +1237,7 @@ class _ChatBubble extends StatelessWidget {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        ListTile(
+                         ListTile(
                           leading: const Icon(Icons.reply_rounded),
                           title: const Text('Yanıtla'),
                           onTap: () {
@@ -1123,6 +1245,53 @@ class _ChatBubble extends StatelessWidget {
                             onReply();
                           },
                         ),
+                        // Guideline 1.2: Sakıncalı içerik şikayet etme (UGC Moderation)
+                        if (!isMe)
+                          ListTile(
+                            leading: const Icon(Icons.flag_outlined, color: Colors.amber),
+                            title: const Text('Mesajı Şikayet Et', style: TextStyle(color: Colors.amber)),
+                            onTap: () async {
+                              Navigator.pop(ctx);
+                              final confirmed = await showDialog<bool>(
+                                context: context,
+                                builder: (dCtx) => AlertDialog(
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                  title: const Text('Mesajı Şikayet Et'),
+                                  content: const Text(
+                                    'Bu mesajı sakıncalı, taciz veya uygunsuz içerik nedeniyle Lovera inceleme ekibine bildirmek istiyor musunuz? İnceleme 24 saat içinde tamamlanacaktır.',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(dCtx, false),
+                                      child: const Text('Vazgeç'),
+                                    ),
+                                    FilledButton(
+                                      style: FilledButton.styleFrom(backgroundColor: Colors.amber[800]),
+                                      onPressed: () => Navigator.pop(dCtx, true),
+                                      child: const Text('Şikayet Et', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                    ),
+                                  ],
+                                ),
+                              );
+
+                              if (confirmed == true) {
+                                await DatabaseService().reportContent(
+                                  contentType: 'message',
+                                  contentId: message.id,
+                                  reportedUserId: message.senderId,
+                                );
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Şikayetiniz alındı. İçerik güvenlik ekibimize iletildi.'),
+                                      backgroundColor: Color(0xFF10B981),
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                          ),
                         if (onDelete != null)
                           ListTile(
                             leading: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
