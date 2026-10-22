@@ -1,3 +1,4 @@
+import '../../../core/localization/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1211,7 +1212,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                 selectedIcon: Icons.home_rounded,
                 isSelected: _currentIndex == 1,
                 activeColor: LoveraColors.primary,
-                tooltip: 'Ana Sayfa',
+                tooltip: ref.watch(stringsProvider).navHome,
                 onTap: () => _goToPage(1),
               ),
 
@@ -1222,7 +1223,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                 isSelected: _currentIndex == 2,
                 badgeCount: _unreadCount,
                 activeColor: LoveraColors.secondary,
-                tooltip: 'Sohbet',
+                tooltip: ref.watch(stringsProvider).navChat,
                 onTap: () => _goToPage(2),
               ),
 
@@ -1232,7 +1233,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                 selectedIcon: Icons.sports_esports_rounded,
                 isSelected: _currentIndex == 3,
                 activeColor: LoveraColors.accentViolet,
-                tooltip: 'Oyun',
+                tooltip: ref.watch(stringsProvider).navGames,
                 onTap: () => _goToPage(3),
               ),
             ],

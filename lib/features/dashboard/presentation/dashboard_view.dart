@@ -1,3 +1,4 @@
+import '../../../core/localization/app_strings.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -2066,8 +2067,8 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                     Expanded(
                       child: _ActionTile(
                         icon: Icons.map_rounded,
-                        title: 'Canlı Harita',
-                        subtitle: partner == null ? 'Eşleşme bekleniyor' : 'Konumu gör',
+                        title: ref.watch(stringsProvider).liveMap,
+                        subtitle: partner == null ? (ref.watch(stringsProvider).isEn ? 'Waiting for partner' : 'Eşleşme bekleniyor') : (ref.watch(stringsProvider).isEn ? 'View location' : 'Konumu gör'),
                         color: LoveraColors.accentViolet,
                         onTap: () {
                           if (widget.onOpenMap != null) {
@@ -2082,8 +2083,8 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                     Expanded(
                       child: _ActionTile(
                         icon: Icons.favorite_border_rounded,
-                        title: 'Özel Günler',
-                        subtitle: milestones.isEmpty ? 'Henüz eklenmedi' : '${milestones.length} gün',
+                        title: ref.watch(stringsProvider).specialDays,
+                        subtitle: milestones.isEmpty ? (ref.watch(stringsProvider).isEn ? 'None added yet' : 'Henüz eklenmedi') : '${milestones.length} ${ref.watch(stringsProvider).daysPlural}',
                         color: LoveraColors.accentGold,
                         onTap: () => _push(const MilestonesView()),
                       ),
@@ -2096,8 +2097,8 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                     Expanded(
                       child: _ActionTile(
                         icon: Icons.brush_rounded,
-                        title: 'Çizim Tuvali',
-                        subtitle: 'Widget\'a çizim gönder',
+                        title: ref.watch(stringsProvider).drawTogether,
+                        subtitle: ref.watch(stringsProvider).isEn ? 'Send drawing to widget' : 'Widget\'a çizim gönder',
                         color: LoveraColors.accentPink,
                         onTap: () => _push(const DrawingScreen()),
                       ),
@@ -2106,8 +2107,8 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                     Expanded(
                       child: _ActionTile(
                         icon: Icons.photo_library_rounded,
-                        title: 'Ortak Anı Albümü',
-                        subtitle: 'Birlikte anılarınız',
+                        title: ref.watch(stringsProvider).memoriesAlbum,
+                        subtitle: ref.watch(stringsProvider).isEn ? 'Your memories' : 'Birlikte anılarınız',
                         color: LoveraColors.secondary,
                         onTap: () => _push(const MemoriesGalleryView()),
                       ),
@@ -2249,17 +2250,17 @@ class _ActionTile extends StatelessWidget {
   }
 }
 
-class _HeroCounter extends StatefulWidget {
+class _HeroCounter extends ConsumerStatefulWidget {
   const _HeroCounter({required this.start, required this.onPick, this.isPaired = false});
   final DateTime? start;
   final VoidCallback onPick;
   final bool isPaired;
 
   @override
-  State<_HeroCounter> createState() => _HeroCounterState();
+  ConsumerState<_HeroCounter> createState() => _HeroCounterState();
 }
 
-class _HeroCounterState extends State<_HeroCounter> {
+class _HeroCounterState extends ConsumerState<_HeroCounter> {
   late final Timer _timer;
 
   @override
@@ -2320,10 +2321,10 @@ class _HeroCounterState extends State<_HeroCounter> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Birlikte geçen süre',
+                    Text(ref.watch(stringsProvider).dayCounter,
                         style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                     const SizedBox(height: 4),
-                    Text('Başlangıç tarihinizi seçmek için dokunun.',
+                    Text(ref.watch(stringsProvider).isEn ? 'Tap to choose your start date.' : 'Başlangıç tarihinizi seçmek için dokunun.',
                         style: theme.textTheme.bodySmall?.copyWith(color: muted)),
                   ],
                 ),
@@ -2375,7 +2376,7 @@ class _HeroCounterState extends State<_HeroCounter> {
                 const Icon(Icons.favorite_rounded, size: 14, color: LoveraColors.primary),
                 const SizedBox(width: 6),
                 Text(
-                  'BİRLİKTE GEÇEN ZAMAN',
+                  ref.watch(stringsProvider).isEn ? 'TIME SPENT TOGETHER' : 'BİRLİKTE GEÇEN ZAMAN',
                   style: theme.textTheme.labelSmall?.copyWith(
                     fontWeight: FontWeight.w800,
                     letterSpacing: 1.2,
@@ -2402,7 +2403,7 @@ class _HeroCounterState extends State<_HeroCounter> {
               ),
               const SizedBox(width: 10),
               Text(
-                'gün',
+                ref.watch(stringsProvider).daysSingular,
                 style: theme.textTheme.headlineMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: isLight ? LoveraColors.textDark : LoveraColors.darkText,
@@ -2416,7 +2417,7 @@ class _HeroCounterState extends State<_HeroCounter> {
   }
 }
 
-class _PartnerCard extends StatelessWidget {
+class _PartnerCard extends ConsumerWidget {
   const _PartnerCard({
     required this.partner,
     this.isPaired = false,
@@ -2440,7 +2441,7 @@ class _PartnerCard extends StatelessWidget {
   }
 
   /// Partnerin anlık durumunu belirler: Kayıtlı yer (Ev, İş vb.) > Arabada > Yürüyor / Koşuyor
-  Map<String, dynamic>? _getMovementOrPlaceStatus(AppUser p) {
+  Map<String, dynamic>? _getMovementOrPlaceStatus(AppUser p, WidgetRef ref) {
     // 1. Koordinat kontrolü: Şu an kayıtlı bir yerde mi? (<= 45m)
     if (p.lat != null && p.lng != null && savedPlaces.isNotEmpty) {
       for (final place in savedPlaces) {
@@ -2468,7 +2469,7 @@ class _PartnerCard extends StatelessWidget {
     } else if (speedKmH >= 1.5) {
       return {
         'emoji': '🚶',
-        'title': 'Yürüyor',
+        'title': ref.watch(stringsProvider).isEn ? 'Walking' : 'Yürüyor',
         'color': const Color(0xFFF59E0B),
         'bgColor': const Color(0xFFF59E0B).withValues(alpha: 0.14),
       };
@@ -2478,7 +2479,7 @@ class _PartnerCard extends StatelessWidget {
     if (p.lat != null && p.lng != null) {
       return {
         'emoji': '📍',
-        'title': 'Dışarıda',
+        'title': ref.watch(stringsProvider).isEn ? 'Outdoors' : 'Dışarıda',
         'color': const Color(0xFF8B5CF6),
         'bgColor': const Color(0xFF8B5CF6).withValues(alpha: 0.14),
       };
@@ -2497,16 +2498,16 @@ class _PartnerCard extends StatelessWidget {
     return null;
   }
 
-  String _lastSeen(AppUser p) {
+  String _lastSeen(AppUser p, WidgetRef ref) {
     if (_isOnline(p)) {
-      return 'Şimdi aktif';
+      return ref.watch(stringsProvider).lastSeenJustNow;
     }
-    if (p.lastActive == null) return 'Çevrimdışı';
+    if (p.lastActive == null) return ref.watch(stringsProvider).isEn ? 'Offline' : 'Çevrimdışı';
     final diff = DateTime.now().toUtc().difference(p.lastActive!.toUtc()).abs();
-    if (diff.inMinutes < 1) return '1 dk önce aktifti';
-    if (diff.inMinutes < 60) return '${diff.inMinutes} dk önce aktifti';
-    if (diff.inHours < 24) return '${diff.inHours} sa önce aktifti';
-    return '${diff.inDays} gün önce aktifti';
+    if (diff.inMinutes < 1) return ref.watch(stringsProvider).isEn ? 'Active 1m ago' : '1 dk önce aktifti';
+    if (diff.inMinutes < 60) return ref.watch(stringsProvider).isEn ? 'Active ${diff.inMinutes}m ago' : '${diff.inMinutes} dk önce aktifti';
+    if (diff.inHours < 24) return ref.watch(stringsProvider).isEn ? 'Active ${diff.inHours}h ago' : '${diff.inHours} sa önce aktifti';
+    return ref.watch(stringsProvider).isEn ? 'Active ${diff.inDays}d ago' : '${diff.inDays} gün önce aktifti';
   }
 
   Color _batteryColor(int? level) {
@@ -2531,7 +2532,7 @@ class _PartnerCard extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final p = partner;
 
@@ -2576,15 +2577,15 @@ class _PartnerCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Partnerin henüz bağlı değil',
+                  Text(ref.watch(stringsProvider).waitingForPartner,
                       style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
                   const SizedBox(height: 2),
-                  Text('Bağlanınca durumu burada görünür.',
+                  Text(ref.watch(stringsProvider).connectPartnerPrompt,
                       style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted)),
                 ],
               ),
             ),
-            TextButton(onPressed: onPair, child: const Text('Bağlan')),
+            TextButton(onPressed: onPair, child: Text(ref.watch(stringsProvider).pairNow)),
           ],
         ),
       );
@@ -2592,7 +2593,7 @@ class _PartnerCard extends StatelessWidget {
 
     final batColor = _batteryColor(p.batteryLevel);
     final batIcon = _batteryIcon(p.batteryLevel);
-    final dynamicStatus = _getMovementOrPlaceStatus(p);
+    final dynamicStatus = _getMovementOrPlaceStatus(p, ref);
 
     return _BentoCard(
       child: Column(
@@ -2671,8 +2672,8 @@ class _PartnerCard extends StatelessWidget {
                                 ),
                               ),
                               const SizedBox(width: 5),
-                              const Text(
-                                'Şimdi aktif',
+                              Text(
+                                ref.watch(stringsProvider).lastSeenJustNow,
                                 style: TextStyle(
                                   color: Color(0xFF10B981),
                                   fontWeight: FontWeight.w700,
@@ -2683,7 +2684,7 @@ class _PartnerCard extends StatelessWidget {
                           );
                         }
                         return Text(
-                          _lastSeen(p),
+                          _lastSeen(p, ref),
                           style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted),
                         );
                       },
@@ -2738,7 +2739,7 @@ class _PartnerCard extends StatelessWidget {
               Expanded(
                 child: _Stat(
                   icon: batIcon,
-                  label: 'Batarya',
+                  label: ref.watch(stringsProvider).batteryLevel,
                   value: p.batteryLevel == null ? '-' : '%${p.batteryLevel}',
                   color: batColor,
                   onTap: onBatteryTap,
@@ -2753,10 +2754,10 @@ class _PartnerCard extends StatelessWidget {
                           DateTime.now().hour < 6
                       ? Icons.nights_stay_rounded
                       : Icons.wb_sunny_rounded,
-                  label: p.city != null && p.city!.isNotEmpty ? p.city! : 'Hava Durumu',
+                  label: p.city != null && p.city!.isNotEmpty ? p.city! : (ref.watch(stringsProvider).isEn ? 'Weather' : 'Hava Durumu'),
                   value: (p.weather != null && p.weather!.isNotEmpty)
                       ? p.weather!
-                      : 'Hava durumu alınıyor...',
+                      : (ref.watch(stringsProvider).isEn ? 'Fetching weather...' : 'Hava durumu alınıyor...'),
                   color: LoveraColors.accentGold,
                   onTap: onWeatherTap,
                 ),
@@ -2816,12 +2817,12 @@ class _Stat extends StatelessWidget {
   }
 }
 
-class _ThinkingButton extends StatelessWidget {
+class _ThinkingButton extends ConsumerWidget {
   const _ThinkingButton({required this.onPressed});
   final VoidCallback onPressed;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
@@ -2854,7 +2855,7 @@ class _ThinkingButton extends StatelessWidget {
                     .scale(end: const Offset(1.25, 1.25), duration: 800.ms),
                 const SizedBox(width: 12),
                 Text(
-                  'Özledim 💕',
+                  ref.watch(stringsProvider).isEn ? 'Thinking of You 💕' : 'Özledim 💕',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         color: Colors.white,
                         fontWeight: FontWeight.w800,
