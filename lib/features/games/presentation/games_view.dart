@@ -153,6 +153,28 @@ class _GamesViewState extends ConsumerState<GamesView> {
     }
   }
 
+  Future<void> _cancelInvite({
+    required String? coupleId,
+    required dynamic partner,
+  }) async {
+    if (coupleId == null || partner == null) return;
+    final partnerUid = (partner.id ?? '').toString();
+    HapticFeedback.mediumImpact();
+    await DatabaseService().cancelGameRequest(
+      coupleId: coupleId,
+      gameType: 'love_questions',
+      partnerUid: partnerUid,
+    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(loc('Oyun daveti iptal edildi.', 'Game invite cancelled.')),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -370,6 +392,28 @@ class _GamesViewState extends ConsumerState<GamesView> {
                             ),
                           ),
                         ),
+                        if (isMyPendingInvite) ...[
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 44,
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.white,
+                                side: BorderSide(color: Colors.white.withValues(alpha: 0.6), width: 1.4),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              onPressed: () => _cancelInvite(coupleId: coupleId, partner: partner),
+                              icon: const Icon(Icons.close_rounded, size: 18),
+                              label: Text(
+                                loc('Daveti İptal Et', 'Cancel Invite'),
+                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.08),

@@ -2096,6 +2096,31 @@ class DatabaseService {
     }
   }
 
+  /// Gönderilen bekleyen oyun davetini iptal et
+  Future<void> cancelGameRequest({
+    required String coupleId,
+    required String gameType,
+    required String partnerUid,
+  }) async {
+    final myUid = uid;
+    if (myUid == null) return;
+    try {
+      await _db.collection('couples').doc(coupleId).collection('games').doc(gameType).update({
+        'status': 'cancelled',
+        'cancelledByUid': myUid,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('[$gameType] cancelGameRequest error: $e');
+    }
+
+    try {
+      await _db.collection('users').doc(partnerUid).set({
+        'pendingGameRequest': FieldValue.delete(),
+      }, SetOptions(merge: true));
+    } catch (_) {}
+  }
+
   /// Partnere giden genel oyun isteğini yanıtla (kabul / ret)
   Future<void> respondGameRequest({
     required String coupleId,
