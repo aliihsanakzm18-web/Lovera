@@ -154,6 +154,9 @@ service cloud.firestore {
       match /memory_albums/{id} {
         allow read, create, update, delete: if isCoupleMember(coupleId);
       }
+      match /stickers/{id} {
+        allow read, create, update, delete: if isCoupleMember(coupleId);
+      }
     }
 
     // ---------- reports (create-only) ----------

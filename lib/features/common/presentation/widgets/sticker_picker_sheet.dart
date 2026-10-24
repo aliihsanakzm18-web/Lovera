@@ -86,6 +86,7 @@ class _StickerPickerSheetState extends ConsumerState<StickerPickerSheet>
       );
 
       if (mounted) {
+        _tabController.animateTo(1);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(loc('Çıkartma koleksiyonuna eklendi! ✨', 'Sticker added to collection! ✨')),
@@ -129,6 +130,7 @@ class _StickerPickerSheetState extends ConsumerState<StickerPickerSheet>
 
     showDialog<void>(
       context: context,
+      useRootNavigator: true,
       builder: (dCtx) {
         return StatefulBuilder(
           builder: (ctx, setDialogState) {
@@ -219,27 +221,27 @@ class _StickerPickerSheetState extends ConsumerState<StickerPickerSheet>
                     ),
                     const SizedBox(height: 6),
                     SizedBox(
-                      height: 40,
-                      child: ListView.separated(
+                      height: 44,
+                      child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
-                        itemCount: emojiList.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 8),
-                        itemBuilder: (_, i) {
-                          final em = emojiList[i];
-                          final isSel = selectedEmoji == em;
-                          return GestureDetector(
-                            onTap: () => setDialogState(() => selectedEmoji = em),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: isSel ? LoveraColors.primary.withValues(alpha: 0.2) : Colors.transparent,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: isSel ? LoveraColors.primary : Colors.grey.withValues(alpha: 0.3)),
+                        child: Row(
+                          children: emojiList.map((em) {
+                            final isSel = selectedEmoji == em;
+                            return GestureDetector(
+                              onTap: () => setDialogState(() => selectedEmoji = em),
+                              child: Container(
+                                margin: const EdgeInsets.only(right: 8),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: isSel ? LoveraColors.primary.withValues(alpha: 0.2) : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: isSel ? LoveraColors.primary : Colors.grey.withValues(alpha: 0.3)),
+                                ),
+                                child: Center(child: Text(em, style: const TextStyle(fontSize: 20))),
                               ),
-                              child: Center(child: Text(em, style: const TextStyle(fontSize: 20))),
-                            ),
-                          );
-                        },
+                            );
+                          }).toList(),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -251,27 +253,27 @@ class _StickerPickerSheetState extends ConsumerState<StickerPickerSheet>
                     ),
                     const SizedBox(height: 6),
                     SizedBox(
-                      height: 34,
-                      child: ListView.separated(
+                      height: 36,
+                      child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
-                        itemCount: colorList.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 8),
-                        itemBuilder: (_, i) {
-                          final col = colorList[i];
-                          final isSel = stickerBgColor == col;
-                          return GestureDetector(
-                            onTap: () => setDialogState(() => stickerBgColor = col),
-                            child: Container(
-                              width: 32,
-                              height: 32,
-                              decoration: BoxDecoration(
-                                color: col,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: isSel ? Colors.white : Colors.transparent, width: 2.5),
+                        child: Row(
+                          children: colorList.map((col) {
+                            final isSel = stickerBgColor == col;
+                            return GestureDetector(
+                              onTap: () => setDialogState(() => stickerBgColor = col),
+                              child: Container(
+                                margin: const EdgeInsets.only(right: 8),
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: col,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: isSel ? Colors.white : Colors.transparent, width: 2.5),
+                                ),
                               ),
-                            ),
-                          );
-                        },
+                            );
+                          }).toList(),
+                        ),
                       ),
                     ),
                   ],
