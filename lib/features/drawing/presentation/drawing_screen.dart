@@ -13,6 +13,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/notification_service.dart';
 import '../../../core/services/widget_sync_service.dart';
+import '../../common/presentation/widgets/sticker_picker_sheet.dart';
 import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
 
@@ -44,6 +45,23 @@ class TextItem {
   });
 }
 
+/// Çizim Tuvaline Eklenen Çıkartma Öğesi
+class StickerCanvasItem {
+  final String id;
+  Offset offset;
+  final String content;
+  final bool isEmoji;
+  double size;
+
+  StickerCanvasItem({
+    required this.id,
+    required this.offset,
+    required this.content,
+    required this.isEmoji,
+    this.size = 72.0,
+  });
+}
+
 class DrawingScreen extends ConsumerStatefulWidget {
   const DrawingScreen({super.key});
 
@@ -57,6 +75,8 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
   List<DrawingPoint> _currentLine = [];
   final List<TextItem> _texts = [];
   int? _selectedTextIndex;
+  final List<StickerCanvasItem> _stickers = [];
+  int? _selectedStickerIndex;
 
   // Çizim Araçları
   Color _selectedColor = LoveraColors.primaryDark;
@@ -81,8 +101,12 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
   void _undo() {
     HapticFeedback.lightImpact();
     setState(() {
-      if (_texts.isNotEmpty) {
+      if (_stickers.isNotEmpty) {
+        _stickers.removeLast();
+        _selectedStickerIndex = null;
+      } else if (_texts.isNotEmpty) {
         _texts.removeLast();
+        _selectedTextIndex = null;
       } else if (_lines.isNotEmpty) {
         _lines.removeLast();
       }
@@ -90,13 +114,15 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
   }
 
   void _clearCanvas() {
-    if (_lines.isNotEmpty || _currentLine.isNotEmpty || _texts.isNotEmpty) {
+    if (_lines.isNotEmpty || _currentLine.isNotEmpty || _texts.isNotEmpty || _stickers.isNotEmpty) {
       HapticFeedback.mediumImpact();
       setState(() {
         _lines.clear();
         _currentLine.clear();
         _texts.clear();
         _selectedTextIndex = null;
+        _stickers.clear();
+        _selectedStickerIndex = null;
       });
     }
   }
@@ -650,6 +676,93 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                   },
                                 ),
                               ],
+
+                              // Tuvaldeki Çıkartmalar
+                              for (int i = 0; i < _stickers.length; i++) ...[
+                                Builder(
+                                  builder: (context) {
+                                    final sticker = _stickers[i];
+                                    final isSelected = !_isSending && _selectedStickerIndex == i;
+                                    return Positioned(
+                                      left: sticker.offset.dx,
+                                      top: sticker.offset.dy,
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          HapticFeedback.selectionClick();
+                                          setState(() {
+                                            _selectedStickerIndex = i;
+                                            _selectedTextIndex = null;
+                                          });
+                                        },
+                                        onPanUpdate: (details) {
+                                          setState(() {
+                                            sticker.offset += details.delta;
+                                            _selectedStickerIndex = i;
+                                            _selectedTextIndex = null;
+                                          });
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.all(4),
+                                          decoration: BoxDecoration(
+                                            border: isSelected
+                                                ? Border.all(color: LoveraColors.primaryDark, width: 2)
+                                                : null,
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Stack(
+                                            clipBehavior: Clip.none,
+                                            children: [
+                                              sticker.isEmoji
+                                                  ? Text(
+                                                      sticker.content,
+                                                      style: TextStyle(fontSize: sticker.size * 0.7),
+                                                    )
+                                                  : (sticker.content.startsWith('data:image') || sticker.content.length > 200)
+                                                      ? Image.memory(
+                                                          base64Decode(
+                                                            sticker.content.contains(',')
+                                                                ? sticker.content.split(',').last
+                                                                : sticker.content,
+                                                          ),
+                                                          width: sticker.size,
+                                                          height: sticker.size,
+                                                          fit: BoxFit.contain,
+                                                        )
+                                                      : Container(
+                                                          width: sticker.size,
+                                                          height: sticker.size,
+                                                          color: Colors.grey,
+                                                        ),
+                                              if (isSelected)
+                                                Positioned(
+                                                  top: -12,
+                                                  right: -12,
+                                                  child: GestureDetector(
+                                                    onTap: () {
+                                                      HapticFeedback.mediumImpact();
+                                                      setState(() {
+                                                        _stickers.removeAt(i);
+                                                        _selectedStickerIndex = null;
+                                                      });
+                                                    },
+                                                    child: Container(
+                                                      padding: const EdgeInsets.all(4),
+                                                      decoration: const BoxDecoration(
+                                                        color: Colors.redAccent,
+                                                        shape: BoxShape.circle,
+                                                      ),
+                                                      child: const Icon(Icons.close_rounded, size: 14, color: Colors.white),
+                                                    ),
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -744,6 +857,46 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                           ),
                         ),
 
+                        // Çıkartma (Sticker) Ekleme Aracı
+                        GestureDetector(
+                          onTap: () {
+                            final coupleId = ref.read(coupleIdProvider);
+                            if (coupleId == null || coupleId.isEmpty) return;
+                            HapticFeedback.lightImpact();
+                            StickerPickerSheet.show(
+                              context: context,
+                              coupleId: coupleId,
+                              onStickerSelected: (content, {required bool isEmoji}) {
+                                setState(() {
+                                  _stickers.add(
+                                    StickerCanvasItem(
+                                      id: DateTime.now().millisecondsSinceEpoch.toString(),
+                                      offset: const Offset(120, 120),
+                                      content: content,
+                                      isEmoji: isEmoji,
+                                    ),
+                                  );
+                                  _selectedStickerIndex = _stickers.length - 1;
+                                  _selectedTextIndex = null;
+                                });
+                              },
+                            );
+                          },
+                          child: Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 4),
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: _selectedStickerIndex != null ? LoveraColors.primaryDark.withValues(alpha: 0.33) : Colors.transparent,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: _selectedStickerIndex != null ? LoveraColors.primaryDark : Colors.grey.withValues(alpha: 0.3),
+                                width: 2,
+                              ),
+                            ),
+                            child: const Text('🏷️', style: TextStyle(fontSize: 18)),
+                          ),
+                        ),
+
                         // Renkler
                         ..._palette.map((color) {
                           final isSelected = !_isEraser && _selectedColor == color;
@@ -790,13 +943,15 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
 
                   const SizedBox(height: 12),
 
-                  // Fırça Kalınlığı veya Metin Boyutu Slider'ı
+                  // Fırça Kalınlığı, Metin Boyutu veya Çıkartma Boyutu Slider'ı
                   Row(
                     children: [
                       Icon(
-                        _isTextMode ? Icons.format_size_rounded : Icons.brush_rounded,
+                        _selectedStickerIndex != null
+                            ? Icons.photo_size_select_large_rounded
+                            : (_isTextMode ? Icons.format_size_rounded : Icons.brush_rounded),
                         size: 20,
-                        color: _isTextMode ? LoveraColors.primaryDark : LoveraColors.textMuted,
+                        color: (_selectedStickerIndex != null || _isTextMode) ? LoveraColors.primaryDark : LoveraColors.textMuted,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -807,37 +962,50 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                             overlayColor: LoveraColors.primaryDark.withValues(alpha: 0.2),
                             trackHeight: 3.5,
                           ),
-                          child: _isTextMode
+                          child: _selectedStickerIndex != null && _selectedStickerIndex! < _stickers.length
                               ? Slider(
-                                  value: _fontSize,
-                                  min: 12.0,
-                                  max: 48.0,
+                                  value: _stickers[_selectedStickerIndex!].size,
+                                  min: 36.0,
+                                  max: 180.0,
                                   onChanged: (val) {
                                     setState(() {
-                                      _fontSize = val;
-                                      if (_selectedTextIndex != null && _selectedTextIndex! < _texts.length) {
-                                        _texts[_selectedTextIndex!].fontSize = val;
-                                      }
+                                      _stickers[_selectedStickerIndex!].size = val;
                                     });
                                   },
                                 )
-                              : Slider(
-                                  value: _strokeWidth,
-                                  min: 2.0,
-                                  max: 18.0,
-                                  onChanged: (val) => setState(() => _strokeWidth = val),
-                                ),
+                              : (_isTextMode
+                                  ? Slider(
+                                      value: _fontSize,
+                                      min: 12.0,
+                                      max: 48.0,
+                                      onChanged: (val) {
+                                        setState(() {
+                                          _fontSize = val;
+                                          if (_selectedTextIndex != null && _selectedTextIndex! < _texts.length) {
+                                            _texts[_selectedTextIndex!].fontSize = val;
+                                          }
+                                        });
+                                      },
+                                    )
+                                  : Slider(
+                                      value: _strokeWidth,
+                                      min: 2.0,
+                                      max: 18.0,
+                                      onChanged: (val) => setState(() => _strokeWidth = val),
+                                    )),
                         ),
                       ),
                       Container(
-                        width: 32,
+                        width: 40,
                         alignment: Alignment.center,
                         child: Text(
-                          _isTextMode ? '${_fontSize.round()} pt' : '${_strokeWidth.round()}',
+                          _selectedStickerIndex != null && _selectedStickerIndex! < _stickers.length
+                              ? '${_stickers[_selectedStickerIndex!].size.round()} px'
+                              : (_isTextMode ? '${_fontSize.round()} pt' : '${_strokeWidth.round()}'),
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 12,
-                            color: _isTextMode ? LoveraColors.primaryDark : null,
+                            color: (_selectedStickerIndex != null || _isTextMode) ? LoveraColors.primaryDark : null,
                           ),
                         ),
                       ),

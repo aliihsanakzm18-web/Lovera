@@ -16,6 +16,7 @@ import '../../../core/services/background_slideshow_service.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/notification_service.dart';
 import '../../../core/services/widget_sync_service.dart';
+import '../../common/presentation/widgets/sticker_picker_sheet.dart';
 import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../common/presentation/widgets/background_source_selection_sheet.dart';
@@ -121,7 +122,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
     }
   }
 
-  Future<void> _send({String? type, String? mediaBase64}) async {
+  Future<void> _send({String? type, String? mediaBase64, String? customText}) async {
     final coupleId = ref.read(coupleIdProvider) ??
         ref.read(currentUserProvider)?.coupleId;
     final partnerUid = ref.read(partnerUidProvider) ??
@@ -138,7 +139,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
       return;
     }
 
-    final text = _textController.text.trim();
+    final text = customText ?? _textController.text.trim();
     final sendingLoc = _attachedLocation;
     if (text.isEmpty && mediaBase64 == null && type != 'heart' && sendingLoc == null) return;
 
@@ -183,6 +184,9 @@ class _ChatViewState extends ConsumerState<ChatView> {
         } else if (type == 'heart') {
           pushBodyTr = 'Sana bir kalp gönderdi ❤️';
           pushBodyEn = 'Sent you a heart ❤️';
+        } else if (type == 'sticker') {
+          pushBodyTr = 'Sana bir çıkartma gönderdi 🏷️';
+          pushBodyEn = 'Sent you a sticker 🏷️';
         } else if (mediaBase64 != null || type == 'image') {
           pushBodyTr = 'Bir fotoğraf gönderdi 📸';
           pushBodyEn = 'Sent a photo 📸';
@@ -1224,6 +1228,26 @@ class _ChatViewState extends ConsumerState<ChatView> {
                     tooltip: loc('Fotoğraf Gönder', 'Send Photo'),
                   ),
 
+                  // Çıkartma (Sticker) Butonu
+                  IconButton(
+                    icon: const Text('🏷️', style: TextStyle(fontSize: 20)),
+                    onPressed: () {
+                      if (coupleId == null || coupleId.isEmpty) return;
+                      StickerPickerSheet.show(
+                        context: context,
+                        coupleId: coupleId,
+                        onStickerSelected: (content, {required bool isEmoji}) {
+                          _send(
+                            type: 'sticker',
+                            customText: isEmoji ? content : '',
+                            mediaBase64: isEmoji ? null : content,
+                          );
+                        },
+                      );
+                    },
+                    tooltip: loc('Çıkartma Gönder', 'Send Sticker'),
+                  ),
+
                   // Canlı Çizim Tuvali Butonu
                   IconButton(
                     icon: Icon(Icons.brush_rounded, color: LoveraColors.primaryDark, size: 24),
@@ -1703,7 +1727,32 @@ class _ChatBubble extends ConsumerWidget {
                       if (message.text.isNotEmpty) const SizedBox(height: 6),
                     ],
 
-                    if (message.type == 'heart')
+                    if (message.type == 'sticker') ...[
+                      if (message.mediaBase64 != null && message.mediaBase64!.isNotEmpty)
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: _ChatImageBubble(
+                            messageId: message.id,
+                            mediaBase64: message.mediaBase64!,
+                          ),
+                        )
+                      else
+                        Text(
+                          message.text.isNotEmpty ? message.text : '🏷️',
+                          style: const TextStyle(fontSize: 48),
+                        ),
+                      if (message.text.isNotEmpty && message.mediaBase64 != null) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          message.text,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: textColor,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ] else if (message.type == 'heart')
                       const Text(
                         '❤️',
                         style: TextStyle(fontSize: 38),
