@@ -46,6 +46,7 @@ class _CoinFlip3DState extends State<CoinFlip3D> with SingleTickerProviderStateM
     _setupAnimations();
 
     if (widget.isFlipping) {
+      _setupAnimations();
       _startFlip();
     } else {
       // Eğer dönmüyorsa ama kazanan zaten belliyse doğrudan kazanan yüzü göster
@@ -61,8 +62,8 @@ class _CoinFlip3DState extends State<CoinFlip3D> with SingleTickerProviderStateM
   }
 
   void _setupAnimations() {
-    // Kazanan player2 ise açı tam (pi) radyan tek katı (örn: 11 * pi) olmalı -> cos(angle) = -1 -> Player 2
-    // Kazanan player1 ise açı çift (2*pi) radyan katı (örn: 12 * pi) olmalı -> cos(angle) = +1 -> Player 1
+    // Kazanan player2 ise açı tek (pi) radyan katı (örn: 11 * pi) olmalı -> cos(11*pi) = -1 -> Player 2
+    // Kazanan player1 ise açı çift (2*pi) radyan katı (örn: 12 * pi) olmalı -> cos(12*pi) = +1 -> Player 1
     final bool winnerIsPlayer2 = widget.winnerUid != null && widget.player2Uid != null
         ? (widget.winnerUid == widget.player2Uid)
         : (widget.winnerName != null && widget.winnerName == widget.player2Name);
@@ -113,6 +114,11 @@ class _CoinFlip3DState extends State<CoinFlip3D> with SingleTickerProviderStateM
     if (widget.isFlipping && !oldWidget.isFlipping) {
       _setupAnimations();
       _startFlip();
+    } else if (widget.isFlipping && oldWidget.isFlipping) {
+      // Eğer dönmeye devam ederken winnerUid gecikmeli olarak Firestore'dan geldiyse animasyonu güncelle
+      if (widget.winnerUid != oldWidget.winnerUid || widget.winnerName != oldWidget.winnerName) {
+        _setupAnimations();
+      }
     } else if (!widget.isFlipping &&
         (widget.winnerUid != oldWidget.winnerUid || widget.winnerName != oldWidget.winnerName) &&
         (widget.winnerUid != null || widget.winnerName != null)) {

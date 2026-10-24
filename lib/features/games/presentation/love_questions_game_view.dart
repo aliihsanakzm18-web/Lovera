@@ -193,6 +193,10 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
       gameType: 'love_questions',
       updates: {
         'step': 'flipping_coin',
+        'player1Uid': p1Uid,
+        'player1Name': p1Name,
+        'player2Uid': p2Uid,
+        'player2Name': p2Name,
         'coinWinnerUid': winnerUid,
         'coinWinnerName': winnerName,
         'turnUid': winnerUid,
@@ -278,12 +282,9 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
     final coupleId = ref.read(coupleIdProvider);
     final myUid = DatabaseService().uid;
     final myName = ref.read(userNameProvider);
-    final partner = ref.read(partnerProvider);
     final gameData = _lastGameData;
     if (coupleId == null || myUid == null || gameData == null) return;
 
-    final partnerUid = partner?.id.toString() ?? '';
-    final partnerName = partner?.name.toString() ?? 'Partnerin';
     final qId = gameData['activeQuestionId']?.toString() ?? '';
 
     setState(() => _isSubmittingAnswer = true);
@@ -331,16 +332,20 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
 
     answeredMap[qId] = completeAnswerEntry;
 
+    // Soruyu ben cevapladığıma göre, sıradaki yeni soruyu havuzdan seçme hakkı BANA (myUid) geçmeli!
     await DatabaseService().updateGameState(
       coupleId: coupleId,
       gameType: 'love_questions',
       updates: {
         'step': 'answering_question', // Cevap ekranda kalsın, iki taraf da okuyabilsin
-        'turnUid': partnerUid,        // Sıradaki soru sorma hakkı partnerde
-        'turnName': partnerName,
+        'turnUid': myUid,             // Sıradaki soruyu havuzdan seçme sırası cevaplayan kişide (Bende)
+        'turnName': myName.isNotEmpty ? myName : 'Ben',
         'activeQuestionId': qId,
         'lastAnsweredItem': completeAnswerEntry,
         'answeredMap': answeredMap,
+        'answeringUid': null,         // Kullanıcı cevap verdi, tekrar cevap yazamasın
+        'isReturnedQuestion': false,  // Yanıtlandı, iade durumu sıfırlandı
+        'lastAnsweredByUid': myUid,   // En son kimin cevapladığı kaydedilir
       },
     );
 
@@ -422,15 +427,16 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
         'answeringUid': partnerUid,
         'answeringName': partnerName,
         'turnUid': partnerUid,
+        'isReturnedQuestion': true,
       },
     );
 
     NotificationService().sendPushToPartner(
       partnerUid: partnerUid,
-      title: loc('Sıra Sende! Aynı Soruyu O da Sana Sordu 💌', 'Your Turn! Returned the same question 💌'),
+      title: loc('Aynı Soruyu Partnerin Sana Sordu! 💌', 'Partner Asked You The Same Question! 💌'),
       body: loc('$myName bu sorunun cevabını senin için de merak ediyor!', '$myName wants to know your answer to this question too!'),
-      titleTr: 'Sıra Sende! Aynı Soruyu O da Sana Sordu 💌',
-      titleEn: 'Your Turn! Returned the same question 💌',
+      titleTr: 'Aynı Soruyu Partnerin Sana Sordu! 💌',
+      titleEn: 'Partner Asked You The Same Question! 💌',
       bodyTr: '$myName bu sorunun cevabını senin için de merak ediyor!',
       bodyEn: '$myName wants to know your answer to this question too!',
       data: {'type': 'game_action', 'game': 'love_questions'},
@@ -439,6 +445,8 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
 
   Future<void> _finishQuestionAndProceed() async {
     final coupleId = ref.read(coupleIdProvider);
+    final myUid = DatabaseService().uid;
+    final myName = ref.read(userNameProvider);
     final gameData = _lastGameData;
     if (coupleId == null || gameData == null) return;
 
@@ -449,6 +457,8 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
       updates: {
         'step': 'picking_question',
         'activeQuestionId': null,
+        'turnUid': myUid,
+        'turnName': myName.isNotEmpty ? myName : 'Ben',
       },
     );
   }
@@ -636,6 +646,7 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
     final Map<String, dynamic> answeredMap = Map<String, dynamic>.from(gameData?['answeredMap'] ?? {});
 
     final bool isMyTurn = turnUid == myUid;
+    final bool isReturnedQuestion = gameData?['isReturnedQuestion'] == true;
     final bool amIAnswering = answeringUid == myUid && activeQuestionId.isNotEmpty;
 
     final String p1Uid = gameData?['player1Uid']?.toString() ?? (myUid ?? '');
@@ -716,6 +727,7 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
                 step: step,
                 isMyTurn: isMyTurn,
                 amIAnswering: amIAnswering,
+                isReturnedQuestion: isReturnedQuestion,
                 turnName: turnName,
                 askedByName: askedByName,
                 isDark: isDark,
@@ -727,6 +739,7 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
                     ? _buildActiveHeroQuestionCard(
                         gameData: gameData!,
                         amIAnswering: amIAnswering,
+                        isMyTurn: isMyTurn,
                         isDark: isDark,
                       )
                     : (step == 'coin_flip' || step == 'flipping_coin' || step == 'coin_result')
@@ -766,6 +779,7 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
     required String step,
     required bool isMyTurn,
     required bool amIAnswering,
+    required bool isReturnedQuestion,
     required String turnName,
     required String askedByName,
     required bool isDark,
@@ -778,6 +792,14 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
       message = loc('İlk kim soru soracak? Yazı-tura atılıyor! 🪙', 'Who asks first? Flipping the coin! 🪙');
       bannerBg = const Color(0xFFFB8500);
       icon = Icons.casino_rounded;
+    } else if (isReturnedQuestion && amIAnswering) {
+      message = loc('Aynı soruyu partnerin sana sordu! 💌', 'Partner asked you the same question! 💌');
+      bannerBg = const Color(0xFFEC4899);
+      icon = Icons.swap_calls_rounded;
+    } else if (isReturnedQuestion && !amIAnswering) {
+      message = loc('Aynı soruyu partnerine sordun! Yanıtı bekleniyor... ⏳', 'You asked partner the same question! Awaiting answer... ⏳');
+      bannerBg = const Color(0xFF8B5CF6);
+      icon = Icons.hourglass_top_rounded;
     } else if (amIAnswering) {
       message = loc('Soru Sana Geldi! $askedByName cevabını bekliyor ✍️', 'Question for you! $askedByName awaits your answer ✍️');
       bannerBg = const Color(0xFFEC4899);
@@ -1084,6 +1106,7 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
   Widget _buildActiveHeroQuestionCard({
     required Map<String, dynamic> gameData,
     required bool amIAnswering,
+    required bool isMyTurn,
     required bool isDark,
   }) {
     final qText = loc(gameData['activeQuestionTr'] ?? '', gameData['activeQuestionEn'] ?? '');
@@ -1112,6 +1135,25 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
 
     final bool hasMyAnswer = answersList.any((a) => a['answeredByUid'] == myUid);
     final bool hasPartnerAnswer = answersList.any((a) => a['answeredByUid'] == partnerUid);
+
+    // Sıradaki soruya geçebilme hakkı kuralları:
+    // 1. Eğer bir taraf henüz soruyu cevaplamadıysa (yani cevap süreci devam ediyorsa veya iade edilmiş soru bekleniyorsa)
+    //    "Sıradaki Soruya Geç" kutusu HİÇ KİMSEYE gösterilmez!
+    // 2. Ancak aktif soru üzerinde cevaplama süreci tamamlandığında:
+    //    - Eğer "Aynı soruyu partnerine sor" yapıldıysa veya normal cevaplandıysa:
+    //      Soruyu EN SON cevaplayan kişi (lastAnsweredByUid) sıradaki yeni soruyu seçme hakkına sahiptir!
+    final bool isReturnedQuestion = gameData['isReturnedQuestion'] == true;
+    final bool isStillWaitingForAnswer = (gameData['answeringUid'] != null && gameData['answeringUid'].toString().isNotEmpty) || isReturnedQuestion;
+
+    final String lastAnsweredByUid = gameData['lastAnsweredByUid']?.toString() ?? (
+      answersList.isNotEmpty ? answersList.last['answeredByUid']?.toString() ?? '' : ''
+    );
+
+    final bool canIProceedToNext = !isStillWaitingForAnswer && (
+        lastAnsweredByUid.isNotEmpty
+            ? (lastAnsweredByUid == myUid) // Soruyu en son ben cevapladım -> sıradaki soruyu seçme hakkı BENDE
+            : isMyTurn
+    );
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
@@ -1159,7 +1201,9 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
-                        '$askedBy sordu 💌',
+                        gameData['isReturnedQuestion'] == true
+                            ? loc('Aynı soru partnerinden döndü 🔄', 'Same question returned 🔄')
+                            : '$askedBy sordu 💌',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 11.5,
@@ -1203,11 +1247,13 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          amIAnswering
-                              ? loc('Bu soruyu sen cevaplıyorsun ✍️', 'You are answering this question ✍️')
-                              : (answersList.isNotEmpty
-                                  ? loc('Cevaplar sorunun altında mühürlendi 💖', 'Answers sealed below 💖')
-                                  : loc('$answeringBy şu an yanıtını yazıyor... 💬', '$answeringBy is writing an answer... 💬')),
+                          amIAnswering && !hasMyAnswer
+                              ? (gameData['isReturnedQuestion'] == true
+                                  ? loc('Aynı soruyu partnerin sana sordu! Cevabını yaz ✍️', 'Partner asked you the same question! Write your answer ✍️')
+                                  : loc('Bu soruyu sen cevaplıyorsun ✍️', 'You are answering this question ✍️'))
+                              : (!hasPartnerAnswer && answersList.isNotEmpty
+                                  ? loc('$answeringBy şu an yanıtını yazıyor... ⏳', '$answeringBy is writing their answer... ⏳')
+                                  : loc('Cevaplar sorunun altında mühürlendi 💖', 'Answers sealed below 💖')),
                           style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
                         ),
                       ),
@@ -1304,6 +1350,7 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
             const SizedBox(height: 14),
 
             // SIRA SIRASI VE AYNI SORUYU PARTNERE SORMA BUTONLARI
+            if (answersList.isNotEmpty && (!isStillWaitingForAnswer || (hasMyAnswer && !hasPartnerAnswer && !isReturnedQuestion)))
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -1313,14 +1360,15 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
               ),
               child: Column(
                 children: [
-                  // "Aynı soruyu sende ona sor" butonu (Eğer ben cevapladıysam ve partner henüz cevaplamadıysa)
-                  if (hasMyAnswer && !hasPartnerAnswer) ...[
+                  // "Aynı soruyu sende ona sor" butonu (Eğer ben cevapladıysam ve partner henüz cevaplamadıysa ve şu an birine iade edilmediyse)
+                  if (hasMyAnswer && !hasPartnerAnswer && !isReturnedQuestion) ...[
                     SizedBox(
                       width: double.infinity,
                       height: 46,
                       child: FilledButton.icon(
                         style: FilledButton.styleFrom(
                           backgroundColor: const Color(0xFFEC4899),
+                          elevation: 3,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                         ),
                         onPressed: () => _askBackSameQuestion(gameData),
@@ -1330,36 +1378,59 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
                           style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13.5),
                         ),
                       ),
-                    ),
+                    ).animate(onPlay: (controller) => controller.repeat(reverse: true))
+                     .shimmer(duration: 1800.ms, color: Colors.white24)
+                     .scale(begin: const Offset(0.98, 0.98), end: const Offset(1.02, 1.02), duration: 1200.ms),
                     const SizedBox(height: 8),
                   ],
 
                   // Soruyu tamamlama ve havuzdan yeni soru seçme butonları
-                  SizedBox(
-                    width: double.infinity,
-                    height: 44,
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: LoveraColors.primary,
-                        side: BorderSide(color: LoveraColors.primary.withValues(alpha: 0.5)),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  // SADECE aktif soruya cevap beklenmiyorken ve sıra kendine geçmişken gösterilir
+                  if (canIProceedToNext)
+                    SizedBox(
+                      width: double.infinity,
+                      height: 44,
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: LoveraColors.primary,
+                          side: BorderSide(color: LoveraColors.primary.withValues(alpha: 0.5), width: 1.5),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        onPressed: _finishQuestionAndProceed,
+                        icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+                        label: Text(
+                          loc('Sıradaki Soruya Geç 🚀', 'Proceed to Next Question 🚀'),
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
+                        ),
                       ),
-                      onPressed: _finishQuestionAndProceed,
-                      icon: const Icon(Icons.arrow_forward_rounded, size: 18),
-                      label: Text(
-                        loc('Sıradaki Soruya Geç 🚀', 'Proceed to Next Question 🚀'),
-                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
+                    ).animate().fadeIn(duration: 350.ms).slideY(begin: 0.1)
+                  else if (!isStillWaitingForAnswer)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.hourglass_empty_rounded, size: 16, color: LoveraColors.textMuted),
+                          const SizedBox(width: 6),
+                          Text(
+                            loc('Sıradaki soruyu partnerin seçecek...', 'Your partner will pick the next question...'),
+                            style: TextStyle(
+                              color: LoveraColors.textMuted,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ),
+                    ).animate(onPlay: (controller) => controller.repeat(reverse: true)).fadeIn(duration: 800.ms),
                 ],
               ),
             ),
             const SizedBox(height: 20),
           ],
 
-          // 2. CEVAP YAZMA FORMU
-          if (amIAnswering) ...[
+          // 2. CEVAP YAZMA FORMU (Kullanıcı zaten cevap vermediyse ve cevaplama sırası ondaysa)
+          if (amIAnswering && !hasMyAnswer) ...[
             Container(
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
@@ -1375,7 +1446,9 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    loc('Cevabını Yaz 💖', 'Write Your Answer 💖'),
+                    gameData['isReturnedQuestion'] == true
+                        ? loc('Aynı Soruyu Partnerin Sana Sordu! 💖', 'Partner Asked You The Same Question! 💖')
+                        : loc('Cevabını Yaz 💖', 'Write Your Answer 💖'),
                     style: TextStyle(
                       color: isDark ? Colors.white : LoveraColors.textDark,
                       fontWeight: FontWeight.w800,
@@ -1435,7 +1508,7 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
                 ],
               ),
             ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.08),
-          ] else if (answersList.isEmpty) ...[
+          ] else if (answersList.isEmpty || (!hasPartnerAnswer && hasMyAnswer)) ...[
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
