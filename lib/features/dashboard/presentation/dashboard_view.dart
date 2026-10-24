@@ -493,10 +493,10 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
     DeviceService().startContinuousLocationTracking();
     NotificationService().updateFcmTokenInFirestore();
 
-    // İlk açılışta veya geri dönüldüğünde aktif widget slideshow varsa timer'ını canlandır
+    // İlk açılışta veya geri dönüldüğünde aktif widget ve sohbet slideshow varsa buluttan eşitle ve canlandır
     final coupleId = ref.read(coupleIdProvider) ?? ref.read(currentUserProvider)?.coupleId;
     if (coupleId != null && coupleId.isNotEmpty) {
-      BackgroundSlideshowService().getConfig('widget').then((wCfg) {
+      BackgroundSlideshowService().getConfig('widget', coupleId: coupleId).then((wCfg) {
         if (wCfg.isEnabled) {
           DatabaseService().getMemoriesOnce(coupleId).then((mems) {
             BackgroundSlideshowService().startWidgetTimer(
@@ -507,6 +507,8 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
           });
         }
       });
+      // Sohbet döngüsünü de buluttan kontrol et
+      BackgroundSlideshowService().getConfig('chat', coupleId: coupleId);
     }
 
     // Periyodik olarak durumu kontrol et (yalnızca pil/konum değiştiyse yazılır)

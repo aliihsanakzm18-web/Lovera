@@ -78,10 +78,10 @@ class _ChatViewState extends ConsumerState<ChatView> {
     // Sohbete girildiğinde widget üzerindeki mesajları derhal temizle
     WidgetSyncService.clearWidgetMessages();
 
-    // Eğer aktif bir chat slideshow konfigürasyonu varsa sohbet açıldığında döngüyü sürdür
+    // Eğer aktif bir chat slideshow konfigürasyonu varsa (veya bulutta ayarlandıysa) döngüyü sürdür
     final cId = ref.read(coupleIdProvider) ?? ref.read(currentUserProvider)?.coupleId;
     if (cId != null && cId.isNotEmpty) {
-      BackgroundSlideshowService().getConfig('chat').then((cfg) {
+      BackgroundSlideshowService().getConfig('chat', coupleId: cId).then((cfg) {
         if (cfg.isEnabled && mounted) {
           DatabaseService().getMemoriesOnce(cId).then((mems) {
             if (mounted) {

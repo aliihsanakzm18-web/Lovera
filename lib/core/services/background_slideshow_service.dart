@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
+import 'database_service.dart';
 import 'widget_sync_service.dart';
 
 /// Arka plan otomatik döngü yapılandırması
@@ -64,28 +67,81 @@ class BackgroundSlideshowService {
   final ValueNotifier<String?> currentChatBgUrl = ValueNotifier<String?>(null);
   final ValueNotifier<String?> currentWidgetBgPath = ValueNotifier<String?>(null);
 
-  /// Yapılandırmayı kaydet
-  Future<void> saveConfig(String target, SlideshowConfig config) async {
+  /// Yapılandırmayı kaydet (Hem yerel SharedPreferences hem de Bulut Firestore senkronizasyonu)
+  Future<void> saveConfig(String target, SlideshowConfig config, {String? coupleId}) async {
     final prefs = await SharedPreferences.getInstance();
     final key = target == 'chat' ? _keyChatConfig : _keyWidgetConfig;
     await prefs.setString(key, jsonEncode(config.toJson()));
-  }
 
-  /// Yapılandırmayı oku
-  Future<SlideshowConfig> getConfig(String target) async {
-    final prefs = await SharedPreferences.getInstance();
-    final key = target == 'chat' ? _keyChatConfig : _keyWidgetConfig;
-    final str = prefs.getString(key);
-    if (str == null || str.isEmpty) return const SlideshowConfig();
+    // Bulut senkronizasyonu
     try {
-      return SlideshowConfig.fromJson(jsonDecode(str) as Map<String, dynamic>);
-    } catch (_) {
-      return const SlideshowConfig();
+      final uid = FirebaseAuth.instance.currentUser?.uid ?? prefs.getString('saved_uid');
+      final cId = coupleId ?? prefs.getString('saved_couple_id');
+
+      if (target == 'chat' && cId != null && cId.isNotEmpty) {
+        // Sohbet döngüsü çiftin ortak belgesine kaydedilir (Partner ve tüm cihazlar görür)
+        await FirebaseFirestore.instance.collection('couples').doc(cId).set({
+          'chatSlideshowConfig': config.toJson(),
+          'chatSlideshowUpdatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } else if (target == 'widget' && uid != null && uid.isNotEmpty) {
+        // Widget döngüsü kullanıcının hesabına kaydedilir (Hesap değiştirince/farklı cihazda giriş yapınca gelir)
+        await FirebaseFirestore.instance.collection('users').doc(uid).set({
+          'widgetSlideshowConfig': config.toJson(),
+          'widgetSlideshowUpdatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
+    } catch (e) {
+      debugPrint('[BackgroundSlideshowService] saveConfig cloud sync error: $e');
     }
   }
 
+  /// Yapılandırmayı oku (Önce yerel, yoksa veya güncelse buluttan çeker)
+  Future<SlideshowConfig> getConfig(String target, {String? coupleId}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = target == 'chat' ? _keyChatConfig : _keyWidgetConfig;
+    final str = prefs.getString(key);
+    SlideshowConfig localConfig = const SlideshowConfig();
+    if (str != null && str.isNotEmpty) {
+      try {
+        localConfig = SlideshowConfig.fromJson(jsonDecode(str) as Map<String, dynamic>);
+      } catch (_) {}
+    }
+
+    // Bulut kontrolü
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid ?? prefs.getString('saved_uid');
+      final cId = coupleId ?? prefs.getString('saved_couple_id');
+
+      if (target == 'chat' && cId != null && cId.isNotEmpty) {
+        final doc = await FirebaseFirestore.instance.collection('couples').doc(cId).get();
+        if (doc.exists && doc.data() != null) {
+          final cloudMap = doc.data()!['chatSlideshowConfig'] as Map<String, dynamic>?;
+          if (cloudMap != null) {
+            final cloudConfig = SlideshowConfig.fromJson(cloudMap);
+            // Eğer buluttaki durum yerelden farklıysa yereli güncelle
+            await prefs.setString(key, jsonEncode(cloudConfig.toJson()));
+            return cloudConfig;
+          }
+        }
+      } else if (target == 'widget' && uid != null && uid.isNotEmpty) {
+        final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+        if (doc.exists && doc.data() != null) {
+          final cloudMap = doc.data()!['widgetSlideshowConfig'] as Map<String, dynamic>?;
+          if (cloudMap != null) {
+            final cloudConfig = SlideshowConfig.fromJson(cloudMap);
+            await prefs.setString(key, jsonEncode(cloudConfig.toJson()));
+            return cloudConfig;
+          }
+        }
+      }
+    } catch (_) {}
+
+    return localConfig;
+  }
+
   /// Döngüyü tamamen durdur
-  Future<void> stopSlideshow(String target) async {
+  Future<void> stopSlideshow(String target, {String? coupleId}) async {
     if (target == 'chat') {
       _chatTimer?.cancel();
       _chatTimer = null;
@@ -93,7 +149,7 @@ class BackgroundSlideshowService {
       _widgetTimer?.cancel();
       _widgetTimer = null;
     }
-    await saveConfig(target, const SlideshowConfig(isEnabled: false));
+    await saveConfig(target, const SlideshowConfig(isEnabled: false), coupleId: coupleId);
   }
 
   /// Sohbet döngüsünü başlat
@@ -111,8 +167,10 @@ class BackgroundSlideshowService {
 
     // İlk görseli uygula
     int idx = config.currentIndex % filtered.length;
-    onBgChanged(filtered[idx].imageUrl);
-    currentChatBgUrl.value = filtered[idx].imageUrl;
+    final initialImg = filtered[idx].imageUrl;
+    onBgChanged(initialImg);
+    currentChatBgUrl.value = initialImg;
+    DatabaseService().updateChatBackground(coupleId, initialImg, 'Otomatik Döngü');
 
     _chatTimer = Timer.periodic(Duration(seconds: config.intervalSeconds), (timer) async {
       final latestConfig = await getConfig('chat');
@@ -136,7 +194,11 @@ class BackgroundSlideshowService {
           currentIndex: nextIdx,
           lastRotatedAt: DateTime.now().millisecondsSinceEpoch,
         ),
+        coupleId: coupleId,
       );
+
+      // Ayrıca ortak Firestore sohbet arka planını da güncelle ki iki telefon anında aynı fotoğrafı görsün!
+      await DatabaseService().updateChatBackground(coupleId, nextImg, 'Otomatik Döngü');
 
       onBgChanged(nextImg);
       currentChatBgUrl.value = nextImg;
@@ -220,6 +282,8 @@ class BackgroundSlideshowService {
             lastRotatedAt: now,
           ),
         );
+        // Ayrıca kullanıcının hesabındaki widgetBgUrl'i de güncelle ki diğer cihazdan giriş yapılınca da anında gelsin!
+        await DatabaseService().updateWidgetBg(nextItem.imageUrl);
         currentWidgetBgPath.value = targetPath;
         debugPrint('[BackgroundSlideshow] Widget rotated to index: $nextIdx');
       } catch (e) {
