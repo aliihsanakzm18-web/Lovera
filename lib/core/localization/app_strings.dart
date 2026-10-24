@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -7,12 +8,31 @@ enum AppLanguage {
   en,
 }
 
+/// Global aktif dil. UI dışı kodda (servisler, bildirimler) da kullanılabilir.
+AppLanguage currentAppLanguage = AppLanguage.tr;
+
+/// Global çeviri yardımcısı: seçili dile göre Türkçe veya İngilizce metni döner.
+/// Kullanım: Text(loc('Merhaba', 'Hello'))
+String loc(String tr, String en) => currentAppLanguage == AppLanguage.en ? en : tr;
+
+/// Kayıtlı mekan başlıklarını (Evim, İş Yeri vb.) seçili dile çevirir.
+String localizePlaceTitle(String raw) => AppStrings(currentAppLanguage).translatePlaceTitle(raw);
+
+/// Arka plan isolate'larında dili SharedPreferences'tan yükler.
+Future<void> loadAppLanguageFromPrefs() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    currentAppLanguage = prefs.getString('app_language') == 'en' ? AppLanguage.en : AppLanguage.tr;
+  } catch (_) {}
+}
+
 final appLanguageProvider = StateNotifierProvider<AppLanguageNotifier, AppLanguage>((ref) {
   return AppLanguageNotifier();
 });
 
 class AppLanguageNotifier extends StateNotifier<AppLanguage> {
-  AppLanguageNotifier() : super(AppLanguage.tr) {
+  AppLanguageNotifier() : super(currentAppLanguage) {
     _loadLanguage();
   }
 
@@ -21,18 +41,30 @@ class AppLanguageNotifier extends StateNotifier<AppLanguage> {
       final prefs = await SharedPreferences.getInstance();
       final langCode = prefs.getString('app_language');
       if (langCode == 'en') {
+        currentAppLanguage = AppLanguage.en;
         state = AppLanguage.en;
       } else {
+        currentAppLanguage = AppLanguage.tr;
         state = AppLanguage.tr;
       }
     } catch (_) {}
   }
 
-  Future<void> setLanguage(AppLanguage language) async {
+  Future<void> setLanguage(AppLanguage language, {bool syncToCloud = true}) async {
+    currentAppLanguage = language;
     state = language;
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('app_language', language == AppLanguage.en ? 'en' : 'tr');
+      final langStr = language == AppLanguage.en ? 'en' : 'tr';
+      await prefs.setString('app_language', langStr);
+      if (syncToCloud) {
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        if (uid != null && uid.isNotEmpty) {
+          FirebaseFirestore.instance.collection('users').doc(uid).set({
+            'language': langStr,
+          }, SetOptions(merge: true)).catchError((_) {});
+        }
+      }
     } catch (_) {}
   }
 }
@@ -50,6 +82,8 @@ class AppStrings {
   String get delete => isEn ? 'Delete' : 'Sil';
   String get edit => isEn ? 'Edit' : 'Düzenle';
   String get update => isEn ? 'Update' : 'Güncelle';
+  String get create => isEn ? 'Create' : 'Oluştur';
+  String get add => isEn ? 'Add' : 'Ekle';
   String get error => isEn ? 'Error' : 'Hata';
   String get retry => isEn ? 'Retry' : 'Tekrar Dene';
   String get success => isEn ? 'Success' : 'Başarılı';
@@ -62,6 +96,7 @@ class AppStrings {
   String get reject => isEn ? 'Decline' : 'Reddet';
   String get later => isEn ? 'Later' : 'Daha Sonra';
   String get notNow => isEn ? 'Not Now' : 'Şimdi değil';
+  String get skipForNow => isEn ? 'Skip for Now' : 'Şimdilik Atla';
   String get yes => isEn ? 'Yes' : 'Evet';
   String get no => isEn ? 'No' : 'Hayır';
   String get partner => isEn ? 'Partner' : 'Partnerin';
@@ -95,6 +130,8 @@ class AppStrings {
   String get themeDarkSub => isEn ? 'Eye-comforting midnight theme' : 'Göz yormayan asil gece teması';
   String get themeSystem => isEn ? 'System Default' : 'Sistem Varsayılanı';
   String get themeSystemSub => isEn ? 'Follows device system appearance' : 'Telefonunuzun ayarlarına göre otomatik değişir';
+  String get colorPalettesTitle => isEn ? 'Color Palette Packages' : 'Renk Paketleri';
+  String get colorPalettesSubtitle => isEn ? 'Dual-tone harmonious themes tailored for couples' : 'Çiftlere özel uyumlu çift renkli temalar';
   String get widgetSettings => isEn ? 'Widget Settings' : 'Widget Ayarları';
   String get notifications => isEn ? 'Notifications' : 'Bildirimler';
   String get privacySecurity => isEn ? 'Privacy and Security' : 'Gizlilik ve Güvenlik';
@@ -163,6 +200,9 @@ class AppStrings {
       : 'Hesabınızı silmek eşleşmenizi, anılarınızı, sohbetlerinizi ve tüm verilerinizi kalıcı olarak yok eder. Bu işlem geri alınamaz!';
 
   // Dashboard
+  String greeting(String name) => isEn 
+      ? (name.isEmpty ? 'Hello 👋' : 'Hello $name 👋')
+      : (name.isEmpty ? 'Merhaba 👋' : 'Merhaba $name 👋');
   String get distanceTogether => isEn ? 'Together' : 'Yan yanasınız';
   String get distanceAway => isEn ? 'away' : 'uzakta';
   String get dayCounter => isEn ? 'days together' : 'gündür birliktesiniz';
@@ -188,13 +228,52 @@ class AppStrings {
   String get liveMap => isEn ? 'Live Map' : 'Canlı Harita';
   String get memoriesAlbum => isEn ? 'Memories & Photos' : 'Anılar & Fotoğraflar';
   String get gamesArcade => isEn ? 'Games & Fun' : 'Oyunlar & Eğlence';
-  String get chargeReminderTitle => isEn ? '🔋 Battery Reminder!' : '🔋 Şarj Hatırlatması!';
-  String chargeReminderBody(String name) => isEn ? '$name reminds you to charge your phone 💕' : '$name şarjını doldurmanı hatırlatıyor 💕';
-  String get takeChargerTitle => isEn ? '🔌 Don\'t Forget Your Charger!' : '🔌 Şarjını Unutma!';
-  String takeChargerBody(String name) => isEn ? '$name reminds you to take your charger along 🔌💕' : '$name şarj aletini yanına almanı hatırlatıyor 🔌💕';
+
+  // Battery BottomSheet
+  String batterySheetTitle(String partnerName) => isEn ? "$partnerName's Battery Status" : "$partnerName'in Şarj Durumu";
+  String batteryPercentageDesc(int level, String status) => isEn ? "$level% · $status" : "%$level · $status";
+  String get batteryAutoUpdateDesc => isEn 
+      ? "Your partner's device battery level updates automatically in the background."
+      : "Partnerinizin cihaz şarj seviyesi arka planda otomatik olarak güncellenir.";
+  String get sendChargeReminderBtn => isEn ? 'Send Charge Reminder ⚡' : 'Şarjını Doldur Hatırlatması Gönder ⚡';
+  String get takeChargerBtn => isEn ? 'Take Your Charger 🔌' : 'Şarjını Yanına Al 🔌';
+  String get takePowerbankBtn => isEn ? 'Take Your Powerbank 🔋' : "Powerbank'ini Yanına Al 🔋";
+  String chargeReminderSentMsg(String partnerName) => isEn 
+      ? 'Charge reminder sent to $partnerName! 🔋⚡' 
+      : '$partnerName\'in telefonuna "Şarjını Doldur" hatırlatması gönderildi! 🔋⚡';
+  String takeChargerSentMsg(String partnerName) => isEn 
+      ? 'Take charger reminder sent to $partnerName! 🔌' 
+      : '$partnerName\'in telefonuna "Şarjını Yanına Al" hatırlatması gönderildi! 🔌';
+  String takePowerbankSentMsg(String partnerName) => isEn 
+      ? 'Powerbank reminder sent to $partnerName! 🔋' 
+      : '$partnerName\'in telefonuna "Powerbank\'ini Yanına Al" hatırlatması gönderildi! 🔋';
+
+  // Battery Levels Status Texts
+  String get batteryFullText => isEn ? 'Fully Charged' : 'Dopdolu';
+  String get batterySufficientText => isEn ? 'Sufficient Level' : 'Yeterli Seviyede';
+  String get batteryDrainingText => isEn ? 'Getting Low' : 'Azalıyor';
+  String get batteryLowText => isEn ? 'Low Battery' : 'Düşük Pil';
+  String get batteryCriticalText => isEn ? 'Critical Level!' : 'Kritik Seviyede!';
+
+  // Weather BottomSheet
+  String weatherSheetTitle(String partnerName) => isEn ? "$partnerName's Weather" : "$partnerName'in Hava Durumu";
+  String get weatherSheetDesc => isEn 
+      ? 'Send a sweet caring reminder to your sweetheart based on their weather:' 
+      : 'Partnerine hava durumuna özel tatlı bir ilgi ve bakım hatırlatması gönder:';
   String get weatherColdPrompt => isEn ? 'Dress Warmly Sweetheart ❄️' : 'Hava Soğuk, Sıkı Giyin Birtanem ❄️';
   String get weatherRainPrompt => isEn ? 'Take an Umbrella Darling 🌧️' : 'Yanına Şemsiye Al Aşkım 🌧️';
   String get weatherWaterPrompt => isEn ? 'Stay Hydrated & Drink Water 💧' : 'Güneş Çarpmasın, Bol Su İç 💧';
+  String weatherNotifSentMsg(String partnerName) => isEn 
+      ? 'Notification sent to $partnerName! 💕' 
+      : '$partnerName\'in telefonuna bildirim gönderildi! 💕';
+
+  // Weather Condition Names
+  String get weatherClear => isEn ? 'Clear' : 'Açık';
+  String get weatherSunny => isEn ? 'Sunny' : 'Güneşli';
+  String get weatherCloudy => isEn ? 'Cloudy' : 'Bulutlu';
+  String get weatherPartlyCloudy => isEn ? 'Partly Cloudy' : 'Parçalı Bulutlu';
+  String get weatherRainy => isEn ? 'Rainy' : 'Yağmurlu';
+  String get weatherSnowy => isEn ? 'Snowy' : 'Karlı';
 
   // Chat
   String get typeMessage => isEn ? 'Type a sweet message...' : 'Tatlı bir mesaj yazın...';
@@ -221,14 +300,94 @@ class AppStrings {
   String get placeSavedSuccess => isEn ? 'Place saved to map permanently! ✨' : 'Mekan haritaya kalıcı olarak eklendi! ✨';
   String get meetRequestSent => isEn ? 'Meeting request sent 💌' : 'Buluşma talebi gönderildi 💌';
 
-  // Memories
-  String get addMemory => isEn ? 'Add Memory 📸' : 'Fotoğraf Ekle 📸';
-  String get createAlbum => isEn ? 'New Album 📁' : 'Yeni Klasör Ekle 📁';
-  String get noMemoriesYet => isEn ? 'No memories saved yet. Capture and store your precious moments together! 📷' : 'Henüz anı eklenmedi. Birlikte geçirdiğiniz güzel anları burada ölümsüzleştirin! 📷';
-  String get selectPhotos => isEn ? 'Select Photos' : 'Fotoğrafları Seç';
-  String get albumTitle => isEn ? 'Album Name' : 'Albüm Başlığı';
-  String get albumDescription => isEn ? 'Description / Story' : 'Açıklama / Hikaye';
-  String get deleteMemoryConfirm => isEn ? 'Are you sure you want to delete this memory?' : 'Bu anıyı silmek istediğinize emin misiniz?';
+  // Memories & Gallery
+  String get memoriesTitle => isEn ? 'Shared Memory Album' : 'Ortak Anı Albümü';
+  String get allMemoriesTab => isEn ? 'All Memories' : 'Tüm Anılar';
+  String get albumsTab => isEn ? 'Memory Groups (Albums)' : 'Anı Grupları (Klasörler)';
+  String get addMemoryBtn => isEn ? 'Add Memory' : 'Anı Ekle';
+  String get addMemoryDialogTitle => isEn ? 'Add Photo to Album 💕' : 'Albüme Fotoğraf Ekle 💕';
+  String get addMemoryDialogDesc => isEn ? 'How would you like to add photos?' : 'Nasıl fotoğraf eklemek istersiniz?';
+  String get addPhotoOption => isEn ? 'Add Photo 📸' : 'Fotoğraf Ekle 📸';
+  String get addPhotoOptionSub => isEn ? 'Choose one or multiple photos from gallery' : 'Galeriden bir veya birden fazla fotoğraf seçin';
+  String get newAlbumOption => isEn ? 'New Album 📁' : 'Yeni Klasör Ekle 📁';
+  String get newAlbumOptionSub => isEn ? 'Create a memory album (Name, story, location, date)' : 'Yeni bir anı klasörü oluşturun (İsim, hikaye, mekan, tarih)';
+  String get noMemoriesTitle => isEn ? 'No Memories Added Yet' : 'Henüz Bir Anı Eklenmedi';
+  String get noMemoriesDesc => isEn 
+      ? 'Upload photos you took together individually or in bulk via the "Add Memory" button! ✨'
+      : 'Birlikte çekildiğiniz fotoğrafları tekli veya toplu olarak "Anı Ekle" butonundan albümünüze yükleyin! ✨';
+  String get noAlbumsTitle => isEn ? 'No Memory Groups Yet' : 'Henüz Bir Anı Grubu Yok';
+  String get noAlbumsDesc => isEn 
+      ? 'Create a new album now to organize special moments (trips, dates, getaways)! 📁💕'
+      : 'Birlikte olduğunuz özel anları (tatil, gezi, buluşma) düzenlemek için hemen yeni bir klasör oluşturun! 📁💕';
+  String get newAlbumBtn => isEn ? 'New Album ✨' : 'Yeni Klasör Ekle ✨';
+  String get pairForMemories => isEn ? 'You must pair with your partner before adding memories! 💕' : 'Anı eklemek için önce partnerinle eşleşmelisin! 💕';
+  String get sendToChatBtn => isEn ? 'Send to Chat' : 'Sohbete At';
+  String get sentToChatBtn => isEn ? 'Sent to Chat ✓' : 'Sohbete Atıldı';
+  String get downloadBtn => isEn ? 'Download' : 'İndir';
+  String get downloadedBtn => isEn ? 'Downloaded ✓' : 'İndirildi ✓';
+  String get editMemoryTitle => isEn ? 'Edit Memory Details ✏️' : 'Anı Bilgilerini Düzenle ✏️';
+  String get memoryStoryLabel => isEn ? 'Story / Note of this memory 💕' : 'Bu anının hikayesi / notunuz 💕';
+  String get memoryLocationLabel => isEn ? 'Location / City (Optional)' : 'Mekan / Şehir (İsteğe bağlı)';
+  String get deleteMemoryTitle => isEn ? 'Delete Memory' : 'Anıyı Sil';
+  String get deleteMemoryDesc => isEn 
+      ? 'This photo will be permanently deleted from your shared album. Are you sure?'
+      : 'Bu fotoğraf ortak anı albümünüzden kalıcı olarak silinecek. Emin misiniz?';
+  String get memorySavedSuccess => isEn ? 'Memory saved to shared album! 💕📸' : 'Anınız ortak albüme başarıyla kaydedildi! 💕📸';
+  String get memoryDeletedMsg => isEn ? 'Memory deleted from album.' : 'Anı albümden silindi.';
+
+  // Milestones
+  String get milestonesTitle => isEn ? 'Special Days' : 'Özel Günler';
+  String get addMilestoneBtn => isEn ? 'Add Special Day' : 'Yeni gün ekle';
+  String get noMilestonesTitle => isEn ? 'No special days yet' : 'Henüz özel gün yok';
+  String get noMilestonesDesc => isEn 
+      ? 'Add your anniversary, birthday, or first getaway. Automatically saved to cloud.'
+      : 'Yıldönümü, doğum günü ya da ilk tatilinizi ekleyin. Firebase bulutuna anında kaydedilir.';
+  String get daysLeftTag => isEn ? 'DAYS LEFT' : 'GÜN KALDI';
+  String get specialTag => isEn ? 'Special' : 'Özel';
+  String get systemMilestoneTooltip => isEn ? 'This special day is fixed and cannot be deleted.' : 'Bu özel gün sabittir, silinemez veya düzenlenemez.';
+  String get deleteMilestoneTitle => isEn ? 'Delete Special Day' : 'Özel Günü Sil';
+  String deleteMilestoneDesc(String title) => isEn 
+      ? 'Are you sure you want to delete "$title"?' 
+      : '"$title" özel gününü silmek istediğinize emin misiniz?';
+  String get editMilestoneTitle => isEn ? 'Edit Special Day' : 'Özel Günü Düzenle';
+  String get newMilestoneTitle => isEn ? 'New Special Day' : 'Yeni Özel Gün';
+  String get milestoneTitleLabel => isEn ? 'Title (e.g. Our Anniversary, First Trip)' : 'Başlık (ör: Yıldönümümüz, İlk Tatil)';
+  String get milestoneTitleRequired => isEn ? 'Title is required' : 'Başlık zorunludur';
+  String get tapToChangeDate => isEn ? 'Tap to change date' : 'Tarihi değiştirmek için dokunun';
+
+  // Milestone default title translation helper
+  String translateMilestoneTitle(String rawTitle) {
+    if (!isEn) return rawTitle;
+    final lower = rawTitle.toLowerCase();
+    if (lower.contains('sevgililer günü') || lower.contains('sevgililer gunu')) return 'Valentine\'s Day 💘';
+    if (lower.contains('kadınlar günü') || lower.contains('kadinlar gunu')) return 'Women\'s Day 💐';
+    if (lower.contains('erkekler günü') || lower.contains('erkekler gunu')) return 'Men\'s Day 👔';
+    if (lower.contains('yıldönüm') || lower.contains('yildonum')) return 'Our Anniversary 💕';
+    if (lower.contains('doğum günü') || lower.contains('dogum gunu')) {
+      return rawTitle.replaceAll('Doğum Günü', 'Birthday').replaceAll('doğum günü', 'Birthday');
+    }
+    return rawTitle;
+  }
+
+  // Saved place title helper (Evim -> Home, İş / Ofis -> Work, etc.)
+  String translatePlaceTitle(String raw) {
+    if (!isEn) return raw;
+    final map = {
+      'Evim': 'Home',
+      'Ev': 'Home',
+      'Aşkımın Evi': 'Partner\'s Home',
+      'İş / Ofis': 'Work / Office',
+      'İş Yeri': 'Workplace',
+      'Ofis': 'Office',
+      'Okul': 'School',
+      'Kampüs': 'Campus',
+      'Spor Salonu': 'Gym',
+      'Favori Kafe': 'Favorite Cafe',
+      'Özel Yerimiz': 'Our Special Place',
+      'Diğer': 'Other',
+    };
+    return map[raw] ?? raw;
+  }
 
   // Games
   String get gamesTitle => isEn ? 'Couples Arcade' : 'Oyunlar & Eğlence';
@@ -245,10 +404,31 @@ class AppStrings {
 
   // Drawing Canvas
   String get drawingTitle => isEn ? 'Live Drawing Canvas' : 'Canlı Çizim Tuvali';
+  String get drawingTip => isEn 
+      ? "Your drawing appears instantly on your partner's home screen widget" 
+      : "Çizimin partnerinin ana ekran widget'ında anında belirir";
   String get clearCanvas => isEn ? 'Clear' : 'Temizle';
-  String get sendToPartner => isEn ? 'Send to Partner 💜' : 'Partnere Gönder 💜';
-  String get drawingSent => isEn ? 'Drawing sent to your partner\'s home screen! 💜' : 'Çizimin gönderildi! Partnerinin ana ekranında görünecek 💜';
-  String get reportDrawing => isEn ? 'Report Content' : 'Çizimi Şikayet Et';
+  String get sendToPartnerBtn => isEn ? 'Send to Partner 💜' : 'Partnere Gönder 💜';
+  String get sendingToWidget => isEn ? 'Sending to Widget...' : 'Widget\'a Gönderiliyor...';
+  String get drawingSentSuccess => isEn 
+      ? 'Drawing sent! It will show up on your partner\'s home screen 💜' 
+      : 'Çizimin gönderildi! Partnerinin ana ekranında görünecek 💜';
+  String get drawSomethingFirst => isEn 
+      ? 'Please draw or type something before sending! 🎨' 
+      : 'Lütfen göndermeden önce bir şeyler çizin veya yazı ekleyin! 🎨';
+  String get pairToDrawWarning => isEn 
+      ? 'You must be paired to send drawings 💕' 
+      : 'Çizim gönderebilmek için eşleşmiş olmanız gerekir 💕';
+  String get reportDrawing => isEn ? 'Report Drawing' : 'Çizimi Şikayet Et';
+  String get reportDrawingDesc => isEn 
+      ? 'If you believe inappropriate content was shared on the shared canvas, you can report it. Reported content is reviewed within 24 hours.' 
+      : 'Ortak çizim alanında uygunsuz bir içerik paylaşıldığını düşünüyorsanız güvenlik ekibimize bildirebilirsiniz. Bildirilen içerikler 24 saat içinde incelenir.';
+  String get reportSubmittedMsg => isEn 
+      ? 'Your report has been sent to our security team. It will be reviewed within 24 hours.' 
+      : 'Şikayetiniz güvenlik ekibimize iletildi. 24 saat içinde incelenecektir.';
+  String get addTextTitle => isEn ? 'Add Text' : 'Yazı Ekle';
+  String get editTextTitle => isEn ? 'Edit Text' : 'Yazıyı Düzenle';
+  String get textHint => isEn ? 'Type your note or message...' : 'Mesajını veya notunu yaz...';
 
   // Pairing View
   String get pairingTitle => isEn ? 'Pair with Partner' : 'Partnerinle Eşleş';

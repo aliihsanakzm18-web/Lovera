@@ -1,3 +1,4 @@
+import '../../../core/localization/app_strings.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
@@ -103,8 +104,8 @@ class _ChatViewState extends ConsumerState<ChatView> {
 
     if (coupleId == null || coupleId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Mesaj gönderebilmek için önce partnerinizle eşleşmeniz gerekir.'),
+        SnackBar(
+          content: Text(loc('Mesaj gönderebilmek için önce partnerinizle eşleşmeniz gerekir.', 'You must pair with your partner before sending messages.')),
           backgroundColor: LoveraColors.primary,
         ),
       );
@@ -117,7 +118,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
 
     final replyText = _replyingTo?.text;
     final replySender = _replyingTo != null
-        ? (_replyingTo!.senderId == DatabaseService().uid ? 'Sen' : (ref.read(partnerProvider)?.name ?? 'Partner'))
+        ? (_replyingTo!.senderId == DatabaseService().uid ? loc('Sen', 'You') : (ref.read(partnerProvider)?.name ?? loc('Partner', 'Partner')))
         : null;
 
     _textController.clear();
@@ -145,17 +146,23 @@ class _ChatViewState extends ConsumerState<ChatView> {
 
       // Partnerin telefonuna bildirim gönder
       if (partnerUid != null && partnerUid.isNotEmpty) {
-        String pushBody;
+        String pushBodyTr;
+        String pushBodyEn;
         if (text.isNotEmpty) {
-          pushBody = sendingLoc != null ? '📍 ${sendingLoc.title}: $text' : text;
+          pushBodyTr = sendingLoc != null ? '📍 ${sendingLoc.title}: $text' : text;
+          pushBodyEn = sendingLoc != null ? '📍 ${sendingLoc.title}: $text' : text;
         } else if (sendingLoc != null) {
-          pushBody = '📍 Konum paylaştı: ${sendingLoc.title}';
+          pushBodyTr = '📍 Konum paylaştı: ${sendingLoc.title}';
+          pushBodyEn = '📍 Shared location: ${sendingLoc.title}';
         } else if (type == 'heart') {
-          pushBody = 'Sana bir kalp gönderdi ❤️';
+          pushBodyTr = 'Sana bir kalp gönderdi ❤️';
+          pushBodyEn = 'Sent you a heart ❤️';
         } else if (mediaBase64 != null || type == 'image') {
-          pushBody = 'Bir fotoğraf gönderdi 📸';
+          pushBodyTr = 'Bir fotoğraf gönderdi 📸';
+          pushBodyEn = 'Sent a photo 📸';
         } else {
-          pushBody = 'Yeni bir mesaj gönderdi 💬';
+          pushBodyTr = 'Yeni bir mesaj gönderdi 💬';
+          pushBodyEn = 'Sent a new message 💬';
         }
         final dataPayload = <String, String>{
           'type': 'chat_message',
@@ -164,17 +171,23 @@ class _ChatViewState extends ConsumerState<ChatView> {
         if (msgId != null) {
           dataPayload['messageId'] = msgId;
         }
+        final effectiveSenderTr = myName.isNotEmpty ? myName : 'Partnerin';
+        final effectiveSenderEn = myName.isNotEmpty ? myName : 'Partner';
         NotificationService().sendPushToPartner(
           partnerUid: partnerUid,
-          title: myName.isNotEmpty ? myName : 'Partnerin',
-          body: pushBody,
+          title: loc(effectiveSenderTr, effectiveSenderEn),
+          body: loc(pushBodyTr, pushBodyEn),
+          titleTr: effectiveSenderTr,
+          titleEn: effectiveSenderEn,
+          bodyTr: pushBodyTr,
+          bodyEn: pushBodyEn,
           data: dataPayload,
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Mesaj gönderilemedi: $e')),
+          SnackBar(content: Text(loc('Mesaj gönderilemedi: $e', 'Could not send message: $e'))),
         );
       }
     } finally {
@@ -201,7 +214,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fotoğraf seçilemedi: $e')),
+          SnackBar(content: Text(loc('Fotoğraf seçilemedi: $e', 'Could not select photo: $e'))),
         );
       }
     } finally {
@@ -248,17 +261,17 @@ class _ChatViewState extends ConsumerState<ChatView> {
                       color: LoveraColors.primary.withValues(alpha: 0.12),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.wallpaper_rounded, color: LoveraColors.primary, size: 22),
+                    child: Icon(Icons.wallpaper_rounded, color: LoveraColors.primary, size: 22),
                   ),
-                  title: const Text(
-                    'Sohbet Arka Planını Değiştir',
+                  title: Text(
+                    loc('Sohbet Arka Planını Değiştir', 'Change Chat Background'),
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 16,
                     ),
                   ),
                   subtitle: Text(
-                    'İkiniz için de ortak sohbet arka planı belirler',
+                    loc('İkiniz için de ortak sohbet arka planı belirler', 'Sets a shared chat background for both of you'),
                     style: TextStyle(
                       fontSize: 12,
                       color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
@@ -282,8 +295,8 @@ class _ChatViewState extends ConsumerState<ChatView> {
                         await DatabaseService().updateChatBackground(coupleId, base64Str, myName.isEmpty ? 'Partnerin' : myName);
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Sohbet arka planı iki taraf için de güncellendi! 💕'),
+                            SnackBar(
+                              content: Text(loc('Sohbet arka planı iki taraf için de güncellendi! 💕', 'Chat background updated for both sides! 💕')),
                               backgroundColor: LoveraColors.secondary,
                               behavior: SnackBarBehavior.floating,
                             ),
@@ -294,7 +307,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text('Fotoğraf eklenirken bir hata oluştu: $e'),
+                            content: Text(loc('Fotoğraf eklenirken bir hata oluştu: $e', 'Error adding photo: $e')),
                             backgroundColor: const Color(0xFFEF4444),
                           ),
                         );
@@ -313,8 +326,8 @@ class _ChatViewState extends ConsumerState<ChatView> {
                       ),
                       child: const Icon(Icons.image_not_supported_rounded, color: Colors.orange, size: 22),
                     ),
-                    title: const Text(
-                      'Arka Planı Sıfırla',
+                    title: Text(
+                      loc('Arka Planı Sıfırla', 'Reset Background'),
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
                         color: Colors.orange,
@@ -322,7 +335,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                       ),
                     ),
                     subtitle: Text(
-                      'Özel arka planı kaldırıp varsayılan temaya döner',
+                      loc('Özel arka planı kaldırıp varsayılan temaya döner', 'Removes custom background and restores default theme'),
                       style: TextStyle(
                         fontSize: 12,
                         color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
@@ -334,8 +347,8 @@ class _ChatViewState extends ConsumerState<ChatView> {
                         await DatabaseService().removeChatBackground(coupleId);
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Sohbet arka planı varsayılana döndürüldü.'),
+                            SnackBar(
+                              content: Text(loc('Sohbet arka planı varsayılana döndürüldü.', 'Chat background restored to default.')),
                               behavior: SnackBarBehavior.floating,
                             ),
                           );
@@ -344,7 +357,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('Hata oluştu: $e'),
+                              content: Text(loc('Hata oluştu: $e', 'An error occurred: $e')),
                               backgroundColor: const Color(0xFFEF4444),
                             ),
                           );
@@ -363,8 +376,8 @@ class _ChatViewState extends ConsumerState<ChatView> {
                     ),
                     child: const Icon(Icons.delete_sweep_rounded, color: Color(0xFFEF4444), size: 22),
                   ),
-                  title: const Text(
-                    'Sohbeti Temizle',
+                  title: Text(
+                    loc('Sohbeti Temizle', 'Clear Chat'),
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
                       color: Color(0xFFEF4444),
@@ -372,7 +385,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                     ),
                   ),
                   subtitle: Text(
-                    'Tüm mesaj geçmişini iki taraf için de siler',
+                    loc('Tüm mesaj geçmişini iki taraf için de siler', 'Deletes all message history for both sides'),
                     style: TextStyle(
                       fontSize: 12,
                       color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
@@ -384,14 +397,14 @@ class _ChatViewState extends ConsumerState<ChatView> {
                       context: context,
                       builder: (dCtx) => AlertDialog(
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                        title: const Text('Sohbeti Temizle'),
-                        content: const Text(
-                          'Bu sohbetteki tüm mesajlar kalıcı olarak silinecek. Emin misiniz?',
+                        title: Text(loc('Sohbeti Temizle', 'Clear Chat')),
+                        content: Text(
+                          loc('Bu sohbetteki tüm mesajlar kalıcı olarak silinecek. Emin misiniz?', 'All messages in this chat will be deleted permanently. Are you sure?'),
                         ),
                         actions: [
                           TextButton(
                             onPressed: () => Navigator.pop(dCtx, false),
-                            child: const Text('Vazgeç'),
+                            child: Text(loc('Vazgeç', 'Cancel')),
                           ),
                           FilledButton(
                             style: FilledButton.styleFrom(
@@ -399,7 +412,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                               foregroundColor: Colors.white,
                             ),
                             onPressed: () => Navigator.pop(dCtx, true),
-                            child: const Text('Temizle'),
+                            child: Text(loc('Temizle', 'Clear')),
                           ),
                         ],
                       ),
@@ -410,9 +423,9 @@ class _ChatViewState extends ConsumerState<ChatView> {
                         await DatabaseService().clearChat(coupleId);
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Sohbet başarıyla temizlendi 🧹'),
-                              backgroundColor: Color(0xFF10B981),
+                            SnackBar(
+                              content: Text(loc('Sohbet başarıyla temizlendi 🧹', 'Chat cleared successfully 🧹')),
+                              backgroundColor: const Color(0xFF10B981),
                               behavior: SnackBarBehavior.floating,
                             ),
                           );
@@ -421,7 +434,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('Sohbet temizlenirken hata oluştu: $e'),
+                              content: Text(loc('Sohbet temizlenirken hata oluştu: $e', 'Error while clearing chat: $e')),
                               backgroundColor: const Color(0xFFEF4444),
                               behavior: SnackBarBehavior.floating,
                             ),
@@ -442,8 +455,8 @@ class _ChatViewState extends ConsumerState<ChatView> {
                     ),
                     child: const Icon(Icons.block_rounded, color: Colors.orange, size: 22),
                   ),
-                  title: const Text(
-                    'Kullanıcıyı Engelle',
+                  title: Text(
+                    loc('Kullanıcıyı Engelle', 'Block User'),
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
                       color: Colors.orange,
@@ -451,7 +464,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                     ),
                   ),
                   subtitle: Text(
-                    'Partnerinizle eşleşmeyi ve iletişimi sonlandırır',
+                    loc('Partnerinizle eşleşmeyi ve iletişimi sonlandırır', 'Ends pairing and communication with your partner'),
                     style: TextStyle(
                       fontSize: 12,
                       color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
@@ -463,14 +476,14 @@ class _ChatViewState extends ConsumerState<ChatView> {
                       context: context,
                       builder: (dCtx) => AlertDialog(
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                        title: const Text('Kullanıcıyı Engelle'),
-                        content: const Text(
-                          'Bu kullanıcıyı engellemek ve eşleşmeyi derhal sonlandırmak istediğinize emin misiniz? Karşılıklı konum ve mesajlaşma anında durdurulur.',
+                        title: Text(loc('Kullanıcıyı Engelle', 'Block User')),
+                        content: Text(
+                          loc('Bu kullanıcıyı engellemek ve eşleşmeyi derhal sonlandırmak istediğinize emin misiniz? Karşılıklı konum ve mesajlaşma anında durdurulur.', 'Are you sure you want to block this user and immediately end the connection? Location sharing and messaging will stop.'),
                         ),
                         actions: [
                           TextButton(
                             onPressed: () => Navigator.pop(dCtx, false),
-                            child: const Text('Vazgeç'),
+                            child: Text(loc('Vazgeç', 'Cancel')),
                           ),
                           FilledButton(
                             style: FilledButton.styleFrom(
@@ -478,7 +491,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                               foregroundColor: Colors.white,
                             ),
                             onPressed: () => Navigator.pop(dCtx, true),
-                            child: const Text('Engelle ve Ayrıl'),
+                            child: Text(loc('Engelle ve Ayrıl', 'Block & Leave')),
                           ),
                         ],
                       ),
@@ -493,8 +506,8 @@ class _ChatViewState extends ConsumerState<ChatView> {
                         );
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Kullanıcı engellendi ve eşleşme sonlandırıldı.'),
+                            SnackBar(
+                              content: Text(loc('Kullanıcı engellendi ve eşleşme sonlandırıldı.', 'User blocked and connection ended.')),
                               backgroundColor: Colors.orange,
                               behavior: SnackBarBehavior.floating,
                             ),
@@ -504,7 +517,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('İşlem başarısız: $e'),
+                              content: Text(loc('İşlem başarısız: $e', 'Operation failed: $e')),
                               backgroundColor: const Color(0xFFEF4444),
                               behavior: SnackBarBehavior.floating,
                             ),
@@ -603,7 +616,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                 if (coupleId != null && coupleId.isNotEmpty)
                   IconButton(
                     icon: const Icon(Icons.more_vert_rounded),
-                    tooltip: 'Seçenekler',
+                    tooltip: loc('Seçenekler', 'Options'),
                     onPressed: () => _openChatOptionsSheet(coupleId, currentChatBg: chatBackgroundUrl),
                   ),
               ],
@@ -658,7 +671,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                                 child: _getAvatarProvider(pAvatar) == null
                                     ? Text(
                                         pName.isNotEmpty ? pName[0].toUpperCase() : '?',
-                                        style: const TextStyle(fontWeight: FontWeight.w800, color: LoveraColors.primary),
+                                        style: TextStyle(fontWeight: FontWeight.w800, color: LoveraColors.primary),
                                       )
                                     : null,
                               ),
@@ -674,7 +687,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                                     color: const Color(0xFF10B981),
                                     shape: BoxShape.circle,
                                     border: Border.all(
-                                      color: isDark ? const Color(0xFF161822) : Colors.white,
+                                      color: isDark ? LoveraColors.darkSurface : Colors.white,
                                       width: 2,
                                     ),
                                   ),
@@ -699,8 +712,8 @@ class _ChatViewState extends ConsumerState<ChatView> {
                                   builder: (context, snap) {
                                     final isTyping = snap.data == true;
                                     if (isTyping) {
-                                      return const Text(
-                                        'yazıyor...',
+                                      return Text(
+                                        loc('yazıyor...', 'typing...'),
                                         style: TextStyle(
                                           fontSize: 12,
                                           color: LoveraColors.primary,
@@ -710,20 +723,20 @@ class _ChatViewState extends ConsumerState<ChatView> {
                                     }
                                     String statusSubtitle;
                                     if (isLiveOnline) {
-                                      statusSubtitle = 'Çevrimiçi';
+                                      statusSubtitle = loc('Çevrimiçi', 'Online');
                                     } else if (pLastActive != null) {
                                       final diff = DateTime.now().toUtc().difference(pLastActive.toUtc()).abs();
                                       if (diff.inMinutes < 1) {
-                                        statusSubtitle = '1 dk önce aktifti';
+                                        statusSubtitle = loc('1 dk önce aktifti', 'Active 1m ago');
                                       } else if (diff.inMinutes < 60) {
-                                        statusSubtitle = '${diff.inMinutes} dk önce aktifti';
+                                        statusSubtitle = loc('${diff.inMinutes} dk önce aktifti', 'Active ${diff.inMinutes}m ago');
                                       } else if (diff.inHours < 24) {
-                                        statusSubtitle = '${diff.inHours} sa önce aktifti';
+                                        statusSubtitle = loc('${diff.inHours} sa önce aktifti', 'Active ${diff.inHours}h ago');
                                       } else {
-                                        statusSubtitle = '${diff.inDays} gün önce aktifti';
+                                        statusSubtitle = loc('${diff.inDays} gün önce aktifti', 'Active ${diff.inDays}d ago');
                                       }
                                     } else {
-                                      statusSubtitle = 'Çevrimdışı';
+                                      statusSubtitle = loc('Çevrimdışı', 'Offline');
                                     }
 
                                     return Text(
@@ -737,8 +750,8 @@ class _ChatViewState extends ConsumerState<ChatView> {
                                   },
                                 )
                               else
-                                const Text(
-                                  'Eşleşme bekleniyor',
+                                Text(
+                                  loc('Eşleşme bekleniyor', 'Waiting for pairing'),
                                   style: TextStyle(fontSize: 12, color: LoveraColors.textMuted),
                                 ),
                             ],
@@ -748,7 +761,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                     );
                   },
                 )
-              : const Text('Partner bekleniyor', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              : Text(loc('Partner bekleniyor', 'Waiting for partner'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
         ),
         body: Stack(
           children: [
@@ -777,7 +790,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                           ? [
                               Colors.black.withValues(alpha: 0.25),
                               Colors.black.withValues(alpha: 0.35),
-                              const Color(0xFF0F1015).withValues(alpha: 0.50),
+                              LoveraColors.darkBg.withValues(alpha: 0.50),
                             ]
                           : [
                               Colors.black.withValues(alpha: 0.04),
@@ -807,17 +820,17 @@ class _ChatViewState extends ConsumerState<ChatView> {
                                 color: LoveraColors.primarySoft.withValues(alpha: 0.15),
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(Icons.chat_bubble_outline_rounded,
+                              child: Icon(Icons.chat_bubble_outline_rounded,
                                   size: 48, color: LoveraColors.primary),
                             ),
                             const SizedBox(height: 20),
                             Text(
-                              'Özel Sohbet Alanınız',
+                              loc('Özel Sohbet Alanınız', 'Your Private Chat Space'),
                               style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
                             ),
                             const SizedBox(height: 8),
-                            const Text(
-                              'Partnerinizle eşleştiğinizde tüm mesajlarınız, fotoğraflarınız ve hisleriniz burada anlık olarak akacaktır.',
+                            Text(
+                              loc('Partnerinizle eşleştiğinizde tüm mesajlarınız, fotoğraflarınız ve hisleriniz burada anlık olarak akacaktır.', 'Once paired with your partner, all your messages, photos, and feelings will flow here in real time.'),
                               textAlign: TextAlign.center,
                               style: TextStyle(color: LoveraColors.textMuted, height: 1.45),
                             ),
@@ -852,16 +865,16 @@ class _ChatViewState extends ConsumerState<ChatView> {
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Icon(Icons.mark_chat_unread_rounded,
+                                Icon(Icons.mark_chat_unread_rounded,
                                     size: 54, color: LoveraColors.primarySoft),
                                 const SizedBox(height: 12),
                                 Text(
-                                  'Henüz mesaj yok',
+                                  loc('Henüz mesaj yok', 'No messages yet'),
                                   style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                                 ),
                                 const SizedBox(height: 6),
-                                const Text(
-                                  'İlk mesajı atarak sohbeti başlatın! 💌',
+                                Text(
+                                  loc('İlk mesajı atarak sohbeti başlatın! 💌', 'Send the first message to start the conversation! 💌'),
                                   style: TextStyle(color: LoveraColors.textMuted),
                                 ),
                               ],
@@ -929,8 +942,8 @@ class _ChatViewState extends ConsumerState<ChatView> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _replyingTo!.senderId == myUid ? 'Sen' : (partner?.name ?? 'Partner'),
-                            style: const TextStyle(
+                            _replyingTo!.senderId == myUid ? loc('Sen', 'You') : (partner?.name ?? loc('Partner', 'Partner')),
+                            style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
                               color: LoveraColors.primary,
@@ -938,7 +951,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            _replyingTo!.type == 'image' ? '📷 Fotoğraf' : _replyingTo!.text,
+                            _replyingTo!.type == 'image' ? loc('📷 Fotoğraf', '📷 Photo') : _replyingTo!.text,
                             style: TextStyle(
                               fontSize: 13,
                               color: isDark ? Colors.white70 : Colors.black87,
@@ -985,8 +998,8 @@ class _ChatViewState extends ConsumerState<ChatView> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'İliştirilen Konum',
+                          Text(
+                            loc('İliştirilen Konum', 'Attached Location'),
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
@@ -1042,20 +1055,20 @@ class _ChatViewState extends ConsumerState<ChatView> {
                 children: [
                   // Fotoğraf Ekle Butonu
                   IconButton(
-                    icon: const Icon(Icons.photo_rounded, color: LoveraColors.secondary, size: 24),
+                    icon: Icon(Icons.photo_rounded, color: LoveraColors.secondary, size: 24),
                     onPressed: _pickImage,
-                    tooltip: 'Fotoğraf Gönder',
+                    tooltip: loc('Fotoğraf Gönder', 'Send Photo'),
                   ),
 
                   // Canlı Çizim Tuvali Butonu
                   IconButton(
-                    icon: const Icon(Icons.brush_rounded, color: Color(0xFFA78BFA), size: 24),
+                    icon: Icon(Icons.brush_rounded, color: LoveraColors.primaryDark, size: 24),
                     onPressed: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(builder: (_) => const DrawingScreen()),
                       );
                     },
-                    tooltip: 'Çizim Yap ve Gönder',
+                    tooltip: loc('Çizim Yap ve Gönder', 'Draw & Send'),
                   ),
 
                   // Metin Alanı
@@ -1064,7 +1077,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                       decoration: BoxDecoration(
                         color: isDark
                             ? const Color(0xFF1B1D28)
-                            : const Color(0xFFF1F3F7),
+                            : LoveraColors.lightSurfaceAlt,
                         borderRadius: BorderRadius.circular(24),
                         border: Border.all(
                           color: isDark
@@ -1073,19 +1086,31 @@ class _ChatViewState extends ConsumerState<ChatView> {
                           width: 0.8,
                         ),
                       ),
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: TextField(
                         controller: _textController,
+                        keyboardAppearance: isDark ? Brightness.dark : Brightness.light,
                         onChanged: (val) => _onTextChanged(val, coupleId),
                         textCapitalization: TextCapitalization.sentences,
                         maxLines: 4,
                         minLines: 1,
                         decoration: InputDecoration(
-                          hintText: _attachedLocation != null ? 'Konum hakkında mesaj yaz...' : 'Mesaj yaz...',
-                          hintStyle: const TextStyle(color: LoveraColors.textMuted, fontSize: 14),
-                          border: InputBorder.none,
+                          filled: false,
+                          hintText: _attachedLocation != null ? loc('Konum hakkında mesaj yaz...', 'Type a note about location...') : loc('Mesaj yaz...', 'Type a message...'),
+                          hintStyle: TextStyle(color: LoveraColors.textMuted, fontSize: 14),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide.none,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide.none,
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide(color: LoveraColors.primary, width: 1.5),
+                          ),
                           isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                         ),
                       ),
                     ),
@@ -1098,6 +1123,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                     valueListenable: _textController,
                     builder: (context, val, _) {
                       final hasText = val.text.trim().isNotEmpty || _attachedLocation != null;
+                      final palette = ref.watch(themePaletteProvider);
                       return GestureDetector(
                         onTap: (hasText && !_isSending) ? () => _send() : null,
                         child: AnimatedOpacity(
@@ -1107,12 +1133,12 @@ class _ChatViewState extends ConsumerState<ChatView> {
                             width: 42,
                             height: 42,
                             decoration: BoxDecoration(
-                              gradient: LoveraColors.primaryGradient,
+                              gradient: palette.gradient,
                               shape: BoxShape.circle,
                               boxShadow: hasText
                                   ? [
                                       BoxShadow(
-                                        color: LoveraColors.primary.withValues(alpha: 0.35),
+                                        color: palette.primary.withValues(alpha: 0.35),
                                         blurRadius: 8,
                                         offset: const Offset(0, 3),
                                       ),
@@ -1142,7 +1168,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
   }
 }
 
-class _ChatBubble extends StatelessWidget {
+class _ChatBubble extends ConsumerWidget {
   const _ChatBubble({
     required this.message,
     required this.isMe,
@@ -1160,8 +1186,10 @@ class _ChatBubble extends StatelessWidget {
   final void Function(double lat, double lng, String title)? onLocationTap;
 
   @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final palette = ref.watch(themePaletteProvider);
     final timeStr =
         '${message.createdAt.hour.toString().padLeft(2, '0')}:${message.createdAt.minute.toString().padLeft(2, '0')}';
 
@@ -1172,14 +1200,12 @@ class _ChatBubble extends StatelessWidget {
 
     if (isMe) {
       if (hasCustomBg) {
-        // Fotoğraf varken gönderilen mesaj: WhatsApp/Telegram tarzı belirgin, canlı ve gölgeli mor
-        bubbleColor = isDark
-            ? const Color(0xFF7C3AED)
-            : const Color(0xFF8B5CF6);
+        // Fotoğraf varken gönderilen mesaj: Temanın canlı rengi
+        bubbleColor = palette.primary;
         textColor = Colors.white;
         bubbleBorder = Border.all(color: Colors.white.withValues(alpha: 0.2), width: 0.8);
       } else {
-        bubbleColor = LoveraColors.primary;
+        bubbleColor = palette.primary;
         textColor = Colors.white;
         bubbleBorder = null;
       }
@@ -1196,8 +1222,8 @@ class _ChatBubble extends StatelessWidget {
           width: 0.8,
         );
       } else {
-        bubbleColor = isDark ? const Color(0xFF222533) : const Color(0xFFE9ECF2);
-        textColor = isDark ? Colors.white : const Color(0xFF1E2024);
+        bubbleColor = isDark ? LoveraColors.darkSurfaceAlt : const Color(0xFFE9ECF2);
+        textColor = isDark ? Colors.white : LoveraColors.textDark;
         bubbleBorder = null;
       }
     }
@@ -1222,7 +1248,7 @@ class _ChatBubble extends StatelessWidget {
                         onLocationTap?.call(
                           message.locationLat!,
                           message.locationLng!,
-                          message.locationTitle ?? 'Konum',
+                          message.locationTitle ?? loc('Konum', 'Location'),
                         );
                       }
                     }
@@ -1239,7 +1265,7 @@ class _ChatBubble extends StatelessWidget {
                       children: [
                          ListTile(
                           leading: const Icon(Icons.reply_rounded),
-                          title: const Text('Yanıtla'),
+                          title: Text(loc('Yanıtla', 'Reply')),
                           onTap: () {
                             Navigator.pop(ctx);
                             onReply();
@@ -1249,26 +1275,26 @@ class _ChatBubble extends StatelessWidget {
                         if (!isMe)
                           ListTile(
                             leading: const Icon(Icons.flag_outlined, color: Colors.amber),
-                            title: const Text('Mesajı Şikayet Et', style: TextStyle(color: Colors.amber)),
+                            title: Text(loc('Mesajı Şikayet Et', 'Report Message'), style: const TextStyle(color: Colors.amber)),
                             onTap: () async {
                               Navigator.pop(ctx);
                               final confirmed = await showDialog<bool>(
                                 context: context,
                                 builder: (dCtx) => AlertDialog(
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                  title: const Text('Mesajı Şikayet Et'),
-                                  content: const Text(
-                                    'Bu mesajı sakıncalı, taciz veya uygunsuz içerik nedeniyle Lovera inceleme ekibine bildirmek istiyor musunuz? İnceleme 24 saat içinde tamamlanacaktır.',
+                                  title: Text(loc('Mesajı Şikayet Et', 'Report Message')),
+                                  content: Text(
+                                    loc('Bu mesajı sakıncalı, taciz veya uygunsuz içerik nedeniyle Lovera inceleme ekibine bildirmek istiyor musunuz? İnceleme 24 saat içinde tamamlanacaktır.', 'Do you want to report this message to the Lovera review team for inappropriate content? Review will be completed within 24 hours.'),
                                   ),
                                   actions: [
                                     TextButton(
                                       onPressed: () => Navigator.pop(dCtx, false),
-                                      child: const Text('Vazgeç'),
+                                      child: Text(loc('Vazgeç', 'Cancel')),
                                     ),
                                     FilledButton(
                                       style: FilledButton.styleFrom(backgroundColor: Colors.amber[800]),
                                       onPressed: () => Navigator.pop(dCtx, true),
-                                      child: const Text('Şikayet Et', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                      child: Text(loc('Şikayet Et', 'Report'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                                     ),
                                   ],
                                 ),
@@ -1282,9 +1308,9 @@ class _ChatBubble extends StatelessWidget {
                                 );
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Şikayetiniz alındı. İçerik güvenlik ekibimize iletildi.'),
-                                      backgroundColor: Color(0xFF10B981),
+                                    SnackBar(
+                                      content: Text(loc('Şikayetiniz alındı. İçerik güvenlik ekibimize iletildi.', 'Your report has been received. Content forwarded to our safety team.')),
+                                      backgroundColor: const Color(0xFF10B981),
                                       behavior: SnackBarBehavior.floating,
                                     ),
                                   );
@@ -1295,7 +1321,7 @@ class _ChatBubble extends StatelessWidget {
                         if (onDelete != null)
                           ListTile(
                             leading: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
-                            title: const Text('Mesajı Sil', style: TextStyle(color: Colors.redAccent)),
+                            title: Text(loc('Mesajı Sil', 'Delete Message'), style: const TextStyle(color: Colors.redAccent)),
                             onTap: () {
                               Navigator.pop(ctx);
                               onDelete!();
@@ -1341,11 +1367,11 @@ class _ChatBubble extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              message.replyToSender ?? 'Yanıtlanan',
+                              message.replyToSender ?? loc('Yanıtlanan', 'Replying to'),
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w700,
-                                color: isMe ? Colors.white70 : LoveraColors.primary,
+                                color: isMe ? Colors.white70 : palette.primary,
                               ),
                             ),
                             const SizedBox(height: 2),
@@ -1370,7 +1396,7 @@ class _ChatBubble extends StatelessWidget {
                             onLocationTap?.call(
                               message.locationLat!,
                               message.locationLng!,
-                              message.locationTitle ?? 'Konum',
+                              message.locationTitle ?? loc('Konum', 'Location'),
                             );
                           }
                         },
@@ -1383,7 +1409,7 @@ class _ChatBubble extends StatelessWidget {
                                 onLocationTap?.call(
                                   message.locationLat!,
                                   message.locationLng!,
-                                  message.locationTitle ?? 'Konum',
+                                  message.locationTitle ?? loc('Konum', 'Location'),
                                 );
                               }
                             },
@@ -1392,7 +1418,7 @@ class _ChatBubble extends StatelessWidget {
                             decoration: BoxDecoration(
                               color: isMe
                                   ? Colors.white.withValues(alpha: 0.18)
-                                  : (isDark ? const Color(0xFF181A24) : Colors.white),
+                                  : (isDark ? LoveraColors.darkSurface : Colors.white),
                               borderRadius: BorderRadius.circular(14),
                               border: Border.all(
                                 color: isMe
@@ -1407,13 +1433,13 @@ class _ChatBubble extends StatelessWidget {
                                 Container(
                                   padding: const EdgeInsets.all(8),
                                   decoration: BoxDecoration(
-                                    color: (isMe ? Colors.white : LoveraColors.primary).withValues(alpha: 0.18),
+                                    color: (isMe ? Colors.white : palette.primary).withValues(alpha: 0.18),
                                     shape: BoxShape.circle,
                                   ),
                                   child: Icon(
                                     Icons.map_rounded,
                                     size: 20,
-                                    color: isMe ? Colors.white : LoveraColors.primary,
+                                    color: isMe ? Colors.white : palette.primary,
                                   ),
                                 ),
                                 const SizedBox(width: 10),
@@ -1426,7 +1452,7 @@ class _ChatBubble extends StatelessWidget {
                                         children: [
                                           Flexible(
                                             child: Text(
-                                              message.locationTitle ?? 'Konum Paylaşımı',
+                                              message.locationTitle ?? loc('Konum Paylaşımı', 'Location Share'),
                                               style: TextStyle(
                                                 fontSize: 14,
                                                 fontWeight: FontWeight.w800,
@@ -1446,7 +1472,7 @@ class _ChatBubble extends StatelessWidget {
                                       ),
                                       const SizedBox(height: 2),
                                       Text(
-                                        'Haritada Gör 📍',
+                                        loc('Haritada Gör 📍', 'View on Map 📍'),
                                         style: TextStyle(
                                           fontSize: 11,
                                           fontWeight: FontWeight.w600,
@@ -1493,12 +1519,12 @@ class _ChatBubble extends StatelessWidget {
                                   color: Colors.black.withValues(alpha: 0.5),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
-                                child: const Row(
+                                child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.zoom_in_rounded, color: Colors.white, size: 14),
-                                    SizedBox(width: 4),
-                                    Text('Büyüt', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+                                    const Icon(Icons.zoom_in_rounded, color: Colors.white, size: 14),
+                                    const SizedBox(width: 4),
+                                    Text(loc('Büyüt', 'Expand'), style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
                                   ],
                                 ),
                               ),
@@ -1633,9 +1659,9 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Fotoğraf galeriye kaydedildi! 📸✨'),
-            backgroundColor: Color(0xFF10B981),
+          SnackBar(
+            content: Text(loc('Fotoğraf galeriye kaydedildi! 📸✨', 'Photo saved to gallery! 📸✨')),
+            backgroundColor: const Color(0xFF10B981),
           ),
         );
       }
@@ -1643,7 +1669,7 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Fotoğraf kaydedilemedi: $e'),
+            content: Text(loc('Fotoğraf kaydedilemedi: $e', 'Could not save photo: $e')),
             backgroundColor: LoveraColors.primary,
           ),
         );
@@ -1666,7 +1692,7 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
           icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Fotoğraf', style: TextStyle(color: Colors.white, fontSize: 16)),
+        title: Text(loc('Fotoğraf', 'Photo'), style: const TextStyle(color: Colors.white, fontSize: 16)),
         actions: [
           _isSaving
               ? const Padding(
@@ -1679,7 +1705,7 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
                 )
               : IconButton(
                   icon: const Icon(Icons.download_rounded, color: Colors.white),
-                  tooltip: 'Cihaza Kaydet',
+                  tooltip: loc('Cihaza Kaydet', 'Save to Device'),
                   onPressed: _saveToGallery,
                 ),
           const SizedBox(width: 8),

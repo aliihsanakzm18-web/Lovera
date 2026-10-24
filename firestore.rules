@@ -38,7 +38,9 @@ service cloud.firestore {
       return ['pendingDateChangeRequest', 'dateChangeResult', 'relationshipStartDate',
               'pendingBreakupRequest', 'outgoingBreakupRequest', 'breakupResult',
               'outgoingPairRequest', 'pendingPairRequest', 'coupleId', 'partnerUid',
-              'inviteCode', 'updatedAt', 'chargePing', 'heartPing', 'gameRequest', 'gameResult'];
+              'inviteCode', 'updatedAt', 'chargePing', 'heartPing',
+              'pendingGameRequest', 'gameRequest', 'gameResult',
+              'pendingMeetingRequest', 'meetingResult'];
     }
 
     // ---------- Default deny ----------

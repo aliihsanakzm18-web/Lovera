@@ -1,4 +1,5 @@
 import '../../../core/localization/app_strings.dart';
+import '../../../core/localization/weather_localizer.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -91,15 +92,18 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.devices_rounded, color: Colors.orangeAccent),
-            SizedBox(width: 8),
-            Text('Oturum Kapatıldı'),
+            const Icon(Icons.devices_rounded, color: Colors.orangeAccent),
+            const SizedBox(width: 8),
+            Text(loc('Oturum Kapatıldı', 'Session Terminated')),
           ],
         ),
-        content: const Text(
-          'Hesabınıza başka bir cihazdan giriş yapıldı. Konum ve bildirim karışıklığını önlemek için bu cihazdaki oturumunuz kapatıldı.',
+        content: Text(
+          loc(
+            'Hesabınıza başka bir cihazdan giriş yapıldı. Konum ve bildirim karışıklığını önlemek için bu cihazdaki oturumunuz kapatıldı.',
+            'Your account was signed into from another device. To prevent location and notification conflicts, your session on this device has ended.',
+          ),
         ),
         actions: [
           FilledButton(
@@ -110,7 +114,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                 (route) => false,
               );
             },
-            child: const Text('Tamam'),
+            child: Text(loc('Tamam', 'OK')),
           ),
         ],
       ),
@@ -154,7 +158,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                'Kesintisiz Konum',
+                loc('Kesintisiz Konum', 'Continuous Location'),
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -169,7 +173,10 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Uygulama kapalıyken partnerinizin sizi canlı haritada ve masaüstü widget\'ında görebilmesi için:',
+              loc(
+                'Uygulama kapalıyken partnerinizin sizi canlı haritada ve masaüstü widget\'ında görebilmesi için:',
+                'For your partner to see you on the live map and home widget when the app is closed:',
+              ),
               style: TextStyle(fontSize: 14, height: 1.45, color: textMutedColor),
             ),
             const SizedBox(height: 16),
@@ -186,7 +193,10 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Açılan sayfada "İzinler > Konum > Her zaman izin ver" seçeneğini işaretleyin.',
+                      loc(
+                        'Açılan sayfada "İzinler > Konum > Her zaman izin ver" seçeneğini işaretleyin.',
+                        'On the opened page, select "Permissions > Location > Allow all the time".',
+                      ),
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 13,
@@ -206,7 +216,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
               Navigator.pop(ctx);
               _isSettingsDialogShowing = false;
             },
-            child: Text('Şimdilik Atla', style: TextStyle(color: textMutedColor)),
+            child: Text(loc('Şimdilik Atla', 'Skip for Now'), style: TextStyle(color: textMutedColor)),
           ),
           FilledButton.icon(
             style: FilledButton.styleFrom(
@@ -222,7 +232,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
               await openAppSettings();
             },
             icon: const Icon(Icons.arrow_forward_rounded, size: 18),
-            label: const Text('İzni Ayarla', style: TextStyle(fontWeight: FontWeight.bold)),
+            label: Text(loc('İzni Ayarla', 'Set Permission'), style: const TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -235,34 +245,37 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         behavior: SnackBarBehavior.floating,
-        backgroundColor: const Color(0xFF1E2024),
+        backgroundColor: LoveraColors.textDark,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
           side: const BorderSide(color: Color(0xFF34D399), width: 1),
         ),
         margin: const EdgeInsets.fromLTRB(16, 0, 16, 20),
         duration: const Duration(seconds: 4),
-        content: const Row(
+        content: Row(
           children: [
-            Icon(Icons.favorite_rounded, color: Color(0xFFFF5E7E), size: 24),
-            SizedBox(width: 12),
+            const Icon(Icons.favorite_rounded, color: Color(0xFFFF5E7E), size: 24),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Konum Paylaşımı Aktif 💕',
-                    style: TextStyle(
+                    loc('Konum Paylaşımı Aktif 💕', 'Location Sharing Active 💕'),
+                    style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
                       color: Colors.white,
                     ),
                   ),
-                  SizedBox(height: 2),
+                  const SizedBox(height: 2),
                   Text(
-                    'Artık partneriniz uygulama kapalı olsa bile sizi haritada ve widget\'ta kesintisiz görebilecek.',
-                    style: TextStyle(
+                    loc(
+                      'Artık partneriniz uygulama kapalı olsa bile sizi haritada ve widget\'ta kesintisiz görebilecek.',
+                      'Now your partner can see you on the map and widget seamlessly even when the app is closed.',
+                    ),
+                    style: const TextStyle(
                       fontSize: 12,
                       color: Colors.white70,
                       height: 1.3,
@@ -299,16 +312,22 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
           context: context,
           barrierDismissible: false,
           builder: (ctx) => AlertDialog(
-            title: const Text('Konum erişimi'),
-            content: const Text(
-              'Lovera, konumunu ve pil seviyeni yalnızca eşleştiğin partnerinle paylaşmak için '
-              'kullanır; uygulama kapalıyken veya arka plandayken de toplanabilir.\n\n'
-              'Veri reklam için kullanılmaz ve üçüncü kişilerle paylaşılmaz. '
-              'Paylaşımı Ayarlar\'dan kapatabilir veya hesabını silerek tüm verini kaldırabilirsin.',
+            title: Text(loc('Konum erişimi', 'Location Access')),
+            content: Text(
+              loc(
+                'Lovera, konumunu ve pil seviyeni yalnızca eşleştiğin partnerinle paylaşmak için '
+                'kullanır; uygulama kapalıyken veya arka plandayken de toplanabilir.\n\n'
+                'Veri reklam için kullanılmaz ve üçüncü kişilerle paylaşılmaz. '
+                'Paylaşımı Ayarlar\'dan kapatabilir veya hesabını silerek tüm verini kaldırabilirsin.',
+                'Lovera uses your location and battery level solely to share with your paired partner; '
+                'it may also be collected when the app is closed or in the background.\n\n'
+                'Data is never used for advertising and is not shared with third parties. '
+                'You can turn off sharing from Settings or remove all data by deleting your account.',
+              ),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Şimdi değil')),
-              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Kabul ediyorum')),
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(loc('Şimdi değil', 'Not now'))),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(loc('Kabul ediyorum', 'I accept'))),
             ],
           ),
         );
@@ -369,15 +388,21 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.location_off_rounded, color: Colors.orangeAccent),
-            SizedBox(width: 10),
-            Text('Konum İzni Gerekli', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Icon(Icons.location_off_rounded, color: Colors.orangeAccent),
+            const SizedBox(width: 10),
+            Text(
+              loc('Konum İzni Gerekli', 'Location Permission Required'),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
           ],
         ),
-        content: const Text(
-          'Partnerinizin haritada konumunuzu görebilmesi ve aranızdaki mesafenin hesaplanabilmesi için konum iznini ayarlardan etkinleştirmeniz gerekmektedir.',
+        content: Text(
+          loc(
+            'Partnerinizin haritada konumunuzu görebilmesi ve aranızdaki mesafenin hesaplanabilmesi için konum iznini ayarlardan etkinleştirmeniz gerekmektedir.',
+            'To allow your partner to see your location on the map and calculate the distance between you, you need to enable location permission in settings.',
+          ),
         ),
         actions: [
           TextButton(
@@ -385,7 +410,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
               Navigator.pop(ctx);
               _isSettingsDialogShowing = false;
             },
-            child: const Text('Daha Sonra'),
+            child: Text(loc('Daha Sonra', 'Later')),
           ),
           FilledButton(
             onPressed: () {
@@ -393,7 +418,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
               _isSettingsDialogShowing = false;
               Geolocator.openAppSettings();
             },
-            child: const Text('Ayarları Aç'),
+            child: Text(loc('Ayarları Aç', 'Open Settings')),
           ),
         ],
       ),
@@ -530,6 +555,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
         final remoteDeviceId = data['currentDeviceId'] as String?;
         if (remoteDeviceId != null && remoteDeviceId.isNotEmpty) {
           final myDeviceId = await DeviceService().getOrCreateDeviceId();
+          if (!mounted || _isKicked) return;
           if (remoteDeviceId != myDeviceId) {
             _handleKickedByOtherDevice();
             return;
@@ -537,6 +563,45 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
         }
 
         SharedPreferences.getInstance().then((p) => p.setString('saved_uid', doc.id));
+
+        // Buluttaki dil, tema modu ve tema paketi tercihlerini başka cihazdan giriş yapıldığında senkronize et
+        final remoteLang = data['language'] as String?;
+        if (remoteLang == 'en' || remoteLang == 'tr') {
+          final targetLang = remoteLang == 'en' ? AppLanguage.en : AppLanguage.tr;
+          if (ref.read(appLanguageProvider) != targetLang) {
+            ref.read(appLanguageProvider.notifier).setLanguage(targetLang, syncToCloud: false);
+          }
+        }
+
+        final remoteThemeMode = data['themeMode'] as String?;
+        if (remoteThemeMode == 'light' || remoteThemeMode == 'dark' || remoteThemeMode == 'system') {
+          final targetMode = remoteThemeMode == 'light'
+              ? ThemeMode.light
+              : (remoteThemeMode == 'dark' ? ThemeMode.dark : ThemeMode.system);
+          if (ref.read(themeModeProvider) != targetMode) {
+            ref.read(themeModeProvider.notifier).setThemeMode(targetMode, syncToCloud: false);
+          }
+        }
+
+        final remotePaletteKey = data['themePalette'] as String?;
+        if (remotePaletteKey != null && remotePaletteKey.isNotEmpty) {
+          final targetPaletteData = ThemePaletteData.fromKey(remotePaletteKey);
+          if (ref.read(themePaletteProvider).id != targetPaletteData.id) {
+            ref.read(themePaletteProvider.notifier).setPalette(targetPaletteData.id, syncToCloud: false);
+          }
+        } else {
+          // Eğer Firestore'da henüz themePalette/themeMode kayıtlı değilse yerel seçimi buluta yedekle
+          final currentPalette = ref.read(themePaletteProvider).id.name;
+          final currentMode = ref.read(themeModeProvider);
+          final modeStr = currentMode == ThemeMode.light
+              ? 'light'
+              : (currentMode == ThemeMode.dark ? 'dark' : 'system');
+          DatabaseService().updateUserThemePreferences(
+            themePalette: currentPalette,
+            themeMode: modeStr,
+          );
+        }
+
         if (data['name'] != null && data['name'].toString().isNotEmpty) {
           ref.read(userNameProvider.notifier).state = data['name'];
           SharedPreferences.getInstance().then((p) => p.setString('saved_user_name', data['name']));
@@ -554,6 +619,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
           SharedPreferences.getInstance().then((p) => p.setString('avatar_${doc.id}', av));
         } else {
           SharedPreferences.getInstance().then((p) {
+            if (!mounted) return;
             final cached = p.getString('avatar_${doc.id}');
             if (cached != null && cached.isNotEmpty) {
               ref.read(userAvatarProvider.notifier).state = cached;
@@ -652,13 +718,13 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
           final notice = Map<String, dynamic>.from(data['dateUpdatedNotice']);
           DatabaseService().clearDateUpdatedNotice();
           if (mounted) {
-            final updater = notice['updaterName'] ?? 'Partneriniz';
+            final updater = notice['updaterName'] ?? loc('Partneriniz', 'Your Partner');
             final dStr = notice['newDate'];
             final d = dStr != null ? DateTime.tryParse(dStr) : null;
             final dateText = d != null ? '${d.day}.${d.month}.${d.year}' : '';
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('$updater birliktelik başlangıç tarihinizi $dateText olarak güncelledi. 💕'),
+                content: Text(loc('$updater birliktelik başlangıç tarihinizi $dateText olarak güncelledi. 💕', '$updater updated your anniversary date to $dateText. 💕')),
                 backgroundColor: LoveraColors.secondary,
                 behavior: SnackBarBehavior.floating,
               ),
@@ -690,14 +756,14 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
           if (mounted) {
             if (res['status'] == 'accepted') {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Partneriniz tarih değişikliğini kabul etti! Sayaç güncellendi. 💕'),
+                SnackBar(
+                  content: Text(loc('Partneriniz tarih değişikliğini kabul etti! Sayaç güncellendi. 💕', 'Your partner accepted the date change! Counter updated. 💕')),
                   backgroundColor: LoveraColors.secondary,
                 ),
               );
             } else if (res['status'] == 'rejected') {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Partneriniz tarih değişikliğini kabul etmedi.')),
+                SnackBar(content: Text(loc('Partneriniz tarih değişikliğini kabul etmedi.', 'Your partner did not accept the date change.'))),
               );
             }
           }
@@ -822,27 +888,27 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
             } catch (_) {}
           }
 
-          String timeAgo = 'Şimdi';
+          String timeAgo = loc('Şimdi', 'Just now');
           int? tsMillis;
           if (createdAt != null) {
             tsMillis = createdAt.millisecondsSinceEpoch;
             final diff = DateTime.now().difference(createdAt);
             final minutes = diff.inMinutes;
             if (minutes < 1) {
-              timeAgo = 'Şimdi';
+              timeAgo = loc('Şimdi', 'Just now');
             } else if (minutes < 60) {
-              timeAgo = '$minutes dk önce';
+              timeAgo = loc('$minutes dk önce', '${minutes}m ago');
             } else if (diff.inHours < 24) {
-              timeAgo = '${diff.inHours} sa önce';
+              timeAgo = loc('${diff.inHours} sa önce', '${diff.inHours}h ago');
             } else {
-              timeAgo = '${diff.inDays} gün önce';
+              timeAgo = loc('${diff.inDays} gün önce', '${diff.inDays}d ago');
             }
           }
 
           await WidgetSyncService.syncDrawingWidget(
             imagePath: drawingPath,
             imageBase64: imageBase64,
-            senderName: isMe ? 'Sen' : senderName,
+            senderName: isMe ? loc('Sen', 'You') : senderName,
             timeAgo: timeAgo,
             timestampMillis: tsMillis,
           );
@@ -933,13 +999,16 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  '$requesterName Seninle Eşleşmek İstiyor! 💕',
+                  loc('$requesterName Seninle Eşleşmek İstiyor! 💕', '$requesterName Wants to Pair with You! 💕'),
                   textAlign: TextAlign.center,
                   style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Onayladığında ikinize özel ortak alanınız açılacak. Lütfen birliktelik başlangıç tarihinizi seçin.',
+                  loc(
+                    'Onayladığında ikinize özel ortak alanınız açılacak. Lütfen birliktelik başlangıç tarihinizi seçin.',
+                    'When confirmed, your private shared space will open. Please select your relationship start date.',
+                  ),
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodyMedium?.copyWith(color: LoveraColors.textMuted, height: 1.3),
                 ),
@@ -951,7 +1020,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                       initialDate: selectedDate ?? DateTime.now(),
                       firstDate: DateTime(1990),
                       lastDate: DateTime.now(),
-                      helpText: 'İlişki Başlangıç Tarihi',
+                      helpText: loc('İlişki Başlangıç Tarihi', 'Relationship Start Date'),
                     );
                     if (picked != null) {
                       setSheetState(() {
@@ -991,7 +1060,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'BİRLİKTELİK BAŞLANGICI *',
+                                  loc('BİRLİKTELİK BAŞLANGICI *', 'RELATIONSHIP START *'),
                                   style: theme.textTheme.labelSmall?.copyWith(
                                     color: showErrorBorder ? Colors.redAccent : LoveraColors.textMuted,
                                     fontWeight: FontWeight.w700,
@@ -1000,7 +1069,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                                 Text(
                                   selectedDate != null
                                       ? '${selectedDate!.day}.${selectedDate!.month}.${selectedDate!.year}'
-                                      : 'Tarih seçmek için dokunun',
+                                      : loc('Tarih seçmek için dokunun', 'Tap to select date'),
                                   style: theme.textTheme.titleMedium?.copyWith(
                                     fontWeight: FontWeight.w800,
                                     color: selectedDate != null
@@ -1020,8 +1089,8 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
-                              '$days Gündür',
-                              style: const TextStyle(
+                              loc('$days Gündür', '$days Days'),
+                              style: TextStyle(
                                 color: LoveraColors.primary,
                                 fontWeight: FontWeight.w700,
                                 fontSize: 12,
@@ -1040,13 +1109,13 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                 ),
                 if (showErrorBorder) ...[
                   const SizedBox(height: 6),
-                  const Align(
+                  Align(
                     alignment: Alignment.centerLeft,
                     child: Padding(
-                      padding: EdgeInsets.only(left: 4),
+                      padding: const EdgeInsets.only(left: 4),
                       child: Text(
-                        '⚠️ Devam etmek için birliktelik başlangıç tarihini seçmelisiniz.',
-                        style: TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.w600),
+                        loc('⚠️ Devam etmek için birliktelik başlangıç tarihini seçmelisiniz.', '⚠️ You must select a relationship start date to continue.'),
+                        style: const TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.w600),
                       ),
                     ),
                   ),
@@ -1061,7 +1130,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                           _pairRequestDialogOpen = false;
                           await DatabaseService().rejectPairRequest(requesterUid);
                         },
-                        child: const Text('Reddet'),
+                        child: Text(loc('Reddet', 'Decline')),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -1069,14 +1138,14 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                       flex: 2,
                       child: FilledButton.icon(
                         icon: const Icon(Icons.favorite_rounded, size: 18),
-                        label: const Text('Kabul Et ve Bağlan'),
+                        label: Text(loc('Kabul Et ve Bağlan', 'Accept & Connect')),
                         onPressed: () async {
                           if (selectedDate == null) {
                             HapticFeedback.vibrate();
                             setSheetState(() => showErrorBorder = true);
                             ScaffoldMessenger.of(sheetCtx).showSnackBar(
-                              const SnackBar(
-                                content: Text('Lütfen birliktelik başlangıç tarihinizi seçin! 📅'),
+                              SnackBar(
+                                content: Text(loc('Lütfen birliktelik başlangıç tarihinizi seçin! 📅', 'Please select your relationship start date! 📅')),
                                 backgroundColor: Colors.redAccent,
                                 behavior: SnackBarBehavior.floating,
                               ),
@@ -1096,7 +1165,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                             HapticFeedback.heavyImpact();
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('$requesterName ile başarıyla eşleşildi! 💕'),
+                                content: Text(loc('$requesterName ile başarıyla eşleşildi! 💕', 'Successfully paired with $requesterName! 💕')),
                                 backgroundColor: LoveraColors.secondary,
                               ),
                             );
@@ -1130,9 +1199,9 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: Row(
           children: [
-            const Icon(Icons.edit_calendar_rounded, color: LoveraColors.primary),
+            Icon(Icons.edit_calendar_rounded, color: LoveraColors.primary),
             const SizedBox(width: 10),
-            Text('$requesterName Tarihi Değiştirmek İstiyor', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            Text(loc('$requesterName Tarihi Değiştirmek İstiyor', '$requesterName Wants to Change the Date'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
           ],
         ),
         content: Column(
@@ -1140,7 +1209,10 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '$requesterName aşk sayacınızın başlangıç tarihini şu şekilde güncellemek istiyor:',
+              loc(
+                '$requesterName aşk sayacınızın başlangıç tarihini şu şekilde güncellemek istiyor:',
+                '$requesterName wants to update your love counter start date to:',
+              ),
               style: const TextStyle(height: 1.4),
             ),
             const SizedBox(height: 16),
@@ -1159,7 +1231,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('ÖNERİLEN TARİH', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: LoveraColors.textMuted)),
+                      Text(loc('ÖNERİLEN TARİH', 'PROPOSED DATE'), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: LoveraColors.textMuted)),
                       Text('${proposedDate.day}.${proposedDate.month}.${proposedDate.year}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
                     ],
                   ),
@@ -1169,13 +1241,13 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                       color: LoveraColors.primary.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Text('$days Gün', style: const TextStyle(color: LoveraColors.primary, fontWeight: FontWeight.w700)),
+                    child: Text(loc('$days Gün', '$days Days'), style: TextStyle(color: LoveraColors.primary, fontWeight: FontWeight.w700)),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 12),
-            const Text('Onayladığınızda iki telefonun ekranındaki sayaç da bu tarihe göre güncellenecektir.', style: TextStyle(fontSize: 12, color: LoveraColors.textMuted)),
+            Text(loc('Onayladığınızda iki telefonun ekranındaki sayaç da bu tarihe göre güncellenecektir.', 'Once accepted, the counter on both phones will update to this date.'), style: TextStyle(fontSize: 12, color: LoveraColors.textMuted)),
           ],
         ),
         actions: [
@@ -1185,7 +1257,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
               _dateDialogOpen = false;
               await DatabaseService().rejectDateChange(partnerUid);
             },
-            child: const Text('Reddet'),
+            child: Text(loc('Reddet', 'Decline')),
           ),
           FilledButton(
             onPressed: () async {
@@ -1197,7 +1269,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                 coupleId: coupleId,
               );
             },
-            child: const Text('Kabul Et'),
+            child: Text(loc('Kabul Et', 'Accept')),
           ),
         ],
       ),
@@ -1212,11 +1284,6 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
 
   void _receiveChargeReminder(String fromName) {
     HapticFeedback.mediumImpact();
-    NotificationService().show(
-      id: 101,
-      title: '🔋 Şarj Hatırlatması!',
-      body: '$fromName şarjını doldurmanı hatırlatıyor 💕',
-    );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -1226,7 +1293,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                '$fromName şarjını doldurmanı hatırlatıyor! 💕🔋',
+                loc('$fromName şarjını doldurmanı hatırlatıyor! 💕🔋', '$fromName reminds you to charge your phone! 💕🔋'),
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
             ),
@@ -1280,12 +1347,12 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
               ),
               const SizedBox(height: 14),
               Text(
-                '${partner.name}\'in Şarj Durumu',
+                ref.watch(stringsProvider).batterySheetTitle(partner.name),
                 style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 4),
               Text(
-                '%$level · ${_getBatteryStatusText(level)}',
+                ref.watch(stringsProvider).batteryPercentageDesc(level, _getBatteryStatusText(level, ref.watch(stringsProvider))),
                 style: TextStyle(
                   color: batteryColor,
                   fontSize: 16,
@@ -1294,7 +1361,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
               ),
               const SizedBox(height: 8),
               Text(
-                'Partnerinizin cihaz şarj seviyesi arka planda otomatik olarak güncellenir.',
+                ref.watch(stringsProvider).batteryAutoUpdateDesc,
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
@@ -1316,8 +1383,8 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                     elevation: 0,
                   ),
                   icon: const Icon(Icons.bolt_rounded, size: 22),
-                  label: const Text(
-                    'Şarjını Doldur Hatırlatması Gönder ⚡',
+                  label: Text(
+                    ref.watch(stringsProvider).sendChargeReminderBtn,
                     style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
                   ),
                   onPressed: () async {
@@ -1333,8 +1400,12 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                     if (partnerUid != null && partnerUid.isNotEmpty) {
                       NotificationService().sendPushToPartner(
                         partnerUid: partnerUid,
-                        title: '🔋 Şarj Hatırlatması!',
-                        body: '$senderName şarjını doldurmanı hatırlatıyor 💕',
+                        title: loc('🔋 Şarj Hatırlatması!', '🔋 Battery Reminder!'),
+                        body: loc('$senderName şarjını doldurmanı hatırlatıyor 💕', '$senderName reminds you to charge your phone 💕'),
+                        titleTr: '🔋 Şarj Hatırlatması!',
+                        titleEn: '🔋 Battery Reminder!',
+                        bodyTr: '$senderName şarjını doldurmanı hatırlatıyor 💕',
+                        bodyEn: '$senderName reminds you to charge your phone 💕',
                         data: {
                           'type': 'charge_ping',
                           'fromName': senderName,
@@ -1345,7 +1416,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
-                          '${partner.name}\'in telefonuna "Şarjını Doldur" hatırlatması gönderildi! 🔋⚡',
+                          ref.read(stringsProvider).chargeReminderSentMsg(partner.name),
                         ),
                         backgroundColor: batteryColor,
                         behavior: SnackBarBehavior.floating,
@@ -1372,8 +1443,8 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                     ),
                   ),
                   icon: const Icon(Icons.electrical_services_rounded, size: 20, color: Color(0xFF3B82F6)),
-                  label: const Text(
-                    'Şarjını Yanına Al 🔌',
+                  label: Text(
+                    ref.watch(stringsProvider).takeChargerBtn,
                     style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
                   ),
                   onPressed: () async {
@@ -1381,19 +1452,23 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                     HapticFeedback.mediumImpact();
                     final partnerUid = ref.read(partnerUidProvider);
                     final myName = ref.read(userNameProvider);
-                    final senderName = myName.isEmpty ? 'Partnerin' : myName;
+                    final senderName = myName.isEmpty ? loc('Partnerin', 'Partner') : myName;
                     if (partnerUid != null && partnerUid.isNotEmpty) {
                       NotificationService().sendPushToPartner(
                         partnerUid: partnerUid,
-                        title: '🔌 Şarjını Unutma!',
-                        body: '$senderName şarj aletini yanına almanı hatırlatıyor 🔌💕',
+                        title: loc('🔌 Şarjını Unutma!', '🔌 Don\'t Forget Your Charger!'),
+                        body: loc('$senderName şarj aletini yanına almanı hatırlatıyor 🔌💕', '$senderName reminds you to take your charger 🔌💕'),
+                        titleTr: '🔌 Şarjını Unutma!',
+                        titleEn: '🔌 Don\'t Forget Your Charger!',
+                        bodyTr: '$senderName şarj aletini yanına almanı hatırlatıyor 🔌💕',
+                        bodyEn: '$senderName reminds you to take your charger 🔌💕',
                       );
                     }
                     if (!mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
-                          '${partner.name}\'in telefonuna "Şarjını Yanına Al" hatırlatması gönderildi! 🔌',
+                          ref.read(stringsProvider).takeChargerSentMsg(partner.name),
                         ),
                         backgroundColor: const Color(0xFF3B82F6),
                         behavior: SnackBarBehavior.floating,
@@ -1419,9 +1494,9 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                       borderRadius: BorderRadius.circular(16),
                     ),
                   ),
-                  icon: const Icon(Icons.battery_charging_full_rounded, size: 20, color: Color(0xFF8B5CF6)),
-                  label: const Text(
-                    'Powerbank\'ini Yanına Al 🔋',
+                  icon: Icon(Icons.battery_charging_full_rounded, size: 20, color: LoveraColors.primary),
+                  label: Text(
+                    ref.watch(stringsProvider).takePowerbankBtn,
                     style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
                   ),
                   onPressed: () async {
@@ -1429,21 +1504,25 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                     HapticFeedback.mediumImpact();
                     final partnerUid = ref.read(partnerUidProvider);
                     final myName = ref.read(userNameProvider);
-                    final senderName = myName.isEmpty ? 'Partnerin' : myName;
+                    final senderName = myName.isEmpty ? loc('Partnerin', 'Partner') : myName;
                     if (partnerUid != null && partnerUid.isNotEmpty) {
                       NotificationService().sendPushToPartner(
                         partnerUid: partnerUid,
-                        title: '🔋 Powerbank Hatırlatması!',
-                        body: '$senderName powerbank\'ini yanına almanı hatırlatıyor 🔋⚡',
+                        title: loc('🔋 Powerbank Hatırlatması!', '🔋 Power Bank Reminder!'),
+                        body: loc('$senderName powerbank\'ini yanına almanı hatırlatıyor 🔋⚡', '$senderName reminds you to take your power bank 🔋⚡'),
+                        titleTr: '🔋 Powerbank Hatırlatması!',
+                        titleEn: '🔋 Power Bank Reminder!',
+                        bodyTr: '$senderName powerbank\'ini yanına almanı hatırlatıyor 🔋⚡',
+                        bodyEn: '$senderName reminds you to take your power bank 🔋⚡',
                       );
                     }
                     if (!mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
-                          '${partner.name}\'in telefonuna "Powerbank\'ini Yanına Al" hatırlatması gönderildi! 🔋',
+                          ref.read(stringsProvider).takePowerbankSentMsg(partner.name),
                         ),
-                        backgroundColor: const Color(0xFF8B5CF6),
+                        backgroundColor: LoveraColors.primary,
                         behavior: SnackBarBehavior.floating,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       ),
@@ -1457,7 +1536,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                 width: double.infinity,
                 child: TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Kapat'),
+                  child: Text(ref.watch(stringsProvider).close),
                 ),
               ),
             ],
@@ -1471,8 +1550,8 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
   void _openWeatherActionsSheet(AppUser partner) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final weatherText = partner.weather ?? 'Açık';
-    final cityText = partner.city ?? 'İstanbul';
+    final weatherText = localizeWeather(partner.weather);
+    final cityText = partner.city ?? loc('İstanbul', 'Istanbul');
 
     showModalBottomSheet<void>(
       context: context,
@@ -1496,7 +1575,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                   color: LoveraColors.accentGold.withValues(alpha: 0.14),
                   border: Border.all(color: LoveraColors.accentGold.withValues(alpha: 0.35), width: 2),
                 ),
-                child: const Center(
+                child: Center(
                   child: Icon(
                     Icons.wb_sunny_rounded,
                     size: 38,
@@ -1506,13 +1585,13 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
               ),
               const SizedBox(height: 14),
               Text(
-                '${partner.name}\'in Hava Durumu',
+                '${partner.name}${loc("\'in Hava Durumu", "\'s Weather")}',
                 style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 4),
               Text(
                 '$cityText · $weatherText',
-                style: const TextStyle(
+                style: TextStyle(
                   color: LoveraColors.accentGold,
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
@@ -1520,7 +1599,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
               ),
               const SizedBox(height: 8),
               Text(
-                'Partnerine hava durumuna özel tatlı bir ilgi ve bakım hatırlatması gönder:',
+                ref.watch(stringsProvider).weatherSheetDesc,
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
@@ -1538,15 +1617,23 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
                   icon: const Text('🧣', style: TextStyle(fontSize: 20)),
-                  label: const Text(
-                    'Hava Soğuk, Sıkı Giyin Bitirtanem ❄️',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                  label: Text(
+                    ref.watch(stringsProvider).weatherColdPrompt,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
                   ),
-                  onPressed: () => _sendCareNotification(
-                    partner: partner,
-                    title: '🧣 Hava Soğuk, Sıkı Giyin!',
-                    body: '${ref.read(userNameProvider).isEmpty ? 'Partnerin' : ref.read(userNameProvider)}: "Hava soğuk aşkım, sakın üşütme sıkı giyin 💕"',
-                  ),
+                  onPressed: () {
+                    final senderName = ref.read(userNameProvider).isEmpty ? 'Partnerin' : ref.read(userNameProvider);
+                    final senderNameEn = ref.read(userNameProvider).isEmpty ? 'Partner' : ref.read(userNameProvider);
+                    _sendCareNotification(
+                      partner: partner,
+                      title: loc('🧣 Hava Soğuk, Sıkı Giyin!', '🧣 Cold Weather, Dress Warm!'),
+                      body: loc('$senderName: "Hava soğuk aşkım, sakın üşütme sıkı giyin 💕"', '$senderNameEn: "It\'s cold outside my love, bundle up and stay warm 💕"'),
+                      titleTr: '🧣 Hava Soğuk, Sıkı Giyin!',
+                      titleEn: '🧣 Cold Weather, Dress Warm!',
+                      bodyTr: '$senderName: "Hava soğuk aşkım, sakın üşütme sıkı giyin 💕"',
+                      bodyEn: '$senderNameEn: "It\'s cold outside my love, bundle up and stay warm 💕"',
+                    );
+                  },
                 ),
               ),
               const SizedBox(height: 10),
@@ -1560,15 +1647,23 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
                   icon: const Text('☂️', style: TextStyle(fontSize: 20)),
-                  label: const Text(
-                    'Yanına Şemsiye Al Aşkım 🌧️',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                  label: Text(
+                    ref.watch(stringsProvider).weatherRainPrompt,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
                   ),
-                  onPressed: () => _sendCareNotification(
-                    partner: partner,
-                    title: '☂️ Yanına Şemsiye Al!',
-                    body: '${ref.read(userNameProvider).isEmpty ? 'Partnerin' : ref.read(userNameProvider)}: "Aşkım dışarısı yağışlı olabilir, yanına şemsiye almayı unutma 🌧️"',
-                  ),
+                  onPressed: () {
+                    final senderName = ref.read(userNameProvider).isEmpty ? 'Partnerin' : ref.read(userNameProvider);
+                    final senderNameEn = ref.read(userNameProvider).isEmpty ? 'Partner' : ref.read(userNameProvider);
+                    _sendCareNotification(
+                      partner: partner,
+                      title: loc('☂️ Yanına Şemsiye Al!', '☂️ Take an Umbrella!'),
+                      body: loc('$senderName: "Aşkım dışarısı yağışlı olabilir, yanına şemsiye almayı unutma 🌧️"', '$senderNameEn: "It might rain today my love, don\'t forget your umbrella 🌧️"'),
+                      titleTr: '☂️ Yanına Şemsiye Al!',
+                      titleEn: '☂️ Take an Umbrella!',
+                      bodyTr: '$senderName: "Aşkım dışarısı yağışlı olabilir, yanına şemsiye almayı unutma 🌧️"',
+                      bodyEn: '$senderNameEn: "It might rain today my love, don\'t forget your umbrella 🌧️"',
+                    );
+                  },
                 ),
               ),
               const SizedBox(height: 10),
@@ -1582,15 +1677,23 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
                   icon: const Text('☀️', style: TextStyle(fontSize: 20)),
-                  label: const Text(
-                    'Güneş Çarpmasın, Bol Su İç 💧',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                  label: Text(
+                    ref.watch(stringsProvider).weatherWaterPrompt,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
                   ),
-                  onPressed: () => _sendCareNotification(
-                    partner: partner,
-                    title: '💧 Bol Su İçmeyi Unutma!',
-                    body: '${ref.read(userNameProvider).isEmpty ? 'Partnerin' : ref.read(userNameProvider)}: "Bugün bol bol su iç aşkım, kendine çok iyi bak ☀️"',
-                  ),
+                  onPressed: () {
+                    final senderName = ref.read(userNameProvider).isEmpty ? 'Partnerin' : ref.read(userNameProvider);
+                    final senderNameEn = ref.read(userNameProvider).isEmpty ? 'Partner' : ref.read(userNameProvider);
+                    _sendCareNotification(
+                      partner: partner,
+                      title: loc('💧 Bol Su İçmeyi Unutma!', '💧 Remember to Drink Water!'),
+                      body: loc('$senderName: "Bugün bol bol su iç aşkım, kendine çok iyi bak ☀️"', '$senderNameEn: "Drink plenty of water today my love, take good care of yourself ☀️"'),
+                      titleTr: '💧 Bol Su İçmeyi Unutma!',
+                      titleEn: '💧 Remember to Drink Water!',
+                      bodyTr: '$senderName: "Bugün bol bol su iç aşkım, kendine çok iyi bak ☀️"',
+                      bodyEn: '$senderNameEn: "Drink plenty of water today my love, take good care of yourself ☀️"',
+                    );
+                  },
                 ),
               ),
               const SizedBox(height: 12),
@@ -1599,7 +1702,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                 width: double.infinity,
                 child: TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Kapat'),
+                  child: Text(loc('Kapat', 'Close')),
                 ),
               ),
             ],
@@ -1613,6 +1716,10 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
     required AppUser partner,
     required String title,
     required String body,
+    String? titleTr,
+    String? titleEn,
+    String? bodyTr,
+    String? bodyEn,
   }) async {
     Navigator.pop(context);
     HapticFeedback.mediumImpact();
@@ -1622,12 +1729,16 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
         partnerUid: partnerUid,
         title: title,
         body: body,
+        titleTr: titleTr,
+        titleEn: titleEn,
+        bodyTr: bodyTr,
+        bodyEn: bodyEn,
       );
     }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('${partner.name}\'in telefonuna bildirim gönderildi! 💕'),
+        content: Text(ref.read(stringsProvider).weatherNotifSentMsg(partner.name)),
         backgroundColor: LoveraColors.primary,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1656,13 +1767,13 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
     return Icons.battery_alert_rounded;
   }
 
-  static String _getBatteryStatusText(int? level) {
-    if (level == null) return 'Bilinmiyor';
-    if (level >= 90) return 'Dopdolu';
-    if (level >= 50) return 'Yeterli Seviyede';
-    if (level >= 25) return 'Azalıyor';
-    if (level >= 15) return 'Düşük Pil';
-    return 'Kritik Seviyede!';
+  static String _getBatteryStatusText(int? level, AppStrings strings) {
+    if (level == null) return strings.weatherUnknown;
+    if (level >= 90) return strings.batteryFullText;
+    if (level >= 50) return strings.batterySufficientText;
+    if (level >= 25) return strings.batteryDrainingText;
+    if (level >= 15) return strings.batteryLowText;
+    return strings.batteryCriticalText;
   }
 
   void _listenToPartner(String partnerUid) {
@@ -1708,6 +1819,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
         speed: (data['speed'] as num?)?.toDouble(),
         currentPlaceTitle: data['currentPlaceTitle'] as String?,
         currentPlaceEmoji: data['currentPlaceEmoji'] as String?,
+        language: data['language'] as String?,
       );
       ref.read(partnerProvider.notifier).state = partnerUser;
 
@@ -1718,6 +1830,10 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
           final partnerFcm = data['fcmToken'] as String?;
           if (partnerFcm != null && partnerFcm.isNotEmpty) {
             p.setString('cached_partner_fcm_token_${doc.id}', partnerFcm);
+          }
+          final partnerLang = data['language'] as String?;
+          if (partnerLang != null && partnerLang.isNotEmpty) {
+            p.setString('cached_partner_language_${doc.id}', partnerLang);
           }
         });
       } catch (e) {
@@ -1781,7 +1897,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
     final oldPlaceId = _lastPartnerDetectedPlaceId;
     _lastPartnerDetectedPlaceId = newPlaceId;
 
-    final partnerName = partner.name.isNotEmpty ? partner.name : 'Partnerin';
+    final partnerName = partner.name.isNotEmpty ? partner.name : loc('Partnerin', 'Partner');
 
     // İlk uygulama açılışında durum henüz oturmamışsa ayrılma spam'i yapma
     if (oldPlaceId == null && matchedPlace != null) {
@@ -1806,8 +1922,8 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
       if (shouldNotifyEnter) {
         NotificationService().show(
           id: matchedPlace.id.hashCode ^ 1,
-          title: '${matchedPlace.iconEmoji} $partnerName Konuma Ulaştı',
-          body: '$partnerName "${matchedPlace.title}" konumuna vardı. 💕',
+          title: loc('${matchedPlace.iconEmoji} $partnerName Konuma Ulaştı', '${matchedPlace.iconEmoji} $partnerName Arrived at Location'),
+          body: loc('$partnerName "${matchedPlace.title}" konumuna vardı. 💕', '$partnerName arrived at "${matchedPlace.title}". 💕'),
         );
       }
     }
@@ -1830,8 +1946,8 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
         if (shouldNotifyExit) {
           NotificationService().show(
             id: oldPlace.id.hashCode ^ 2,
-            title: '🚶 $partnerName Konumdan Ayrıldı',
-            body: '$partnerName "${oldPlace.title}" konumundan ayrıldı.',
+            title: loc('🚶 $partnerName Konumdan Ayrıldı', '🚶 $partnerName Left Location'),
+            body: loc('$partnerName "${oldPlace.title}" konumundan ayrıldı.', '$partnerName left "${oldPlace.title}".'),
           );
         }
       }
@@ -1868,7 +1984,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
 
     final prefs = await SharedPreferences.getInstance();
     final partnerUid = ref.read(partnerUidProvider) ?? ref.read(partnerProvider)?.id;
-    final myName = ref.read(userNameProvider).isNotEmpty ? ref.read(userNameProvider) : 'Partnerin';
+    final myName = ref.read(userNameProvider).isNotEmpty ? ref.read(userNameProvider) : loc('Partnerin', 'Partner');
     final myUid = DatabaseService().uid ?? me.id;
 
     // 1. Yeni bir mekana vardık mı? (Partnere haber ver)
@@ -1884,10 +2000,18 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
           prefs.getBool('notify_enter_${matchedPlace.id}') ?? true;
 
       if (shouldNotifyEnter && partnerUid != null && partnerUid.isNotEmpty) {
+        final titleTr = '${matchedPlace.iconEmoji} $myName Konuma Ulaştı';
+        final titleEn = '${matchedPlace.iconEmoji} $myName Arrived at Location';
+        final bodyTr = '$myName "${matchedPlace.title}" konumuna vardı. 💕';
+        final bodyEn = '$myName arrived at "${localizePlaceTitle(matchedPlace.title)}". 💕';
         NotificationService().sendPushToPartner(
           partnerUid: partnerUid,
-          title: '${matchedPlace.iconEmoji} $myName Konuma Ulaştı',
-          body: '$myName "${matchedPlace.title}" konumuna vardı. 💕',
+          title: loc(titleTr, titleEn),
+          body: loc(bodyTr, bodyEn),
+          titleTr: titleTr,
+          titleEn: titleEn,
+          bodyTr: bodyTr,
+          bodyEn: bodyEn,
         );
       }
     }
@@ -1908,10 +2032,18 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
             prefs.getBool('notify_exit_${oldPlace.id}') ?? true;
 
         if (shouldNotifyExit && partnerUid != null && partnerUid.isNotEmpty) {
+          final titleTr = '🚶 $myName Konumdan Ayrıldı';
+          final titleEn = '🚶 $myName Left Location';
+          final bodyTr = '$myName "${oldPlace.title}" konumundan ayrıldı.';
+          final bodyEn = '$myName left "${localizePlaceTitle(oldPlace.title)}".';
           NotificationService().sendPushToPartner(
             partnerUid: partnerUid,
-            title: '🚶 $myName Konumdan Ayrıldı',
-            body: '$myName "${oldPlace.title}" konumundan ayrıldı.',
+            title: loc(titleTr, titleEn),
+            body: loc(bodyTr, bodyEn),
+            titleTr: titleTr,
+            titleEn: titleEn,
+            bodyTr: bodyTr,
+            bodyEn: bodyEn,
           );
         }
       }
@@ -1951,8 +2083,8 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
               children: [
                 const Icon(Icons.info_outline_rounded, color: Colors.white),
                 const SizedBox(width: 10),
-                const Expanded(
-                  child: Text('Henüz biriyle eşleşmedin. Önce partnerinle eşleşmelisin! 💕'),
+                Expanded(
+                  child: Text(loc('Henüz biriyle eşleşmedin. Önce partnerinle eşleşmelisin! 💕', 'You haven\'t paired with anyone yet. Pair with your partner first! 💕')),
                 ),
               ],
             ),
@@ -1960,7 +2092,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             action: SnackBarAction(
-              label: 'Eşleş',
+              label: loc('Eşleş', 'Pair'),
               textColor: Colors.white,
               onPressed: () => _push(const PairingView()),
             ),
@@ -1979,13 +2111,19 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
     _lastHeartSentTime = now;
 
     await DatabaseService().sendHeart(partnerUid);
+    final senderNameTr = myName.isEmpty ? 'Partnerin' : myName;
+    final senderNameEn = myName.isEmpty ? 'Your partner' : myName;
     NotificationService().sendPushToPartner(
       partnerUid: partnerUid,
-      title: '🥺 Seni Çok Özledim!',
-      body: '${myName.isEmpty ? 'Partnerin' : myName} şu an seni çok özlediğini hissettirdi 💕',
+      title: loc('🥺 Seni Çok Özledim!', '🥺 I Miss You So Much!'),
+      body: loc('$senderNameTr şu an seni çok özlediğini hissettirdi 💕', '$senderNameEn just sent you lots of love 💕'),
+      titleTr: '🥺 Seni Çok Özledim!',
+      titleEn: '🥺 I Miss You So Much!',
+      bodyTr: '$senderNameTr şu an seni çok özlediğini hissettirdi 💕',
+      bodyEn: '$senderNameEn just sent you lots of love 💕',
       data: {
         'type': 'heart_ping',
-        'fromName': myName.isEmpty ? 'Partnerin' : myName,
+        'fromName': myName.isEmpty ? loc('Partnerin', 'Partner') : myName,
       },
     );
   }
@@ -1995,6 +2133,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = ref.watch(themePaletteProvider);
     final name = ref.watch(userNameProvider);
     final partner = ref.watch(partnerProvider);
     final start = ref.watch(startDateProvider);
@@ -2014,7 +2153,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(name.isEmpty ? 'Merhaba 👋' : 'Merhaba $name 👋',
+                        Text(ref.watch(stringsProvider).greeting(name),
                             style: theme.textTheme.bodyMedium?.copyWith(color: LoveraColors.textMuted)),
                         const SizedBox(height: 2),
                         Text('Lovera',
@@ -2029,15 +2168,15 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                               : _push(const PairingView()),
                           icon: Icon(
                             partner != null ? Icons.favorite_rounded : Icons.qr_code_rounded,
-                            color: partner != null ? LoveraColors.primary : null,
+                            color: partner != null ? palette.primary : null,
                           ),
-                          tooltip: partner != null ? 'Eş Yönetim Paneli' : 'Eşleşme',
+                          tooltip: partner != null ? loc('Eş Yönetim Paneli', 'Couple Management Panel') : loc('Eşleşme', 'Pairing'),
                         ),
                         const SizedBox(width: 8),
                         IconButton.filledTonal(
                           onPressed: () => _push(const SettingsView()),
                           icon: const Icon(Icons.settings_outlined),
-                          tooltip: 'Ayarlar',
+                          tooltip: loc('Ayarlar', 'Settings'),
                         ),
                       ],
                     ),
@@ -2069,7 +2208,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                         icon: Icons.map_rounded,
                         title: ref.watch(stringsProvider).liveMap,
                         subtitle: partner == null ? (ref.watch(stringsProvider).isEn ? 'Waiting for partner' : 'Eşleşme bekleniyor') : (ref.watch(stringsProvider).isEn ? 'View location' : 'Konumu gör'),
-                        color: LoveraColors.accentViolet,
+                        color: palette.primary,
                         onTap: () {
                           if (widget.onOpenMap != null) {
                             widget.onOpenMap!();
@@ -2085,7 +2224,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                         icon: Icons.favorite_border_rounded,
                         title: ref.watch(stringsProvider).specialDays,
                         subtitle: milestones.isEmpty ? (ref.watch(stringsProvider).isEn ? 'None added yet' : 'Henüz eklenmedi') : '${milestones.length} ${ref.watch(stringsProvider).daysPlural}',
-                        color: LoveraColors.accentGold,
+                        color: palette.secondary,
                         onTap: () => _push(const MilestonesView()),
                       ),
                     ),
@@ -2099,7 +2238,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                         icon: Icons.brush_rounded,
                         title: ref.watch(stringsProvider).drawTogether,
                         subtitle: ref.watch(stringsProvider).isEn ? 'Send drawing to widget' : 'Widget\'a çizim gönder',
-                        color: LoveraColors.accentPink,
+                        color: palette.primary,
                         onTap: () => _push(const DrawingScreen()),
                       ),
                     ),
@@ -2109,7 +2248,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                         icon: Icons.photo_library_rounded,
                         title: ref.watch(stringsProvider).memoriesAlbum,
                         subtitle: ref.watch(stringsProvider).isEn ? 'Your memories' : 'Birlikte anılarınız',
-                        color: LoveraColors.secondary,
+                        color: palette.secondary,
                         onTap: () => _push(const MemoriesGalleryView()),
                       ),
                     ),
@@ -2141,7 +2280,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                         ),
                       );
                     },
-                    child: const Icon(
+                    child: Icon(
                       Icons.favorite_rounded,
                       size: 135,
                       color: LoveraColors.primarySoft,
@@ -2289,16 +2428,16 @@ class _HeroCounterState extends ConsumerState<_HeroCounter> {
           padding: const EdgeInsets.all(24),
           child: Row(
             children: [
-              const Icon(Icons.favorite_rounded, color: LoveraColors.primary, size: 32),
+              Icon(Icons.favorite_rounded, color: LoveraColors.primary, size: 32),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Aşk Sayacı Yükleniyor...',
+                    Text(loc('Aşk Sayacı Yükleniyor...', 'Loading Love Counter...'),
                         style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                     const SizedBox(height: 4),
-                    Text('Birlikte geçen süre hesaplanıyor 💕',
+                    Text(loc('Birlikte geçen süre hesaplanıyor 💕', 'Calculating time together 💕'),
                         style: theme.textTheme.bodySmall?.copyWith(color: muted)),
                   ],
                 ),
@@ -2315,7 +2454,7 @@ class _HeroCounterState extends ConsumerState<_HeroCounter> {
           padding: const EdgeInsets.all(24),
           child: Row(
             children: [
-              const Icon(Icons.event_available_rounded, color: LoveraColors.primary, size: 32),
+              Icon(Icons.event_available_rounded, color: LoveraColors.primary, size: 32),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
@@ -2337,6 +2476,7 @@ class _HeroCounterState extends ConsumerState<_HeroCounter> {
 
     final elapsed = DateTime.now().difference(widget.start!);
     final isLight = theme.brightness == Brightness.light;
+    final palette = ref.watch(themePaletteProvider);
 
     return Container(
       width: double.infinity,
@@ -2346,20 +2486,27 @@ class _HeroCounterState extends ConsumerState<_HeroCounter> {
         borderRadius: BorderRadius.circular(AppTheme.radius),
         border: Border.all(
           color: isLight
-              ? LoveraColors.primary.withValues(alpha: 0.15)
-              : LoveraColors.primary.withValues(alpha: 0.2),
-          width: 1.2,
+              ? palette.primary.withValues(alpha: 0.22)
+              : palette.primary.withValues(alpha: 0.35),
+          width: 1.5,
         ),
         boxShadow: isLight
             ? [
                 BoxShadow(
-                  color: LoveraColors.primary.withValues(alpha: 0.06),
+                  color: palette.primary.withValues(alpha: 0.12),
                   blurRadius: 30,
                   offset: const Offset(0, 10),
                 ),
                 ...AppTheme.ambientShadow,
               ]
-            : AppTheme.ambientShadow,
+            : [
+                BoxShadow(
+                  color: palette.primary.withValues(alpha: 0.08),
+                  blurRadius: 20,
+                  offset: const Offset(0, 6),
+                ),
+                ...AppTheme.ambientShadow,
+              ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -2367,20 +2514,20 @@ class _HeroCounterState extends ConsumerState<_HeroCounter> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
             decoration: BoxDecoration(
-              color: LoveraColors.primary.withValues(alpha: 0.1),
+              color: palette.primary.withValues(alpha: isLight ? 0.12 : 0.18),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.favorite_rounded, size: 14, color: LoveraColors.primary),
+                Icon(Icons.favorite_rounded, size: 14, color: palette.primary),
                 const SizedBox(width: 6),
                 Text(
                   ref.watch(stringsProvider).isEn ? 'TIME SPENT TOGETHER' : 'BİRLİKTE GEÇEN ZAMAN',
                   style: theme.textTheme.labelSmall?.copyWith(
                     fontWeight: FontWeight.w800,
                     letterSpacing: 1.2,
-                    color: LoveraColors.primary,
+                    color: palette.primary,
                   ),
                 ),
               ],
@@ -2392,18 +2539,23 @@ class _HeroCounterState extends ConsumerState<_HeroCounter> {
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text(
-                '${elapsed.inDays}',
-                style: theme.textTheme.displayLarge?.copyWith(
-                  fontWeight: FontWeight.w900,
-                  color: LoveraColors.primary,
-                  letterSpacing: -1,
-                  height: 1,
+              ShaderMask(
+                shaderCallback: (bounds) => palette.gradient.createShader(bounds),
+                child: Text(
+                  '${elapsed.inDays}',
+                  style: theme.textTheme.displayLarge?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    letterSpacing: -1,
+                    height: 1,
+                  ),
                 ),
               ),
               const SizedBox(width: 10),
               Text(
-                ref.watch(stringsProvider).daysSingular,
+                elapsed.inDays == 1
+                    ? ref.watch(stringsProvider).daysSingular
+                    : ref.watch(stringsProvider).daysPlural,
                 style: theme.textTheme.headlineMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: isLight ? LoveraColors.textDark : LoveraColors.darkText,
@@ -2447,9 +2599,10 @@ class _PartnerCard extends ConsumerWidget {
       for (final place in savedPlaces) {
         final dist = Geolocator.distanceBetween(p.lat!, p.lng!, place.lat, place.lng);
         if (dist <= 45) {
+          final strings = ref.watch(stringsProvider);
           return {
             'emoji': place.iconEmoji,
-            'title': place.title,
+            'title': strings.translatePlaceTitle(place.title),
             'color': const Color(0xFF10B981),
             'bgColor': const Color(0xFF10B981).withValues(alpha: 0.14),
           };
@@ -2462,7 +2615,7 @@ class _PartnerCard extends ConsumerWidget {
     if (speedKmH >= 20.0) {
       return {
         'emoji': '🚗',
-        'title': 'Arabada',
+        'title': ref.watch(stringsProvider).isEn ? 'In Car' : 'Arabada',
         'color': const Color(0xFF388AF6),
         'bgColor': const Color(0xFF388AF6).withValues(alpha: 0.14),
       };
@@ -2480,16 +2633,17 @@ class _PartnerCard extends ConsumerWidget {
       return {
         'emoji': '📍',
         'title': ref.watch(stringsProvider).isEn ? 'Outdoors' : 'Dışarıda',
-        'color': const Color(0xFF8B5CF6),
-        'bgColor': const Color(0xFF8B5CF6).withValues(alpha: 0.14),
+        'color': LoveraColors.primary,
+        'bgColor': LoveraColors.primary.withValues(alpha: 0.14),
       };
     }
 
     // 4. Konum koordinatı hiç yoksa (eski veri kalıntısı)
     if (p.currentPlaceTitle != null && p.currentPlaceTitle!.isNotEmpty) {
+      final strings = ref.watch(stringsProvider);
       return {
         'emoji': (p.currentPlaceEmoji != null && p.currentPlaceEmoji!.isNotEmpty) ? p.currentPlaceEmoji! : '📍',
-        'title': p.currentPlaceTitle!,
+        'title': strings.translatePlaceTitle(p.currentPlaceTitle!),
         'color': const Color(0xFF10B981),
         'bgColor': const Color(0xFF10B981).withValues(alpha: 0.14),
       };
@@ -2545,17 +2699,17 @@ class _PartnerCard extends ConsumerWidget {
               CircleAvatar(
                 radius: 28,
                 backgroundColor: LoveraColors.primary.withValues(alpha: 0.15),
-                child: const Icon(Icons.favorite_rounded, color: LoveraColors.primary),
+                child: Icon(Icons.favorite_rounded, color: LoveraColors.primary),
               ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Partneriniz bağlanıyor...',
+                    Text(loc('Partneriniz bağlanıyor...', 'Connecting to partner...'),
                         style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
                     const SizedBox(height: 2),
-                    Text('Bilgiler güncelleniyor 💕',
+                    Text(loc('Bilgiler güncelleniyor 💕', 'Updating info 💕'),
                         style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted)),
                   ],
                 ),
@@ -2570,7 +2724,7 @@ class _PartnerCard extends ConsumerWidget {
             CircleAvatar(
               radius: 28,
               backgroundColor: LoveraColors.secondary.withValues(alpha: 0.25),
-              child: const Icon(Icons.person_add_alt_1_rounded, color: LoveraColors.secondary),
+              child: Icon(Icons.person_add_alt_1_rounded, color: LoveraColors.secondary),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -2632,11 +2786,11 @@ class _PartnerCard extends ConsumerWidget {
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Icon(Icons.location_on_rounded, size: 11, color: LoveraColors.secondary),
+                                Icon(Icons.location_on_rounded, size: 11, color: LoveraColors.secondary),
                                 const SizedBox(width: 3),
                                 Text(
                                   p.city!,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w700,
                                     color: LoveraColors.secondary,
@@ -2756,7 +2910,7 @@ class _PartnerCard extends ConsumerWidget {
                       : Icons.wb_sunny_rounded,
                   label: p.city != null && p.city!.isNotEmpty ? p.city! : (ref.watch(stringsProvider).isEn ? 'Weather' : 'Hava Durumu'),
                   value: (p.weather != null && p.weather!.isNotEmpty)
-                      ? p.weather!
+                      ? localizeWeather(p.weather)
                       : (ref.watch(stringsProvider).isEn ? 'Fetching weather...' : 'Hava durumu alınıyor...'),
                   color: LoveraColors.accentGold,
                   onTap: onWeatherTap,
@@ -2824,20 +2978,19 @@ class _ThinkingButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final palette = ref.watch(themePaletteProvider);
 
     return Container(
       decoration: BoxDecoration(
-        gradient: isDark ? LoveraColors.darkPrimaryGradient : LoveraColors.primaryGradient,
+        gradient: palette.gradient,
         borderRadius: BorderRadius.circular(AppTheme.radius),
-        boxShadow: isDark
-            ? [
-                BoxShadow(
-                  color: LoveraColors.primaryDark.withValues(alpha: 0.2),
-                  blurRadius: 16,
-                  offset: const Offset(0, 4),
-                ),
-              ]
-            : AppTheme.primaryGlow,
+        boxShadow: [
+          BoxShadow(
+            color: palette.primary.withValues(alpha: isDark ? 0.35 : 0.28),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Material(
         color: Colors.transparent,

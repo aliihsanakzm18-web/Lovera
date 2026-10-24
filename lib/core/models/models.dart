@@ -1,3 +1,5 @@
+import '../localization/app_strings.dart';
+
 class AppUser {
   final String id;
   final String name;
@@ -16,6 +18,7 @@ class AppUser {
   final String? currentPlaceTitle; // Örn. "Evim", "İş Yeri"
   final String? currentPlaceEmoji; // Örn. "🏠", "💼"
   final String? widgetBgUrl; // Hesaba kalıcı kayıtlı widget arka plan görseli (base64)
+  final String? language; // 'tr' veya 'en'
 
   const AppUser({
     required this.id,
@@ -34,6 +37,7 @@ class AppUser {
     this.currentPlaceTitle,
     this.currentPlaceEmoji,
     this.widgetBgUrl,
+    this.language,
   });
 
   factory AppUser.fromJson(Map<String, dynamic> j) => AppUser(
@@ -63,6 +67,7 @@ class AppUser {
         speed: (j['speed'] as num?)?.toDouble(),
         currentPlaceTitle: j['currentPlaceTitle'] as String?,
         currentPlaceEmoji: j['currentPlaceEmoji'] as String?,
+        language: j['language'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -82,6 +87,7 @@ class AppUser {
         'currentPlaceTitle': currentPlaceTitle,
         'currentPlaceEmoji': currentPlaceEmoji,
         'widget_bg_url': widgetBgUrl,
+        'language': language,
       };
 }
 
@@ -340,7 +346,7 @@ class SavedPlace {
 
     return SavedPlace(
       id: docId,
-      title: json['title'] as String? ?? 'Özel Konum',
+      title: json['title'] as String? ?? loc('Özel Konum', 'Custom Location'),
       category: json['category'] as String? ?? 'favorite',
       iconEmoji: json['iconEmoji'] as String? ?? '📍',
       lat: (json['lat'] as num?)?.toDouble() ?? 0.0,
@@ -481,7 +487,7 @@ class MemoryAlbum {
     return MemoryAlbum(
       id: docId,
       coupleId: json['coupleId'] as String? ?? '',
-      title: json['title'] as String? ?? 'Anı Grubu',
+      title: json['title'] as String? ?? loc('Anı Grubu', 'Memory Album'),
       description: json['description'] as String? ?? '',
       locationTitle: json['locationTitle'] as String? ?? '',
       date: parseDate(json['date']),

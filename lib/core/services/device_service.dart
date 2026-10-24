@@ -208,12 +208,6 @@ class DeviceService {
           accuracy: LocationAccuracy.high,
           distanceFilter: 10, // 10 metre: Adım attığı anda akıcı takip, sensör gürültüsünü filtreler
           intervalDuration: const Duration(seconds: 4),
-          foregroundNotificationConfig: const ForegroundNotificationConfig(
-            notificationTitle: 'Lovera · Canlı Bağlantı Aktif 💕',
-            notificationText: 'Partnerinle canlı şarj ve konum eşitleniyor',
-            enableWakeLock: true,
-            setOngoing: true,
-          ),
         );
       } else if (defaultTargetPlatform == TargetPlatform.iOS) {
         locationSettings = AppleSettings(

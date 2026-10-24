@@ -7,9 +7,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../chat/presentation/chat_view.dart';
 import '../../dashboard/presentation/dashboard_view.dart';
 import '../../games/presentation/games_view.dart';
-import '../../games/presentation/chess_game_view.dart';
-import '../../games/presentation/billiards_game_view.dart';
-import '../../games/presentation/backgammon_game_view.dart';
+import '../../games/presentation/love_questions_game_view.dart';
 import '../../map/presentation/live_map_view.dart';
 
 /// Lovera Ana Kabuk (Shell):
@@ -49,6 +47,10 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
   StreamSubscription? _meetingSub;
   StreamSubscription? _coupleSub;
   StreamSubscription? _drawingSub;
+  StreamSubscription? _chessInviteSub;
+  StreamSubscription? _billiardsInviteSub;
+  StreamSubscription? _gameInviteSub;
+  String? _lastHandledGameStatusKey;
   String? _shownMeetingId;
   bool _meetingSheetOpen = false;
   Map<String, dynamic>? _activeReviewMeetingRequest;
@@ -141,7 +143,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
               partnerUnreadMessages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
               final unreadTexts = partnerUnreadMessages.map((m) {
                 if (m.type == 'heart') return '❤️';
-                if (m.type == 'image' || m.mediaBase64 != null) return '📸 Fotoğraf';
+                if (m.type == 'image' || m.mediaBase64 != null) return loc('📸 Fotoğraf', '📸 Photo');
                 if (m.locationTitle != null && m.locationTitle!.isNotEmpty) {
                   return '📍 ${m.locationTitle}';
                 }
@@ -165,7 +167,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                 final m = Map<String, dynamic>.from(data['activeMeeting'] as Map);
                 final lat = (m['lat'] as num?)?.toDouble();
                 final lng = (m['lng'] as num?)?.toDouble();
-                final title = m['title']?.toString() ?? 'Buluşma Noktası';
+                final title = m['title']?.toString() ?? loc('Buluşma Noktası', 'Meetup Point');
                 if (lat != null && lng != null) {
                   ref.read(activeMeetingLocationProvider.notifier).state =
                       AttachedLocation(lat: lat, lng: lng, title: title);
@@ -188,7 +190,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
               final data = snap.data()!;
               final imageBase64 = data['imageBase64'] as String?;
               final senderId = data['senderId'] as String?;
-              final senderName = data['senderName'] as String? ?? 'Partnerin';
+              final senderName = data['senderName'] as String? ?? loc('Partnerin', 'Partner');
               final myUid = DatabaseService().uid;
 
               if (imageBase64 != null && imageBase64.isNotEmpty) {
@@ -211,27 +213,27 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                     } catch (_) {}
                   }
 
-                  String timeAgo = 'Şimdi';
+                  String timeAgo = loc('Şimdi', 'Just now');
                   int? tsMillis;
                   if (createdAt != null) {
                     tsMillis = createdAt.millisecondsSinceEpoch;
                     final diff = DateTime.now().difference(createdAt);
                     final minutes = diff.inMinutes;
                     if (minutes < 1) {
-                      timeAgo = 'Şimdi';
+                      timeAgo = loc('Şimdi', 'Just now');
                     } else if (minutes < 60) {
-                      timeAgo = '$minutes dk önce';
+                      timeAgo = loc('$minutes dk önce', '${minutes}m ago');
                     } else if (diff.inHours < 24) {
-                      timeAgo = '${diff.inHours} sa önce';
+                      timeAgo = loc('${diff.inHours} sa önce', '${diff.inHours}h ago');
                     } else {
-                      timeAgo = '${diff.inDays} gün önce';
+                      timeAgo = loc('${diff.inDays} gün önce', '${diff.inDays}d ago');
                     }
                   }
 
                   await WidgetSyncService.syncDrawingWidget(
                     imagePath: drawingPath,
                     imageBase64: imageBase64,
-                    senderName: isMe ? 'Sen' : senderName,
+                    senderName: isMe ? loc('Sen', 'You') : senderName,
                     timeAgo: timeAgo,
                     timestampMillis: tsMillis,
                   );
@@ -244,15 +246,83 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
         }
       }
 
+      void setupGameInviteListener(String? coupleId) {
+        _gameInviteSub?.cancel();
+        if (coupleId != null && coupleId.isNotEmpty) {
+          _gameInviteSub = DatabaseService().gameStream(coupleId, 'love_questions').listen((snap) {
+            if (!mounted || !snap.exists || snap.data() == null) return;
+            final data = snap.data()!;
+            final status = data['status'] as String?;
+            final fromUid = (data['fromUid'] ?? data['requestedBy']) as String?;
+            final toUid = data['toUid'] as String?;
+            final reqId = data['id']?.toString() ?? 'love_questions_${fromUid}_$status';
+            final myUid = DatabaseService().uid;
+            if (myUid == null) return;
+
+            // 1. Bana gelen bekleyen oyun daveti varsa alttan onay menüsünü aç
+            if (status == 'invitation_pending' && fromUid != myUid && (toUid == null || toUid == myUid)) {
+              if (reqId != _shownGameRequestId && !_gameSheetOpen) {
+                _shownGameRequestId = reqId;
+                final fromName = data['fromName']?.toString() ??
+                    data['player1Name']?.toString() ??
+                    loc('Partnerin', 'Partner');
+                _showGameRequestSheet({
+                  'id': reqId,
+                  'game': 'love_questions',
+                  'gameTitle': data['gameTitle']?.toString() ?? loc('Aşk Sandığı: Kalp Kalbe', 'Love Chest: Heart to Heart'),
+                  'fromUid': fromUid,
+                  'fromName': fromName,
+                  'status': 'pending',
+                });
+              }
+            }
+
+            // 2. Ben davet göndermişim ve partnerim kabul ettiyse oyuna otomatik uçur
+            final statusKey = '${reqId}_$status';
+            if (fromUid == myUid && _lastHandledGameStatusKey != statusKey) {
+              if (status == 'active' && _lastHandledGameStatusKey != null && _lastHandledGameStatusKey!.endsWith('_invitation_pending')) {
+                _lastHandledGameStatusKey = statusKey;
+                final by = data['responderName']?.toString() ??
+                    data['player2Name']?.toString() ??
+                    loc('Partnerin', 'Partner');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(loc('🎉 $by davetini kabul etti! Aşk Sandığı açılıyor...', '🎉 $by accepted your invite! Opening game...')),
+                    backgroundColor: const Color(0xFF10B981),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const LoveQuestionsGameView()),
+                );
+              } else if (status == 'rejected' && _lastHandledGameStatusKey != null && _lastHandledGameStatusKey!.endsWith('_invitation_pending')) {
+                _lastHandledGameStatusKey = statusKey;
+                final by = data['responderName']?.toString() ?? loc('Partnerin', 'Partner');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(loc('$by şimdilik oyuna katılamadı.', '$by didn\'t join the game right now.')),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              } else {
+                _lastHandledGameStatusKey = statusKey;
+              }
+            }
+          });
+        }
+      }
+
       setupDeliveryListener(ref.read(coupleIdProvider));
       setupCoupleListener(ref.read(coupleIdProvider));
       setupDrawingListener(ref.read(coupleIdProvider));
+      setupGameInviteListener(ref.read(coupleIdProvider));
       // coupleId sonradan yüklenirse de dinleyiciyi başlat
       ref.listenManual(coupleIdProvider, (prev, next) {
         if (next != prev && next != null) {
           setupDeliveryListener(next);
           setupCoupleListener(next);
           setupDrawingListener(next);
+          setupGameInviteListener(next);
         }
       });
 
@@ -322,6 +392,9 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
     _deliverySub?.cancel();
     _coupleSub?.cancel();
     _drawingSub?.cancel();
+    _chessInviteSub?.cancel();
+    _billiardsInviteSub?.cancel();
+    _gameInviteSub?.cancel();
     _meetingSub?.cancel();
     _stopHeartbeat();
     _lifecycleListener?.dispose();
@@ -344,13 +417,13 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
       if (res is Map) {
         DatabaseService().clearMeetingResult();
         final accepted = res['status'] == 'accepted';
-        final title = res['title']?.toString() ?? 'konum';
-        final by = res['byName']?.toString() ?? 'Partnerin';
+        final title = res['title']?.toString() ?? loc('konum', 'location');
+        final by = res['byName']?.toString() ?? loc('Partnerin', 'Partner');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(accepted
-                ? '$by "$title" buluşmasını kabul etti 💕'
-                : '$by bu sefer buluşamayacağını söyledi.'),
+                ? loc('$by "$title" buluşmasını kabul etti 💕', '$by accepted the meetup "$title" 💕')
+                : loc('$by bu sefer buluşamayacağını söyledi.', '$by said they can\'t make it this time.')),
             backgroundColor: accepted ? const Color(0xFF10B981) : null,
             behavior: SnackBarBehavior.floating,
           ),
@@ -361,27 +434,30 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
       final gameRes = data['gameResult'];
       if (gameRes is Map) {
         DatabaseService().clearGameResult();
-        final accepted = gameRes['status'] == 'accepted';
         final rawGame = gameRes['game']?.toString() ?? 'chess';
-        final game = rawGame == 'billiards'
-            ? 'bilardo'
-            : (rawGame == 'backgammon' ? 'tavla' : 'satranç');
-        final by = gameRes['byName']?.toString() ?? 'Partnerin';
-        if (accepted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('🎉 $by $game isteğini kabul etti! Oyun başlıyor...'),
-              backgroundColor: const Color(0xFF10B981),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('$by şimdilik $game oynamak istemedi.'),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
+        // Satranç yanıtları doğrudan setupChessInviteListener üzerinden işlenir, çift bildirim/ekran açılmasını önle
+        if (rawGame != 'chess') {
+          final accepted = gameRes['status'] == 'accepted';
+          final game = rawGame == 'billiards'
+              ? loc('bilardo', 'billiards')
+              : loc('tavla', 'backgammon');
+          final by = gameRes['byName']?.toString() ?? loc('Partnerin', 'Partner');
+          if (accepted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(loc('🎉 $by $game isteğini kabul etti! Oyun başlıyor...', '🎉 $by accepted the $game invitation! Starting game...')),
+                backgroundColor: const Color(0xFF10B981),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(loc('$by şimdilik $game oynamak istemedi.', '$by didn\'t want to play $game right now.')),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
         }
       }
 
@@ -398,16 +474,16 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
           ref.read(startDateProvider.notifier).state = null;
           WidgetSyncService.resetAllWidgets();
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Eşleşmeniz karşı tarafça onaylanarak sonlandırıldı. 💔'),
-              backgroundColor: Color(0xFFEF4444),
+            SnackBar(
+              content: Text(loc('Eşleşmeniz karşı tarafça onaylanarak sonlandırıldı. 💔', 'Your pairing has been terminated by partner approval. 💔')),
+              backgroundColor: const Color(0xFFEF4444),
               behavior: SnackBarBehavior.floating,
             ),
           );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Partnerin ayrılma isteğini reddetti.'),
+            SnackBar(
+              content: Text(loc('Partnerin ayrılma isteğini reddetti.', 'Partner rejected the disconnect request.')),
               behavior: SnackBarBehavior.floating,
             ),
           );
@@ -424,11 +500,11 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
         }
       }
 
-      // Gelen Oyun Daveti (pendingGameRequest)
+      // Gelen Oyun Daveti (pendingGameRequest - bilardo/tavla için)
       final gameReq = data['pendingGameRequest'];
-      if (gameReq is Map && gameReq['status'] == 'pending') {
+      if (gameReq is Map && gameReq['status'] == 'pending' && gameReq['game'] != 'chess') {
         final id = gameReq['id']?.toString() ?? gameReq['fromUid']?.toString();
-        if (id != null && id != _shownGameRequestId && !_gameSheetOpen) {
+        if (id != null && id != _shownGameRequestId && !_gameSheetOpen && !ref.read(isChessScreenOpenProvider)) {
           _shownGameRequestId = id;
           _showGameRequestSheet(Map<String, dynamic>.from(gameReq));
         }
@@ -446,7 +522,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
   }
 
   void _showBreakupRequestSheet(Map<String, dynamic> req) {
-    final fromName = req['fromName']?.toString() ?? 'Partnerin';
+    final fromName = req['fromName']?.toString() ?? loc('Partnerin', 'Partner');
     final fromUid = req['fromUid']?.toString() ?? '';
     final coupleId = req['coupleId']?.toString() ?? ref.read(coupleIdProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -460,7 +536,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
       builder: (ctx) => Container(
         padding: const EdgeInsets.fromLTRB(22, 14, 22, 28),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E212B) : Colors.white,
+          color: isDark ? LoveraColors.darkSurfaceAlt : Colors.white,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
           boxShadow: [
             BoxShadow(
@@ -496,13 +572,14 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                 ),
               ),
               const SizedBox(height: 14),
-              const Text(
-                'Eşleşmeyi Sonlandırma Talebi',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+              Text(
+                loc('Eşleşmeyi Sonlandırma Talebi', 'Disconnect Request'),
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 8),
               Text(
-                '$fromName seninle olan çift eşleşmesini sonlandırmak istiyor. Bu talebi kabul ederseniz sayaç, ortak alan ve eşleşmeniz her iki cihazda da kaldırılacaktır.',
+                loc('$fromName seninle olan çift eşleşmesini sonlandırmak istiyor. Bu talebi kabul ederseniz sayaç, ortak alan ve eşleşmeniz her iki cihazda da kaldırılacaktır.',
+                    '$fromName wants to end your pairing. If you accept this, the counter, shared space, and pairing will be removed on both devices.'),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 13.5,
@@ -525,14 +602,14 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                         await DatabaseService().rejectBreakup(fromUid);
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Ayrılma talebini reddettiniz.'),
+                            SnackBar(
+                              content: Text(loc('Ayrılma talebini reddettiniz.', 'You declined the disconnect request.')),
                               behavior: SnackBarBehavior.floating,
                             ),
                           );
                         }
                       },
-                      child: const Text('Reddet'),
+                      child: Text(loc('Reddet', 'Decline')),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -556,15 +633,15 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                         WidgetSyncService.resetAllWidgets();
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Eşleşme başarıyla sonlandırıldı. 💔'),
-                              backgroundColor: Color(0xFFEF4444),
+                            SnackBar(
+                              content: Text(loc('Eşleşme başarıyla sonlandırıldı. 💔', 'Pairing ended successfully. 💔')),
+                              backgroundColor: const Color(0xFFEF4444),
                               behavior: SnackBarBehavior.floating,
                             ),
                           );
                         }
                       },
-                      child: const Text('Kabul Et (Ayrıl)', style: TextStyle(fontWeight: FontWeight.w800)),
+                      child: Text(loc('Kabul Et (Ayrıl)', 'Accept (Disconnect)'), style: const TextStyle(fontWeight: FontWeight.w800)),
                     ),
                   ),
                 ],
@@ -578,14 +655,14 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
 
   Future<void> _answerMeeting(Map<String, dynamic> req, bool accepted) async {
     final fromUid = req['fromUid']?.toString() ?? '';
-    final title = req['title']?.toString() ?? 'konum';
+    final title = req['title']?.toString() ?? loc('konum', 'location');
     final lat = (req['lat'] as num?)?.toDouble();
     final lng = (req['lng'] as num?)?.toDouble();
     final meetingTime = req['meetingTime']?.toString();
     final note = req['note']?.toString();
     final coupleId = ref.read(coupleIdProvider);
     final myName = ref.read(userNameProvider);
-    final name = myName.isNotEmpty ? myName : 'Partnerin';
+    final name = myName.isNotEmpty ? myName : loc('Partnerin', 'Partner');
     setState(() => _activeReviewMeetingRequest = null);
     try {
       if (fromUid.isNotEmpty) {
@@ -600,12 +677,18 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
           meetingTime: meetingTime,
           note: note,
         );
+        final titleTr = accepted ? 'Buluşma kabul edildi 💕' : 'Buluşma talebi';
+        final titleEn = accepted ? 'Meetup accepted 💕' : 'Meetup request';
+        final bodyTr = accepted ? '$name "$title" buluşmasını kabul etti!' : '$name bu sefer buluşamayacağını söyledi.';
+        final bodyEn = accepted ? '$name accepted the "$title" meetup!' : '$name said they can\'t make it this time.';
         NotificationService().sendPushToPartner(
           partnerUid: fromUid,
-          title: accepted ? 'Buluşma kabul edildi 💕' : 'Buluşma talebi',
-          body: accepted
-              ? '$name "$title" buluşmasını kabul etti!'
-              : '$name bu sefer buluşamayacağını söyledi.',
+          title: loc(titleTr, titleEn),
+          body: loc(bodyTr, bodyEn),
+          titleTr: titleTr,
+          titleEn: titleEn,
+          bodyTr: bodyTr,
+          bodyEn: bodyEn,
           data: {'type': 'meeting_result'},
         );
       }
@@ -613,10 +696,10 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
   }
 
   void _showMeetingRequestSheet(Map<String, dynamic> req) {
-    final fromName = req['fromName']?.toString() ?? 'Partnerin';
-    String title = req['title']?.toString() ?? 'Buluşma Noktası';
-    if (title.toLowerCase().contains('seçilen')) {
-      title = 'Buluşma Noktası';
+    final fromName = req['fromName']?.toString() ?? loc('Partnerin', 'Partner');
+    String title = req['title']?.toString() ?? loc('Buluşma Noktası', 'Meetup Point');
+    if (title.toLowerCase().contains('seçilen') || title.toLowerCase().contains('selected')) {
+      title = loc('Buluşma Noktası', 'Meetup Point');
     }
     final lat = (req['lat'] as num?)?.toDouble();
     final lng = (req['lng'] as num?)?.toDouble();
@@ -630,7 +713,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
       builder: (ctx) => Container(
         padding: const EdgeInsets.fromLTRB(22, 14, 22, 28),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E212B) : Colors.white,
+          color: isDark ? LoveraColors.darkSurfaceAlt : Colors.white,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         ),
         child: SafeArea(
@@ -649,13 +732,13 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
               const SizedBox(height: 18),
               const Text('💕', style: TextStyle(fontSize: 40)),
               const SizedBox(height: 8),
-              const Text(
-                'Buluşma Talebi',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+              Text(
+                loc('Buluşma Talebi', 'Meetup Request'),
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 8),
               Text(
-                '$fromName seni "$title" konumunda buluşmaya çağırıyor.',
+                loc('$fromName seni "$title" konumunda buluşmaya çağırıyor.', '$fromName invites you to meet up at "$title".'),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 14,
@@ -677,11 +760,11 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.access_time_rounded, size: 16, color: LoveraColors.primary),
+                      Icon(Icons.access_time_rounded, size: 16, color: LoveraColors.primary),
                       const SizedBox(width: 6),
                       Text(
-                        'Saat: ${req['meetingTime']}',
-                        style: const TextStyle(
+                        loc('Saat: ${req['meetingTime']}', 'Time: ${req['meetingTime']}'),
+                        style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w800,
                           color: LoveraColors.primary,
@@ -697,7 +780,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF282B37) : const Color(0xFFF3F4F6),
+                    color: isDark ? LoveraColors.darkBorder : const Color(0xFFF3F4F6),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
                       color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
@@ -715,7 +798,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                             fontSize: 13,
                             fontStyle: FontStyle.italic,
                             fontWeight: FontWeight.w600,
-                            color: isDark ? Colors.white : const Color(0xFF1E2024),
+                            color: isDark ? Colors.white : LoveraColors.textDark,
                           ),
                         ),
                       ),
@@ -729,7 +812,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                   width: double.infinity,
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.map_rounded),
-                    label: const Text('Haritada Göster'),
+                    label: Text(loc('Haritada Göster', 'Show on Map')),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -758,7 +841,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                         Navigator.pop(ctx);
                         _answerMeeting(req, false);
                       },
-                      child: const Text('Şimdilik Olmaz'),
+                      child: Text(loc('Şimdilik Olmaz', 'Not Now')),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -775,7 +858,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                         Navigator.pop(ctx);
                         _answerMeeting(req, true);
                       },
-                      child: const Text('Kabul Et'),
+                      child: Text(loc('Kabul Et', 'Accept')),
                     ),
                   ),
                 ],
@@ -788,20 +871,11 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
   }
 
   void _showGameRequestSheet(Map<String, dynamic> req) {
-    final fromName = req['fromName']?.toString() ?? 'Partnerin';
-    final gameType = req['game']?.toString() ?? 'chess';
-    final gameTitle = req['gameTitle']?.toString() ??
-        (gameType == 'billiards'
-            ? '8 Top Bilardo'
-            : (gameType == 'backgammon' ? 'Klasik Tavla' : 'Satranç'));
-    final gameEmoji = gameType == 'billiards'
-        ? '🎱'
-        : (gameType == 'backgammon' ? '🎲' : '♟️');
-    final gradientColors = gameType == 'billiards'
-        ? const [Color(0xFF10B981), Color(0xFF0F766E)]
-        : (gameType == 'backgammon'
-            ? const [Color(0xFFEA580C), Color(0xFF9A3412)]
-            : const [Color(0xFF8B5CF6), Color(0xFF6D28D9)]);
+    final fromName = req['fromName']?.toString() ?? loc('Partnerin', 'Partner');
+    final gameType = req['game']?.toString() ?? 'love_questions';
+    final gameTitle = req['gameTitle']?.toString() ?? loc('Aşk Sandığı: Kalp Kalbe', 'Love Chest: Heart to Heart');
+    final gameEmoji = gameType == 'love_questions' ? '💌' : '🎮';
+    final gradientColors = [LoveraColors.primary, LoveraColors.primaryDeep];
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     _gameSheetOpen = true;
@@ -813,7 +887,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
       builder: (ctx) => Container(
         padding: const EdgeInsets.fromLTRB(22, 14, 22, 28),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E212B) : Colors.white,
+          color: isDark ? LoveraColors.darkSurfaceAlt : Colors.white,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
           boxShadow: [
             BoxShadow(
@@ -861,12 +935,13 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
               ),
               const SizedBox(height: 14),
               Text(
-                '$gameTitle Daveti',
+                loc('$gameTitle Daveti', '$gameTitle Invitation'),
                 style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 8),
               Text(
-                '$fromName seninle $gameTitle oynamak istiyor! Kabul ettiğinde oyun ekranı açılacak ve birlikte oynayabileceksiniz.',
+                loc('$fromName seninle $gameTitle oynamak istiyor! Kabul ettiğinde oyun ekranı açılacak ve birlikte oynayabileceksiniz.',
+                    '$fromName wants to play $gameTitle with you! When accepted, the game screen will open and you can play together.'),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 13.5,
@@ -887,7 +962,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                         Navigator.pop(ctx);
                         _answerGameRequest(req, false);
                       },
-                      child: const Text('Reddet'),
+                      child: Text(loc('Reddet', 'Decline')),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -904,7 +979,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                         Navigator.pop(ctx);
                         _answerGameRequest(req, true);
                       },
-                      child: const Text('Oyna 🚀', style: TextStyle(fontWeight: FontWeight.w800)),
+                      child: Text(loc('Oyna 🚀', 'Play 🚀'), style: const TextStyle(fontWeight: FontWeight.w800)),
                     ),
                   ),
                 ],
@@ -918,58 +993,58 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
 
   Future<void> _answerGameRequest(Map<String, dynamic> req, bool accepted) async {
     final fromUid = req['fromUid']?.toString() ?? '';
-    final gameType = req['game']?.toString() ?? 'chess';
-    final gameLabel = gameType == 'billiards'
-        ? '8 Top Bilardo'
-        : (gameType == 'backgammon' ? 'Tavla' : 'Satranç');
+    final gameType = req['game']?.toString() ?? 'game';
+    final gameLabel = req['gameTitle']?.toString() ?? loc('Oyun', 'Game');
     final coupleId = ref.read(coupleIdProvider);
     final myName = ref.read(userNameProvider);
-    final name = myName.isNotEmpty ? myName : 'Partnerin';
+    final name = myName.isNotEmpty ? myName : loc('Partnerin', 'Partner');
+
+    if (coupleId == null || coupleId.isEmpty || fromUid.isEmpty) return;
+
+    if (accepted && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.of(context).push(
+          PageRouteBuilder(
+            pageBuilder: (context, animation, secondaryAnimation) => const LoveQuestionsGameView(),
+            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+              const begin = Offset(1.0, 0.0);
+              const end = Offset.zero;
+              const curve = Curves.easeInOutCubic;
+              final tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+              return SlideTransition(
+                position: animation.drive(tween),
+                child: child,
+              );
+            },
+          ),
+        );
+      });
+    }
 
     try {
-      if (coupleId != null && coupleId.isNotEmpty && fromUid.isNotEmpty) {
-        await DatabaseService().respondGameRequest(
-          coupleId: coupleId,
-          gameType: gameType,
-          fromUid: fromUid,
-          accepted: accepted,
-          responderName: name,
-        );
+      await DatabaseService().respondGameRequest(
+        coupleId: coupleId,
+        gameType: gameType,
+        fromUid: fromUid,
+        accepted: accepted,
+        responderName: name,
+      );
 
-        NotificationService().sendPushToPartner(
-          partnerUid: fromUid,
-          title: accepted ? 'Oyun Daveti Kabul Edildi 🎉' : 'Oyun Daveti',
-          body: accepted ? '$name $gameLabel davetini kabul etti! Hazırlan...' : '$name davetini reddetti.',
-          data: {'type': 'game_result', 'game': gameType},
-        );
-
-        if (accepted && mounted) {
-          Widget targetScreen;
-          if (gameType == 'billiards') {
-            targetScreen = const BilliardsGameView();
-          } else if (gameType == 'backgammon') {
-            targetScreen = const BackgammonGameView();
-          } else {
-            targetScreen = const ChessGameView();
-          }
-
-          Navigator.of(context).push(
-            PageRouteBuilder(
-              pageBuilder: (context, animation, secondaryAnimation) => targetScreen,
-              transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                const begin = Offset(1.0, 0.0);
-                const end = Offset.zero;
-                const curve = Curves.easeInOutCubic;
-                final tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-                return SlideTransition(
-                  position: animation.drive(tween),
-                  child: child,
-                );
-              },
-            ),
-          );
-        }
-      }
+      final titleTr = accepted ? 'Oyun Daveti Kabul Edildi 🎉' : 'Oyun Daveti';
+      final titleEn = accepted ? 'Game Invitation Accepted 🎉' : 'Game Invitation';
+      final bodyTr = accepted ? '$name $gameLabel davetini kabul etti! Hazırlan...' : '$name davetini reddetti.';
+      final bodyEn = accepted ? '$name accepted the $gameLabel invitation! Get ready...' : '$name declined your invitation.';
+      NotificationService().sendPushToPartner(
+        partnerUid: fromUid,
+        title: loc(titleTr, titleEn),
+        body: loc(bodyTr, bodyEn),
+        titleTr: titleTr,
+        titleEn: titleEn,
+        bodyTr: bodyTr,
+        bodyEn: bodyEn,
+        data: {'type': 'game_result', 'game': gameType},
+      );
     } catch (e) {
       debugPrint('[GAME_REQUEST] Error answering game request: $e');
     }
@@ -1052,7 +1127,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   child: Container(
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E212B) : Colors.white,
+                      color: isDark ? LoveraColors.darkSurfaceAlt : Colors.white,
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
@@ -1087,7 +1162,8 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Text(
-                                    '${_activeReviewMeetingRequest!['fromName'] ?? "Partnerin"} Buluşmaya Çağırıyor',
+                                    loc('${_activeReviewMeetingRequest!['fromName'] ?? loc("Partnerin", "Partner")} Buluşmaya Çağırıyor',
+                                        '${_activeReviewMeetingRequest!['fromName'] ?? loc("Partnerin", "Partner")} Invites You to Meet Up'),
                                     style: const TextStyle(
                                       fontSize: 13,
                                       fontWeight: FontWeight.w800,
@@ -1097,15 +1173,15 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                                   ),
                                    Builder(
                                     builder: (context) {
-                                      String cardTitle = _activeReviewMeetingRequest!['title']?.toString() ?? 'Buluşma Noktası';
-                                      if (cardTitle.toLowerCase().contains('seçilen')) {
-                                        cardTitle = 'Buluşma Noktası';
+                                      String cardTitle = _activeReviewMeetingRequest!['title']?.toString() ?? loc('Buluşma Noktası', 'Meetup Point');
+                                      if (cardTitle.toLowerCase().contains('seçilen') || cardTitle.toLowerCase().contains('selected')) {
+                                        cardTitle = loc('Buluşma Noktası', 'Meetup Point');
                                       }
                                       final time = _activeReviewMeetingRequest!['meetingTime']?.toString();
                                       final note = _activeReviewMeetingRequest!['note']?.toString();
                                       String subtitle = cardTitle;
                                       if (time != null && time.trim().isNotEmpty) {
-                                        subtitle += ' · Saat: $time';
+                                        subtitle += loc(' · Saat: $time', ' · Time: $time');
                                       }
                                       if (note != null && note.trim().isNotEmpty) {
                                         subtitle += ' ("$note")';
@@ -1139,7 +1215,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                                 onPressed: () {
                                   _answerMeeting(_activeReviewMeetingRequest!, false);
                                 },
-                                child: const Text('Reddet', style: TextStyle(fontSize: 12)),
+                                child: Text(loc('Reddet', 'Decline'), style: const TextStyle(fontSize: 12)),
                               ),
                             ),
                             const SizedBox(width: 8),
@@ -1156,7 +1232,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                                 onPressed: () {
                                   _answerMeeting(_activeReviewMeetingRequest!, true);
                                 },
-                                child: const Text('Kabul Et', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                                child: Text(loc('Kabul Et', 'Accept'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
                               ),
                             ),
                           ],
@@ -1176,10 +1252,9 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
   }
 
   Widget _buildBottomBar(bool isDark) {
-    // Haritadayken (Sayfa 0) harita deneyimini engellememek için veya tam ekran harita için de bar gösterilebilir;
-    // Ancak ana sayfa, mesajlar ve oyun butonları her zaman sabit durur.
+    final palette = ref.watch(themePaletteProvider);
     final navBgColor = isDark
-        ? const Color(0xFF141620).withValues(alpha: 0.96)
+        ? palette.darkSurface.withValues(alpha: 0.96)
         : Colors.white.withValues(alpha: 0.96);
 
     final borderColor = isDark
@@ -1211,7 +1286,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                 icon: Icons.home_rounded,
                 selectedIcon: Icons.home_rounded,
                 isSelected: _currentIndex == 1,
-                activeColor: LoveraColors.primary,
+                activeColor: palette.primary,
                 tooltip: ref.watch(stringsProvider).navHome,
                 onTap: () => _goToPage(1),
               ),
@@ -1222,7 +1297,9 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                 selectedIcon: Icons.chat_bubble_rounded,
                 isSelected: _currentIndex == 2,
                 badgeCount: _unreadCount,
-                activeColor: LoveraColors.secondary,
+                activeColor: palette.secondary,
+                badgeGradient: palette.gradient,
+                badgeShadowColor: palette.primary,
                 tooltip: ref.watch(stringsProvider).navChat,
                 onTap: () => _goToPage(2),
               ),
@@ -1232,7 +1309,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                 icon: Icons.sports_esports_outlined,
                 selectedIcon: Icons.sports_esports_rounded,
                 isSelected: _currentIndex == 3,
-                activeColor: LoveraColors.accentViolet,
+                activeColor: palette.primary,
                 tooltip: ref.watch(stringsProvider).navGames,
                 onTap: () => _goToPage(3),
               ),
@@ -1253,6 +1330,8 @@ class _BottomNavItem extends StatelessWidget {
     required this.tooltip,
     required this.onTap,
     this.badgeCount = 0,
+    this.badgeGradient,
+    this.badgeShadowColor,
   });
 
   final IconData icon;
@@ -1262,6 +1341,8 @@ class _BottomNavItem extends StatelessWidget {
   final String tooltip;
   final VoidCallback onTap;
   final int badgeCount;
+  final LinearGradient? badgeGradient;
+  final Color? badgeShadowColor;
 
   @override
   Widget build(BuildContext context) {
@@ -1310,19 +1391,19 @@ class _BottomNavItem extends StatelessWidget {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 4.5, vertical: 2),
                         decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF9333EA), Color(0xFF7C3AED)],
+                          gradient: badgeGradient ?? LinearGradient(
+                            colors: [LoveraColors.gradientEndDeep, LoveraColors.primaryDeep],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                            color: isDark ? const Color(0xFF141620) : Colors.white,
+                            color: isDark ? LoveraColors.darkSurface : Colors.white,
                             width: 1.5,
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF8B5CF6).withValues(alpha: 0.5),
+                              color: (badgeShadowColor ?? LoveraColors.primary).withValues(alpha: 0.5),
                               blurRadius: 6,
                               offset: const Offset(0, 1.5),
                             ),

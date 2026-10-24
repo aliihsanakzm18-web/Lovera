@@ -55,10 +55,13 @@
                 android:paddingVertical="5dp">
 
                 <TextView
+                    android:id="@+id/widget_partner_heart"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="💜"
-                    android:textSize="12sp" />
+                    android:text="♥"
+                    android:textColor="#A78BFA"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
 
                 <TextView
                     android:id="@+id/widget_partner_name"

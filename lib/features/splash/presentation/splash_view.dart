@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/localization/app_strings.dart';
 import '../../../core/services/notification_service.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../dashboard/presentation/main_navigation_shell.dart';
 import '../../onboarding/presentation/onboarding_flow.dart';
 
@@ -93,7 +95,7 @@ class _SplashViewState extends State<SplashView> {
                     spreadRadius: 30,
                   ),
                   BoxShadow(
-                    color: const Color(0xFF8B5CF6).withValues(alpha: isDark ? 0.3 : 0.15),
+                    color: LoveraColors.primary.withValues(alpha: isDark ? 0.3 : 0.15),
                     blurRadius: 120,
                     spreadRadius: 40,
                   ),
@@ -117,7 +119,7 @@ class _SplashViewState extends State<SplashView> {
                         offset: const Offset(0, 12),
                       ),
                       BoxShadow(
-                        color: const Color(0xFF8B5CF6).withValues(alpha: 0.3),
+                        color: LoveraColors.primary.withValues(alpha: 0.3),
                         blurRadius: 20,
                         offset: const Offset(0, 6),
                       ),
@@ -168,7 +170,7 @@ class _SplashViewState extends State<SplashView> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'İkiniz İçin Özel Bir Dünya',
+                      loc('İkiniz İçin Özel Bir Dünya', 'A Private World for the Two of You'),
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 14,
                         fontWeight: FontWeight.w500,

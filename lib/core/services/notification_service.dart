@@ -15,6 +15,8 @@ import '../models/models.dart';
 import 'device_service.dart';
 import 'fcm_v1_service.dart';
 import 'widget_sync_service.dart';
+import '../localization/app_strings.dart';
+import '../localization/notification_localizer.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -23,6 +25,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
   } catch (_) {}
+  await loadAppLanguageFromPrefs();
 
   final prefs = await SharedPreferences.getInstance();
   await prefs.reload();
@@ -179,6 +182,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         speed: parsedSpeed,
         currentPlaceTitle: placeTitle ?? partner?.currentPlaceTitle,
         currentPlaceEmoji: placeEmoji ?? partner?.currentPlaceEmoji,
+        language: partner?.language,
       );
 
       // Yeni partner halini önbelleğe yaz
@@ -227,7 +231,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
               imagePath: drawingPath,
               imageBase64: imageBase64,
               senderName: senderName,
-              timeAgo: 'Şimdi',
+              timeAgo: loc('Şimdi', 'Just now'),
               timestampMillis: tsMillis,
             );
             debugPrint('[FCM-BG-DRAWING-SYNC] Uygulama kapalıyken yeni çizim widget\'a başarıyla yazıldı: $senderName (base64 dahil)');
@@ -245,12 +249,23 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   if (message.notification == null &&
       message.data.isNotEmpty &&
       message.data['type'] != 'ping_request' &&
-      message.data['title'] != null &&
-      message.data['title'].toString().trim().isNotEmpty) {
-    final title = message.data['title']!.toString();
-    final body = message.data['body']?.toString() ?? '';
+      ((message.data['title'] != null && message.data['title'].toString().trim().isNotEmpty) ||
+       (message.data['title_tr'] != null && message.data['title_tr'].toString().trim().isNotEmpty) ||
+       (message.data['title_en'] != null && message.data['title_en'].toString().trim().isNotEmpty))) {
+    final isEn = currentAppLanguage == AppLanguage.en;
+    final targetLang = isEn ? 'en' : 'tr';
+    final rawTitle = (isEn ? message.data['title_en'] : message.data['title_tr'])?.toString() ??
+        message.data['title']?.toString() ?? '';
+    final rawBody = (isEn ? message.data['body_en'] : message.data['body_tr'])?.toString() ??
+        message.data['body']?.toString() ?? '';
+    final title = NotificationLocalizer.localize(rawTitle, targetLang);
+    final body = NotificationLocalizer.localize(rawBody, targetLang);
+    final notifId = NotificationService.getDeterministicNotificationId(
+      message.data['type']?.toString(),
+      message.messageId,
+    );
     await NotificationService().show(
-      id: message.messageId.hashCode,
+      id: notifId,
       title: title,
       body: body,
       payload: message.data['type']?.toString(),
@@ -460,19 +475,23 @@ class NotificationService {
 
         final notif = message.notification;
         final payloadType = message.data['type']?.toString();
-        if (notif != null && ((notif.title != null && notif.title!.trim().isNotEmpty) || (notif.body != null && notif.body!.trim().isNotEmpty))) {
+        final isEn = currentAppLanguage == AppLanguage.en;
+        final targetLang = isEn ? 'en' : 'tr';
+
+        String? rawTitle = (isEn ? message.data['title_en'] : message.data['title_tr'])?.toString();
+        rawTitle ??= notif?.title ?? message.data['title']?.toString();
+
+        String? rawBody = (isEn ? message.data['body_en'] : message.data['body_tr'])?.toString();
+        rawBody ??= notif?.body ?? message.data['body']?.toString();
+
+        if ((rawTitle != null && rawTitle.trim().isNotEmpty) || (rawBody != null && rawBody.trim().isNotEmpty)) {
+          final title = NotificationLocalizer.localize(rawTitle ?? 'Lovera 💕', targetLang);
+          final body = NotificationLocalizer.localize(rawBody ?? '', targetLang);
+          final notifId = getDeterministicNotificationId(payloadType, message.messageId);
           show(
-            id: message.messageId.hashCode,
-            title: notif.title ?? 'Lovera 💕',
-            body: notif.body ?? '',
-            payload: payloadType,
-          );
-        } else if (message.data['title'] != null &&
-            message.data['title'].toString().trim().isNotEmpty) {
-          show(
-            id: message.messageId.hashCode,
-            title: message.data['title'].toString(),
-            body: message.data['body']?.toString() ?? '',
+            id: notifId,
+            title: title,
+            body: body,
             payload: payloadType,
           );
         }
@@ -533,68 +552,113 @@ class NotificationService {
       final cachedToken = prefs.getString('cached_fcm_token_$uid');
       final cachedDeviceId = prefs.getString('cached_fcm_dev_$uid');
 
-      // Eğer token ve cihaz ID zaten Firebase'e başarıyla yazılmışsa tekrar yazıp kota harcama!
-      if (cachedToken == token && cachedDeviceId == deviceId) {
-        debugPrint('[FCM] Token ve Cihaz ID zaten güncel, Firestore yazması atlandı.');
+      final currentLang = currentAppLanguage == AppLanguage.en ? 'en' : 'tr';
+      final cachedLang = prefs.getString('cached_user_lang_$uid');
+
+      // Eğer token, cihaz ID ve dil zaten Firebase'e başarıyla yazılmışsa tekrar yazıp kota harcama!
+      if (cachedToken == token && cachedDeviceId == deviceId && cachedLang == currentLang) {
+        debugPrint('[FCM] Token, Cihaz ID ve Dil zaten güncel, Firestore yazması atlandı.');
         return;
       }
 
-      debugPrint('[FCM] Firestore kullanıcısına token kaydediliyor: $uid');
+      debugPrint('[FCM] Firestore kullanıcısına token kaydediliyor: $uid (Dil: $currentLang)');
       await FirebaseFirestore.instance.collection('users').doc(uid).set({
         'fcmToken': token,
         'currentDeviceId': deviceId,
+        'language': currentLang,
         'fcmUpdatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true)).timeout(const Duration(seconds: 4));
 
       await prefs.setString('cached_fcm_token_$uid', token);
       await prefs.setString('cached_fcm_dev_$uid', deviceId);
-      debugPrint('[FCM] Token ve Cihaz ID ($deviceId) Firestore’a başarıyla kaydedildi!');
+      await prefs.setString('cached_user_lang_$uid', currentLang);
+      debugPrint('[FCM] Token, Cihaz ID ($deviceId) ve Dil ($currentLang) Firestore’a başarıyla kaydedildi!');
     } catch (e) {
       debugPrint('[FCM] Token kaydetme hatası (veya zaman aşımı): $e');
     }
   }
 
-  /// Partnerin kapalı olan telefonuna doğrudan Google FCM HTTP v1 üzerinden push bildirimi gönderir
+  /// Partnerin telefonuna Google FCM HTTP v1 üzerinden push bildirimi gönderir.
+  /// Bildirim metnini partnerin telefon diline ('en' veya 'tr') otomatik uyarlar.
   Future<void> sendPushToPartner({
     required String partnerUid,
     required String title,
     required String body,
+    String? titleTr,
+    String? titleEn,
+    String? bodyTr,
+    String? bodyEn,
     Map<String, String>? data,
   }) async {
     try {
       debugPrint('[FCM-SEND] Partner FCM aranıyor: $partnerUid');
       final prefs = await SharedPreferences.getInstance();
       String? fcmToken = prefs.getString('cached_partner_fcm_token_$partnerUid');
+      String? partnerLanguage = prefs.getString('cached_partner_language_$partnerUid');
 
-      // 1. Önce yerel bellekteki token'a bak
-      if (fcmToken == null || fcmToken.isEmpty) {
+      // 1. Önce yerel bellekteki token ve dile bak, eksikse Firestore'dan çek
+      if (fcmToken == null || fcmToken.isEmpty || partnerLanguage == null || partnerLanguage.isEmpty) {
         try {
           final partnerDoc = await FirebaseFirestore.instance
               .collection('users')
               .doc(partnerUid)
               .get(const GetOptions(source: Source.serverAndCache))
               .timeout(const Duration(seconds: 5));
-          fcmToken = partnerDoc.data()?['fcmToken'] as String?;
-          if (fcmToken != null && fcmToken.isNotEmpty) {
-            await prefs.setString('cached_partner_fcm_token_$partnerUid', fcmToken);
+          if (partnerDoc.exists && partnerDoc.data() != null) {
+            final docData = partnerDoc.data()!;
+            final fetchedToken = docData['fcmToken'] as String?;
+            if (fetchedToken != null && fetchedToken.isNotEmpty) {
+              fcmToken = fetchedToken;
+              await prefs.setString('cached_partner_fcm_token_$partnerUid', fcmToken);
+            }
+            final fetchedLang = docData['language'] as String?;
+            if (fetchedLang != null && fetchedLang.isNotEmpty) {
+              partnerLanguage = fetchedLang;
+              await prefs.setString('cached_partner_language_$partnerUid', partnerLanguage);
+            }
           }
         } catch (e) {
           debugPrint('[FCM-SEND] Partner dokümanı okunurken hata oluştu: $e');
         }
       }
 
-      debugPrint('[FCM-SEND] Bulunan partner token: $fcmToken');
+      partnerLanguage ??= 'tr'; // Varsayılan Türkçe
+      final bool isPartnerEn = partnerLanguage.toLowerCase() == 'en';
+
+      // İki dil için başlık ve gövdeyi belirle
+      final effectiveTitleTr = titleTr ?? NotificationLocalizer.toTr(title);
+      final effectiveTitleEn = titleEn ?? NotificationLocalizer.toEn(title);
+      final effectiveBodyTr = bodyTr ?? NotificationLocalizer.toTr(body);
+      final effectiveBodyEn = bodyEn ?? NotificationLocalizer.toEn(body);
+
+      // Partnerin telefon diline göre gönderilecek nihai metin
+      final finalTitle = isPartnerEn ? effectiveTitleEn : effectiveTitleTr;
+      final finalBody = isPartnerEn ? effectiveBodyEn : effectiveBodyTr;
+
+      debugPrint('[FCM-SEND] Partner dili: $partnerLanguage -> Gönderilen Başlık: "$finalTitle", Gövde: "$finalBody"');
+
       if (fcmToken == null || fcmToken.isEmpty) {
         debugPrint('[FCM-SEND] HATA: Partner ($partnerUid) kullanıcısının fcmToken alanı boş veya henüz oluşturulmamış!');
         return;
       }
 
+      // Veri yüküne iki dili de ekle
+      final extendedData = <String, String>{
+        'title_tr': effectiveTitleTr,
+        'title_en': effectiveTitleEn,
+        'body_tr': effectiveBodyTr,
+        'body_en': effectiveBodyEn,
+        'title': finalTitle,
+        'body': finalBody,
+        ...?data,
+      };
+
       // 2. Google FCM HTTP v1 ile kapalı olan telefona anında ulaştır
       final success = await FcmV1Service().sendPushNotification(
         fcmToken: fcmToken,
-        title: title,
-        body: body,
-        data: data,
+        title: finalTitle,
+        body: finalBody,
+        data: extendedData,
       );
       debugPrint('[FCM-SEND] FCM v1 Gönderim sonucu: $success');
     } catch (e) {
@@ -631,6 +695,61 @@ class NotificationService {
     } catch (_) {}
   }
 
+  static final Map<String, int> _recentNotificationDedup = {};
+
+  static bool isDuplicate(String title, String body, [String? type]) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _recentNotificationDedup.removeWhere((_, time) => now - time > 30000);
+
+    final cleanTitle = title.trim();
+    final cleanBody = body.trim();
+    final key = '${type ?? ""}_${cleanTitle}_$cleanBody';
+    final lastTime = _recentNotificationDedup[key];
+    if (lastTime != null && (now - lastTime) < 8000) {
+      debugPrint('[NOTIFICATION-DEDUP] Mükerrer bildirim engellendi: "$cleanTitle" - "$cleanBody"');
+      return true;
+    }
+    _recentNotificationDedup[key] = now;
+    return false;
+  }
+
+  static int getDeterministicNotificationId(String? type, [String? messageId]) {
+    switch (type) {
+      case 'charge_ping':
+      case 'chargePing':
+        return 1001;
+      case 'heart_ping':
+      case 'heartPing':
+        return 1002;
+      case 'lowBattery':
+      case 'low_battery':
+        return 1003;
+      case 'place_enter':
+        return 1004;
+      case 'place_exit':
+        return 1005;
+      case 'drawing_sent':
+        return 1006;
+      case 'meeting_request':
+      case 'meeting_result':
+        return 1007;
+      case 'game_request':
+      case 'game_result':
+        return 1008;
+      case 'chat_message':
+      case 'chatMessage':
+        if (messageId != null && messageId.isNotEmpty) {
+          return messageId.hashCode;
+        }
+        return 1010;
+      default:
+        if (messageId != null && messageId.isNotEmpty) {
+          return messageId.hashCode;
+        }
+        return 1000;
+    }
+  }
+
   /// Yerel bildirim gösterici
   Future<void> show({
     required int id,
@@ -639,22 +758,24 @@ class NotificationService {
     String? payload,
   }) async {
     if (title.trim().isEmpty && body.trim().isEmpty) return;
+    if (isDuplicate(title, body, payload)) return;
     try {
       await _localPlugin.show(
         id,
         title,
         body,
-        const NotificationDetails(
+        NotificationDetails(
           android: AndroidNotificationDetails(
             'lovera_partner',
-            'Partner Mesajları',
-            channelDescription: 'Partnerinden gelen mesajlar',
+            loc('Partner Mesajları', 'Partner Messages'),
+            channelDescription: loc('Partnerinden gelen mesajlar', 'Messages from your partner'),
             importance: Importance.max,
             priority: Priority.max,
             playSound: true,
             enableVibration: true,
+            tag: payload,
           ),
-          iOS: DarwinNotificationDetails(presentAlert: true, presentSound: true),
+          iOS: const DarwinNotificationDetails(presentAlert: true, presentSound: true),
         ),
         payload: payload,
       );

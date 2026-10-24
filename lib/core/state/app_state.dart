@@ -1,9 +1,13 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/models.dart';
 import '../services/widget_sync_service.dart';
+import '../theme/theme_palette.dart';
+export '../theme/theme_palette.dart';
 
 /// Global ScaffoldMessengerKey for toasts and SnackBars across all bottom sheets and dialogs
 final rootScaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
@@ -91,7 +95,7 @@ class ThemeModeNotifier extends StateNotifier<ThemeMode> {
     } catch (_) {}
   }
 
-  Future<void> setThemeMode(ThemeMode mode) async {
+  Future<void> setThemeMode(ThemeMode mode, {bool syncToCloud = true}) async {
     state = mode;
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -99,6 +103,15 @@ class ThemeModeNotifier extends StateNotifier<ThemeMode> {
           ? 'light'
           : (mode == ThemeMode.dark ? 'dark' : 'system');
       await prefs.setString('theme_mode', modeStr);
+
+      if (syncToCloud) {
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        if (uid != null && uid.isNotEmpty) {
+          FirebaseFirestore.instance.collection('users').doc(uid).set({
+            'themeMode': modeStr,
+          }, SetOptions(merge: true)).catchError((_) {});
+        }
+      }
 
       // Eğer widget teması özel olarak 'dark' veya 'light' kilitlenmemişse ('app' ise)
       // uygulamanın temasıyla birlikte anında widget temasını da senkronize et!
@@ -123,3 +136,59 @@ class ThemeModeNotifier extends StateNotifier<ThemeMode> {
 /// Kullanıcının satranç oyun ekranında olup olmadığını belirten provider
 final isChessScreenOpenProvider = StateProvider<bool>((ref) => false);
 
+/// Aktif Çift Renkli Tema Paketi Yöneticisi
+final themePaletteProvider = StateNotifierProvider<ThemePaletteNotifier, ThemePaletteData>((ref) {
+  return ThemePaletteNotifier();
+});
+
+class ThemePaletteNotifier extends StateNotifier<ThemePaletteData> {
+  ThemePaletteNotifier({ThemePaletteData? initialPalette})
+      : super(initialPalette ?? ThemePaletteData.classic) {
+    ActivePalette.current = state;
+    if (initialPalette == null) {
+      _loadThemePalette();
+    }
+  }
+
+  Future<void> _loadThemePalette() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = prefs.getString('theme_palette');
+      _apply(ThemePaletteData.fromKey(key));
+    } catch (_) {}
+  }
+
+  /// Paleti global olarak uygular ve açık tüm ekranları (menüler, sheet'ler dahil)
+  /// durumlarını kaybetmeden yeniden çizer.
+  void _apply(ThemePaletteData data) {
+    ActivePalette.current = data;
+    state = data;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      void rebuild(Element el) {
+        el.markNeedsBuild();
+        el.visitChildren(rebuild);
+      }
+
+      final root = WidgetsBinding.instance.rootElement;
+      if (root != null) rebuild(root);
+    });
+  }
+
+  Future<void> setPalette(ThemePalette palette, {bool syncToCloud = true}) async {
+    final data = ThemePaletteData.fromId(palette);
+    _apply(data);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('theme_palette', palette.name);
+      await WidgetSyncService.syncWidgetPalette(data);
+      if (syncToCloud) {
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        if (uid != null && uid.isNotEmpty) {
+          FirebaseFirestore.instance.collection('users').doc(uid).set({
+            'themePalette': palette.name,
+          }, SetOptions(merge: true)).catchError((_) {});
+        }
+      }
+    } catch (_) {}
+  }
+}

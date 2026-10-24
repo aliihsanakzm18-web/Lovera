@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../../core/localization/app_strings.dart';
 import '../../../core/theme/app_theme.dart';
 
 class PermissionsPage extends StatefulWidget {
@@ -73,16 +74,28 @@ class _PermissionsPageState extends State<PermissionsPage> with WidgetsBindingOb
         context: context,
         barrierDismissible: false,
         builder: (ctx) => AlertDialog(
-          title: const Text('Arka plan konum erişimi'),
-          content: const Text(
-            'Lovera, uygulama kapalıyken veya kullanımda değilken bile konumunu ve '
-            'pil seviyeni yalnızca eşleştiğin partnerinle paylaşmak için konum verini toplar.\n\n'
-            'Bu veri reklam için kullanılmaz, üçüncü kişilerle paylaşılmaz. '
-            'Paylaşımı istediğin zaman Ayarlar\'dan kapatabilir veya hesabını silebilirsin.',
+          title: Text(loc('Arka plan konum erişimi', 'Background location access')),
+          content: Text(
+            loc(
+              'Lovera, uygulama kapalıyken veya kullanımda değilken bile konumunu ve '
+              'pil seviyeni yalnızca eşleştiğin partnerinle paylaşmak için konum verini toplar.\n\n'
+              'Bu veri reklam için kullanılmaz, üçüncü kişilerle paylaşılmaz. '
+              'Paylaşımı istediğin zaman Ayarlar\'dan kapatabilir veya hesabını silebilirsin.',
+              'Lovera collects location data to share your live location and battery level '
+              'only with your paired partner even when the app is closed or not in use.\n\n'
+              'This data is never used for advertising or shared with third parties. '
+              'You can disable location sharing in Settings or delete your account at any time.',
+            ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Şimdi değil')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Kabul ediyorum')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(loc('Şimdi değil', 'Not now')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(loc('Kabul ediyorum', 'I agree')),
+            ),
           ],
         ),
       );
@@ -120,10 +133,24 @@ class _PermissionsPageState extends State<PermissionsPage> with WidgetsBindingOb
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final allItems = [
-      (Permission.locationAlways, Icons.location_on_rounded, 'Canlı Konum & Ortak Harita',
-          'Uygulama kapalıyken bile partnerinin seni haritada görebilmesi için.'),
-      (Permission.notification, Icons.notifications_rounded, 'Bildirimler',
-          '“Seni düşünüyorum” mesajları ve özel gün hatırlatıcıları için.'),
+      (
+        Permission.locationAlways,
+        Icons.location_on_rounded,
+        loc('Canlı Konum & Ortak Harita', 'Live Location & Shared Map'),
+        loc(
+          'Uygulama kapalıyken bile partnerinin seni haritada görebilmesi için.',
+          'So your partner can see you on the map even when the app is closed.',
+        ),
+      ),
+      (
+        Permission.notification,
+        Icons.notifications_rounded,
+        loc('Bildirimler', 'Notifications'),
+        loc(
+          '“Seni düşünüyorum” mesajları ve özel gün hatırlatıcıları için.',
+          'For "Thinking of you" messages and special date reminders.',
+        ),
+      ),
     ];
 
     final missingItems = allItems.where((it) => !(_granted[it.$1] ?? false)).toList();
@@ -141,15 +168,26 @@ class _PermissionsPageState extends State<PermissionsPage> with WidgetsBindingOb
                 onPressed: widget.onBack,
               ),
             ),
-            Text(allGranted ? 'Her Şey Hazır! 🎉' : 'Eksik İzinler',
-                style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
+            Text(
+              allGranted
+                  ? loc('Her Şey Hazır! 🎉', 'All Set! 🎉')
+                  : loc('Eksik İzinler', 'Missing Permissions'),
+              style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+            ),
             const SizedBox(height: 8),
             Text(
-                allGranted
-                    ? 'Tüm gerekli izinler tanımlı. Lovera\'yı tam performansla kullanabilirsiniz.'
-                    : 'Uygulamanın kesintisiz çalışması için aşağıdaki izinleri tamamlayın.',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium?.copyWith(color: LoveraColors.textMuted)),
+              allGranted
+                  ? loc(
+                      'Tüm gerekli izinler tanımlı. Lovera\'yı tam performansla kullanabilirsiniz.',
+                      'All required permissions are granted. You can use Lovera with full features.',
+                    )
+                  : loc(
+                      'Uygulamanın kesintisiz çalışması için aşağıdaki izinleri tamamlayın.',
+                      'Please grant the permissions below for seamless background operation.',
+                    ),
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(color: LoveraColors.textMuted),
+            ),
             const SizedBox(height: 24),
             if (_checking)
               const Expanded(child: Center(child: CircularProgressIndicator()))
@@ -159,10 +197,13 @@ class _PermissionsPageState extends State<PermissionsPage> with WidgetsBindingOb
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.verified_rounded, size: 68, color: LoveraColors.secondary),
+                      Icon(Icons.verified_rounded, size: 68, color: LoveraColors.secondary),
                       const SizedBox(height: 16),
                       Text(
-                        'Konum, bildirim ve kamera izinleri aktif.',
+                        loc(
+                          'Konum, bildirim ve kamera izinleri aktif.',
+                          'Location, notification, and camera permissions are active.',
+                        ),
                         style: theme.textTheme.bodyMedium?.copyWith(color: LoveraColors.textMuted),
                       ),
                     ],
@@ -210,7 +251,7 @@ class _PermissionsPageState extends State<PermissionsPage> with WidgetsBindingOb
                           const SizedBox(width: 8),
                           FilledButton.tonal(
                             onPressed: () => _request(perm),
-                            child: const Text('İzin Ver'),
+                            child: Text(loc('İzin Ver', 'Grant')),
                           ),
                         ],
                       ),
@@ -220,7 +261,11 @@ class _PermissionsPageState extends State<PermissionsPage> with WidgetsBindingOb
               ),
             FilledButton(
               onPressed: widget.onFinish,
-              child: Text(allGranted ? 'Lovera’ya Başla' : 'Devam Et'),
+              child: Text(
+                allGranted
+                    ? loc('Lovera’ya Başla', 'Start Lovera')
+                    : loc('Devam Et', 'Continue'),
+              ),
             ),
           ],
         ),

@@ -113,6 +113,7 @@
         android:paddingVertical="5dp">
 
         <TextView
+            android:id="@+id/widget_drawing_btn_reply_text"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="🖌️ Çiz"

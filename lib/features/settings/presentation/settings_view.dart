@@ -1,6 +1,3 @@
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,6 +5,7 @@ import '../../../core/localization/app_strings.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/theme_palette.dart';
 import '../../onboarding/presentation/onboarding_flow.dart';
 import 'account_settings_view.dart';
 import 'widget_settings_view.dart';
@@ -102,15 +100,15 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
               children: [
                 Center(
                   child: Text(
-                    'Bildirim Ayarları',
+                    loc('Bildirim Ayarları', 'Notification Settings'),
                     style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
                   ),
                 ),
                 const SizedBox(height: 20),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('“Seni Düşünüyorum” Kalpleri', style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: const Text('Partnerinizden gelen anlık titreşimli kalpler', style: TextStyle(color: LoveraColors.textMuted)),
+                  title: Text(loc('“Seni Düşünüyorum” Kalpleri', '"Thinking of You" Hearts'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Text(loc('Partnerinizden gelen anlık titreşimli kalpler', 'Instant vibrating hearts from your partner'), style: TextStyle(color: LoveraColors.textMuted)),
                   activeColor: LoveraColors.primary,
                   value: _notifHeart,
                   onChanged: (val) {
@@ -121,8 +119,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 Divider(color: theme.dividerColor),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Özel Gün Hatırlatıcıları', style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: const Text('Yıldönümü ve doğum günleri yaklaşınca haber ver', style: TextStyle(color: LoveraColors.textMuted)),
+                  title: Text(loc('Özel Gün Hatırlatıcıları', 'Special Date Reminders'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Text(loc('Yıldönümü ve doğum günleri yaklaşınca haber ver', 'Notify when anniversaries and birthdays approach'), style: TextStyle(color: LoveraColors.textMuted)),
                   activeColor: LoveraColors.primary,
                   value: _notifMilestones,
                   onChanged: (val) {
@@ -133,8 +131,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 Divider(color: theme.dividerColor),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Mesafe ve Yakınlaşma', style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: const Text('Partnerinizle birbirinize yaklaştığınızda bildir', style: TextStyle(color: LoveraColors.textMuted)),
+                  title: Text(loc('Mesafe ve Yakınlaşma', 'Distance & Proximity'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Text(loc('Partnerinizle birbirinize yaklaştığınızda bildir', 'Notify when you and your partner get close to each other'), style: TextStyle(color: LoveraColors.textMuted)),
                   activeColor: LoveraColors.primary,
                   value: _notifDistance,
                   onChanged: (val) {
@@ -170,15 +168,15 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
               children: [
                 Center(
                   child: Text(
-                    'Gizlilik ve Güvenlik',
+                    loc('Gizlilik ve Güvenlik', 'Privacy & Security'),
                     style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
                   ),
                 ),
                 const SizedBox(height: 20),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Canlı Konum Paylaşımı', style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: const Text('Partnerinizin harita üzerinde anlık konumunuzu görmesi', style: TextStyle(color: LoveraColors.textMuted)),
+                  title: Text(loc('Canlı Konum Paylaşımı', 'Live Location Sharing'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Text(loc('Partnerinizin harita üzerinde anlık konumunuzu görmesi', 'Allow your partner to see your real-time location on map'), style: TextStyle(color: LoveraColors.textMuted)),
                   activeColor: LoveraColors.secondary,
                   value: _shareLiveLocation,
                   onChanged: (val) {
@@ -189,8 +187,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 Divider(color: theme.dividerColor),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Çevrimiçi Durumunu Göster', style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: const Text('Son görülme ve anlık aktiflik bilgisi', style: TextStyle(color: LoveraColors.textMuted)),
+                  title: Text(loc('Çevrimiçi Durumunu Göster', 'Show Online Status'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Text(loc('Son görülme ve anlık aktiflik bilgisi', 'Last seen and real-time activity status'), style: TextStyle(color: LoveraColors.textMuted)),
                   activeColor: LoveraColors.secondary,
                   value: _showOnlineStatus,
                   onChanged: (val) {
@@ -207,11 +205,14 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.lock_rounded, color: LoveraColors.secondary, size: 22),
+                      Icon(Icons.lock_rounded, color: LoveraColors.secondary, size: 22),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'Tüm verileriniz uçtan uca sadece sizin ve eşleştiğiniz partnerinizin erişimine açıktır.',
+                          loc(
+                            'Tüm verileriniz uçtan uca sadece sizin ve eşleştiğiniz partnerinizin erişimine açıktır.',
+                            'All your data is end-to-end accessible only by you and your paired partner.',
+                          ),
                           style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w500),
                         ),
                       ),
@@ -246,7 +247,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   shape: BoxShape.circle,
                   color: LoveraColors.primarySoft.withValues(alpha: 0.18),
                 ),
-                child: const Icon(Icons.favorite_rounded, color: LoveraColors.primary, size: 36),
+                child: Icon(Icons.favorite_rounded, color: LoveraColors.primary, size: 36),
               ),
               const SizedBox(height: 16),
               Text(
@@ -256,7 +257,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
               const SizedBox(height: 4),
               Text(
                 s.aboutVersion,
-                style: const TextStyle(color: LoveraColors.textMuted, fontSize: 13, fontWeight: FontWeight.w600),
+                style: TextStyle(color: LoveraColors.textMuted, fontSize: 13, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 16),
               Text(
@@ -325,8 +326,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   _ThemeOptionTile(
                     icon: Icons.language_rounded,
                     iconColor: const Color(0xFFE11D48),
-                    title: 'Türkçe',
-                    subtitle: 'Türkçe (TR)',
+                    title: loc('Türkçe', 'Turkish'),
+                    subtitle: loc('Türkçe (TR)', 'Turkish (TR)'),
                     isSelected: currentLang == AppLanguage.tr,
                     onTap: () {
                       ref.read(appLanguageProvider.notifier).setLanguage(AppLanguage.tr);
@@ -357,6 +358,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
   // 4. Görünüm ve Tema Seçimi
   void _openThemeSettings() {
     final s = ref.read(stringsProvider);
+    final isEn = ref.read(appLanguageProvider) == AppLanguage.en;
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -369,64 +371,113 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
           builder: (context, ref, _) {
             final theme = Theme.of(context);
             final activeMode = ref.watch(themeModeProvider);
+            final activePalette = ref.watch(themePaletteProvider);
 
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Text(
-                      s.themeAndAppearance,
-                      style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+            return ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.85,
+              ),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Text(
+                        s.themeAndAppearance,
+                        style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 6),
-                  Center(
-                    child: Text(
-                      s.themeSubtitle,
+                    const SizedBox(height: 6),
+                    Center(
+                      child: Text(
+                        s.themeSubtitle,
+                        style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Mod Seçenekleri (Açık / Koyu / Sistem)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _ThemeModePill(
+                            icon: Icons.light_mode_rounded,
+                            iconColor: const Color(0xFFF59E0B),
+                            title: s.themeLight,
+                            isSelected: activeMode == ThemeMode.light,
+                            onTap: () {
+                              ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.light);
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _ThemeModePill(
+                            icon: Icons.dark_mode_rounded,
+                            iconColor: activePalette.primary,
+                            title: s.themeDark,
+                            isSelected: activeMode == ThemeMode.dark,
+                            onTap: () {
+                              ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.dark);
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _ThemeModePill(
+                            icon: Icons.settings_brightness_rounded,
+                            iconColor: const Color(0xFF388AF6),
+                            title: s.themeSystem,
+                            isSelected: activeMode == ThemeMode.system,
+                            onTap: () {
+                              ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.system);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 24),
+                    Divider(color: theme.dividerColor, height: 1),
+                    const SizedBox(height: 18),
+
+                    // Çift Renkli Tema Paketleri
+                    Text(
+                      s.colorPalettesTitle,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      s.colorPalettesSubtitle,
                       style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted),
                     ),
-                  ),
-                  const SizedBox(height: 24),
+                    const SizedBox(height: 16),
 
-                  _ThemeOptionTile(
-                    icon: Icons.light_mode_rounded,
-                    iconColor: const Color(0xFFF59E0B),
-                    title: s.themeLight,
-                    subtitle: s.themeLightSub,
-                    isSelected: activeMode == ThemeMode.light,
-                    onTap: () {
-                      ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.light);
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  _ThemeOptionTile(
-                    icon: Icons.dark_mode_rounded,
-                    iconColor: LoveraColors.primary,
-                    title: s.themeDark,
-                    subtitle: s.themeDarkSub,
-                    isSelected: activeMode == ThemeMode.dark,
-                    onTap: () {
-                      ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.dark);
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  _ThemeOptionTile(
-                    icon: Icons.settings_brightness_rounded,
-                    iconColor: const Color(0xFF388AF6),
-                    title: s.themeSystem,
-                    subtitle: s.themeSystemSub,
-                    isSelected: activeMode == ThemeMode.system,
-                    onTap: () {
-                      ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.system);
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                ],
+                    ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: ThemePaletteData.all.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        final palette = ThemePaletteData.all[index];
+                        final isSelected = activePalette.id == palette.id;
+                        return _PaletteOptionTile(
+                          palette: palette,
+                          isSelected: isSelected,
+                          isEn: isEn,
+                          onTap: () {
+                            ref.read(themePaletteProvider.notifier).setPalette(palette.id);
+                          },
+                        );
+                      },
+                    ),
+                  ],
+                ),
               ),
             );
           },
@@ -442,12 +493,14 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     final userName = ref.watch(userNameProvider);
     final avatarPath = ref.watch(userAvatarProvider);
     final currentThemeMode = ref.watch(themeModeProvider);
+    final currentPalette = ref.watch(themePaletteProvider);
     final currentLang = ref.watch(appLanguageProvider);
+    final isEn = currentLang == AppLanguage.en;
     final auth = AuthService();
     final String themeModeLabel = currentThemeMode == ThemeMode.light
         ? s.themeLight
         : (currentThemeMode == ThemeMode.dark ? s.themeDark : s.themeSystem);
-    final String languageLabel = currentLang == AppLanguage.en ? 'English' : 'Türkçe';
+    final String languageLabel = isEn ? 'English' : loc('Türkçe', 'Turkish');
     final email = auth.currentUser?.email ?? s.notLoggedIn;
 
     return Scaffold(
@@ -527,7 +580,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                         ],
                       ),
                     ),
-                    const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: LoveraColors.textMuted),
+                    Icon(Icons.arrow_forward_ios_rounded, size: 16, color: LoveraColors.textMuted),
                   ],
                 ),
               ),
@@ -565,7 +618,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                     children: [
                       Text(
                         languageLabel,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: LoveraColors.textMuted,
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
@@ -581,15 +634,20 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 _SettingsTile(
                   icon: Icons.palette_outlined,
                   title: s.themeAndAppearance,
+                  subtitle: '$themeModeLabel · ${currentPalette.name(isEn)}',
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        themeModeLabel,
-                        style: const TextStyle(
-                          color: LoveraColors.textMuted,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
+                      Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: currentPalette.gradient,
+                          border: Border.all(
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.15),
+                            width: 1,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 6),
@@ -653,7 +711,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 _SettingsTile(
                   icon: Icons.info_outline_rounded,
                   title: s.aboutLovera,
-                  trailing: const Text('v1.0.0', style: TextStyle(color: LoveraColors.textMuted)),
+                  trailing: Text('v1.0.0', style: TextStyle(color: LoveraColors.textMuted)),
                   onTap: _openAboutDialog,
                 ),
               ],
@@ -689,6 +747,7 @@ class _SettingsTile extends StatelessWidget {
   const _SettingsTile({
     required this.icon,
     required this.title,
+    this.subtitle,
     this.trailing,
     required this.onTap,
     this.titleColor,
@@ -697,6 +756,7 @@ class _SettingsTile extends StatelessWidget {
 
   final IconData icon;
   final String title;
+  final String? subtitle;
   final Widget? trailing;
   final VoidCallback onTap;
   final Color? titleColor;
@@ -713,11 +773,25 @@ class _SettingsTile extends StatelessWidget {
         leading: Icon(icon, color: iconColor ?? defaultColor),
         title: Text(
           title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontWeight: FontWeight.w600,
             color: titleColor ?? defaultColor,
           ),
         ),
+        subtitle: subtitle != null
+            ? Text(
+                subtitle!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: LoveraColors.textMuted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              )
+            : null,
         trailing: trailing,
         onTap: onTap,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.radius)),
@@ -789,7 +863,7 @@ class _ThemeOptionTile extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
                       color: LoveraColors.textMuted,
                     ),
@@ -801,7 +875,7 @@ class _ThemeOptionTile extends StatelessWidget {
               Container(
                 width: 24,
                 height: 24,
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   color: LoveraColors.primary,
                   shape: BoxShape.circle,
                 ),
@@ -822,4 +896,209 @@ class _ThemeOptionTile extends StatelessWidget {
     );
   }
 }
+
+class _ThemeModePill extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _ThemeModePill({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? iconColor.withValues(alpha: isDark ? 0.18 : 0.1)
+                : (isDark ? theme.colorScheme.surface : LoveraColors.lightBg),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isSelected ? iconColor : (isDark ? theme.dividerColor : LoveraColors.lightBorder),
+              width: isSelected ? 1.8 : 1.0,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: iconColor, size: 22),
+              const SizedBox(height: 6),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                  color: isSelected ? iconColor : theme.colorScheme.onSurface,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PaletteOptionTile extends StatelessWidget {
+  final ThemePaletteData palette;
+  final bool isSelected;
+  final bool isEn;
+  final VoidCallback onTap;
+
+  const _PaletteOptionTile({
+    required this.palette,
+    required this.isSelected,
+    required this.isEn,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? palette.primary.withValues(alpha: isDark ? 0.16 : 0.08)
+                : (isDark ? theme.colorScheme.surface : LoveraColors.lightBg),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: isSelected
+                  ? palette.primary
+                  : (isDark ? theme.dividerColor : LoveraColors.lightBorder),
+              width: isSelected ? 1.8 : 1.0,
+            ),
+          ),
+          child: Row(
+            children: [
+              // İkili renk rozeti: yarısı primary, yarısı secondary
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: palette.gradient,
+                  boxShadow: [
+                    BoxShadow(
+                      color: palette.primary.withValues(alpha: 0.35),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            palette.name(isEn),
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: isSelected ? palette.primary : null,
+                            ),
+                          ),
+                        ),
+                        if (palette.id == ThemePalette.classic) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: palette.primary.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              isEn ? 'DEFAULT' : 'ANA TEMA',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                                color: palette.primary,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      palette.description(isEn),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: LoveraColors.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (isSelected)
+                Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: palette.primary,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.check_rounded, color: Colors.white, size: 16),
+                )
+              else
+                Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: theme.dividerColor, width: 2),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 

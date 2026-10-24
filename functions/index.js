@@ -13,6 +13,7 @@ function coupleMembers(c) {
 /**
  * Kullanıcı belgesi güncellendiğinde (Şarj pingi, Kalp pingi veya Düşük Pil)
  * partnerin kapalı olan telefonuna doğrudan Google FCM HTTP v1 üzerinden Push Bildirimi yollar.
+ * Alıcının diline ('en' veya 'tr') göre bildirim başlık ve gövdesini otomatik ayarlar.
  */
 exports.onUserUpdated = onDocumentUpdated("users/{userId}", async (event) => {
   const beforeData = event.data.before.data();
@@ -26,12 +27,23 @@ exports.onUserUpdated = onDocumentUpdated("users/{userId}", async (event) => {
   if (afterCharge && (!beforeCharge || afterCharge.timestamp !== beforeCharge.timestamp)) {
     const fcmToken = afterData.fcmToken;
     if (fcmToken) {
-      const fromName = afterCharge.fromName || "Partnerin";
+      const isEn = afterData.language === "en";
+      const fromName = afterCharge.fromName || (isEn ? "Partner" : "Partnerin");
+      const titleTr = "🔋 Şarj Hatırlatması!";
+      const titleEn = "🔋 Battery Reminder!";
+      const bodyTr = `${fromName} şarjını doldurmanı hatırlatıyor 💕`;
+      const bodyEn = `${fromName} reminds you to charge your phone 💕`;
       await sendFcmPush(
         fcmToken,
-        "🔋 Şarj Hatırlatması!",
-        `${fromName} şarjını doldurmanı hatırlatıyor 💕`,
-        { type: "chargePing" }
+        isEn ? titleEn : titleTr,
+        isEn ? bodyEn : bodyTr,
+        {
+          type: "chargePing",
+          title_tr: titleTr,
+          title_en: titleEn,
+          body_tr: bodyTr,
+          body_en: bodyEn,
+        }
       );
     }
   }
@@ -42,11 +54,22 @@ exports.onUserUpdated = onDocumentUpdated("users/{userId}", async (event) => {
   if (afterHeart && (!beforeHeart || afterHeart.timestamp !== beforeHeart.timestamp)) {
     const fcmToken = afterData.fcmToken;
     if (fcmToken) {
+      const isEn = afterData.language === "en";
+      const titleTr = "💖 Seni Düşünüyor!";
+      const titleEn = "💖 Thinking of You!";
+      const bodyTr = "Partnerin şu an seni düşünüyor ve sana kalp gönderdi 💕";
+      const bodyEn = "Your partner is thinking of you and sent you a heart 💕";
       await sendFcmPush(
         fcmToken,
-        "💖 Seni Düşünüyor!",
-        "Partnerin şu an seni düşünüyor ve sana kalp gönderdi 💕",
-        { type: "heartPing" }
+        isEn ? titleEn : titleTr,
+        isEn ? bodyEn : bodyTr,
+        {
+          type: "heartPing",
+          title_tr: titleTr,
+          title_en: titleEn,
+          body_tr: bodyTr,
+          body_en: bodyEn,
+        }
       );
     }
   }
@@ -63,14 +86,27 @@ exports.onUserUpdated = onDocumentUpdated("users/{userId}", async (event) => {
     const partnerUid = afterData.partnerUid;
     if (partnerUid) {
       const partnerDoc = await admin.firestore().collection("users").doc(partnerUid).get();
-      const partnerToken = partnerDoc.data()?.fcmToken;
+      const partnerData = partnerDoc.data();
+      const partnerToken = partnerData?.fcmToken;
       if (partnerToken) {
-        const userName = afterData.name || "Partnerinin";
+        const isEn = partnerData?.language === "en";
+        const userName = afterData.name || (isEn ? "Partner" : "Partnerinin");
+        const titleTr = "⚠️ Düşük Pil Uyarısı!";
+        const titleEn = "⚠️ Low Battery Warning!";
+        const bodyTr = `${userName} cihazının şarjı %${afterBattery} seviyesine indi.`;
+        const bodyEn = `${userName}'s battery dropped to ${afterBattery}%.`;
         await sendFcmPush(
           partnerToken,
-          "⚠️ Düşük Pil Uyarısı!",
-          `${userName} cihazının şarjı %${afterBattery} seviyesine indi.`,
-          { type: "lowBattery", battery: String(afterBattery) }
+          isEn ? titleEn : titleTr,
+          isEn ? bodyEn : bodyTr,
+          {
+            type: "lowBattery",
+            battery: String(afterBattery),
+            title_tr: titleTr,
+            title_en: titleEn,
+            body_tr: bodyTr,
+            body_en: bodyEn,
+          }
         );
       }
     }
@@ -80,14 +116,14 @@ exports.onUserUpdated = onDocumentUpdated("users/{userId}", async (event) => {
 });
 
 /**
- * Canlı Sohbet (Messages) koleksiyonuna yeni mesaj düştüğünde partnere push bildirimi yollar
+ * Canlı Sohbet (Messages) koleksiyonuna yeni mesaj düştüğünde partnere push bildirimi yollar.
+ * Alıcının diline ('en' veya 'tr') göre uygun bildirim metnini seçer.
  */
 exports.onNewMessage = onDocumentCreated("couples/{coupleId}/messages/{messageId}", async (event) => {
   const messageData = event.data.data();
   if (!messageData) return null;
 
   const senderId = messageData.senderId;
-  const text = messageData.text || "Fotoğraf gönderdi 📷";
   const coupleId = event.params.coupleId;
 
   const coupleDoc = await admin.firestore().collection("couples").doc(coupleId).get();
@@ -98,17 +134,28 @@ exports.onNewMessage = onDocumentCreated("couples/{coupleId}/messages/{messageId
   if (!partnerId) return null;
 
   const partnerDoc = await admin.firestore().collection("users").doc(partnerId).get();
-  const partnerToken = partnerDoc.data()?.fcmToken;
+  const partnerData = partnerDoc.data();
+  const partnerToken = partnerData?.fcmToken;
   if (!partnerToken) return null;
 
+  const isEn = partnerData?.language === "en";
   const senderDoc = await admin.firestore().collection("users").doc(senderId).get();
-  const senderName = senderDoc.data()?.name || "Partnerin";
+  const senderName = senderDoc.data()?.name || (isEn ? "Partner" : "Partnerin");
+  const defaultPhotoText = isEn ? "Sent a photo 📷" : "Fotoğraf gönderdi 📷";
+  const text = messageData.text || defaultPhotoText;
 
   await sendFcmPush(
     partnerToken,
     senderName,
     text,
-    { type: "chatMessage", coupleId: coupleId }
+    {
+      type: "chatMessage",
+      coupleId: coupleId,
+      title_tr: senderDoc.data()?.name || "Partnerin",
+      title_en: senderDoc.data()?.name || "Partner",
+      body_tr: messageData.text || "Fotoğraf gönderdi 📷",
+      body_en: messageData.text || "Sent a photo 📷",
+    }
   );
 
   return null;
@@ -172,11 +219,16 @@ exports.onPushRequest = onDocumentCreated("pushRequests/{requestId}", async (eve
     if (!members.includes(req.fromUid) || !members.includes(req.toUid)) return null;
 
     const toDoc = await db.collection("users").doc(req.toUid).get();
-    const token = toDoc.data()?.fcmToken;
+    const toData = toDoc.data();
+    const token = toData?.fcmToken;
     if (!token) return null;
 
+    const isEn = toData?.language === "en";
     const data = {};
     for (const [k, v] of Object.entries(req.data || {})) data[k] = String(v);
+
+    const finalTitle = isEn ? (req.titleEn || req.title || "") : (req.titleTr || req.title || "");
+    const finalBody = isEn ? (req.bodyEn || req.body || "") : (req.bodyTr || req.body || "");
 
     if (req.silent) {
       await admin.messaging().send({
@@ -186,7 +238,7 @@ exports.onPushRequest = onDocumentCreated("pushRequests/{requestId}", async (eve
         apns: { headers: { "apns-priority": "5" }, payload: { aps: { contentAvailable: true } } },
       });
     } else {
-      await sendFcmPush(token, String(req.title || "").slice(0, 100), String(req.body || "").slice(0, 300), data);
+      await sendFcmPush(token, String(finalTitle).slice(0, 100), String(finalBody).slice(0, 300), data);
     }
   } catch (e) {
     console.error("onPushRequest hata:", e);

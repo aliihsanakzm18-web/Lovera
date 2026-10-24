@@ -1,3 +1,4 @@
+import '../../../core/localization/app_strings.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
@@ -58,7 +59,7 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
   int? _selectedTextIndex;
 
   // Çizim Araçları
-  Color _selectedColor = const Color(0xFFA78BFA);
+  Color _selectedColor = LoveraColors.primaryDark;
   double _strokeWidth = 5.0;
   double _fontSize = 24.0;
   bool _isEraser = false;
@@ -66,8 +67,8 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
   bool _isSending = false;
   bool _isExporting = false;
 
-  final List<Color> _palette = const [
-    Color(0xFFA78BFA), // Lovera Moru
+  final List<Color> _palette = [
+    LoveraColors.primaryDark, // Lovera Moru
     Color(0xFFEC4899), // Romantik Pembe
     Color(0xFFEF4444), // Kırmızı / Kalp
     Color(0xFFF59E0B), // Sıcak Turuncu / Sarı
@@ -116,7 +117,7 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
             children: [
               Text(isEditing ? '✏️ ' : '✍️ ', style: const TextStyle(fontSize: 20)),
               Text(
-                isEditing ? 'Yazıyı Düzenle' : 'Yazı Ekle',
+                isEditing ? ref.read(stringsProvider).editTextTitle : ref.read(stringsProvider).addTextTitle,
                 style: TextStyle(
                   color: isDark ? Colors.white : const Color(0xFF1E1B4B),
                   fontSize: 18,
@@ -127,7 +128,7 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
               if (isEditing)
                 IconButton(
                   icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
-                  tooltip: 'Yazıyı Sil',
+                  tooltip: ref.read(stringsProvider).delete,
                   onPressed: () {
                     HapticFeedback.mediumImpact();
                     setState(() {
@@ -148,9 +149,9 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
               fontWeight: FontWeight.bold,
             ),
             decoration: InputDecoration(
-              hintText: 'Mesajını veya notunu yaz...',
+              hintText: ref.read(stringsProvider).textHint,
               hintStyle: TextStyle(
-                color: isDark ? Colors.white.withValues(alpha: 0.4) : const Color(0xFF94A3B8),
+                color: isDark ? Colors.white.withValues(alpha: 0.4) : LoveraColors.darkTextMuted,
                 fontSize: 15,
               ),
               filled: true,
@@ -162,7 +163,7 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
             TextButton(
               onPressed: () => Navigator.pop(ctx),
               child: Text(
-                'İptal',
+                ref.read(stringsProvider).cancel,
                 style: TextStyle(color: isDark ? Colors.white70 : const Color(0xFF64748B)),
               ),
             ),
@@ -188,10 +189,10 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                 Navigator.pop(ctx);
               },
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFA78BFA),
+                backgroundColor: LoveraColors.primaryDark,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              child: Text(isEditing ? 'Güncelle' : 'Ekle', style: const TextStyle(fontWeight: FontWeight.bold)),
+              child: Text(isEditing ? ref.read(stringsProvider).update : ref.read(stringsProvider).add, style: const TextStyle(fontWeight: FontWeight.bold)),
             ),
           ],
         );
@@ -202,8 +203,8 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
   Future<void> _sendDrawing() async {
     if (_lines.isEmpty && _currentLine.isEmpty && _texts.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Lütfen göndermeden önce bir şeyler çizin veya yazı ekleyin! 🎨'),
+        SnackBar(
+          content: Text(ref.read(stringsProvider).drawSomethingFirst),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -218,8 +219,8 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
 
     if (coupleId == null || coupleId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Çizim gönderebilmek için eşleşmiş olmanız gerekir 💕'),
+        SnackBar(
+          content: Text(ref.read(stringsProvider).pairToDrawWarning),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -240,13 +241,13 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
       // 1. RepaintBoundary'den yüksek kaliteli şeffaf PNG üret
       final boundary = _globalKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
       if (boundary == null) {
-        throw Exception('Canvas render hatası');
+        throw Exception(loc('Canvas render hatası', 'Canvas render error'));
       }
 
       final image = await boundary.toImage(pixelRatio: 2.5);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) {
-        throw Exception('Görsel dönüştürülemedi');
+        throw Exception(loc('Görsel dönüştürülemedi', 'Failed to convert image'));
       }
 
       final bytes = byteData.buffer.asUint8List();
@@ -262,8 +263,8 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
         await WidgetSyncService.syncDrawingWidget(
           imagePath: localPath,
           imageBase64: base64Image,
-          senderName: 'Sen',
-          timeAgo: 'Şimdi',
+          senderName: loc('Sen', 'You'),
+          timeAgo: loc('Şimdi', 'Just now'),
           timestampMillis: nowMs,
         );
       } catch (e) {
@@ -281,8 +282,12 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
       if (partnerUid != null && partnerUid.isNotEmpty) {
         NotificationService().sendPushToPartner(
           partnerUid: partnerUid,
-          title: '🎨 $myName sana bir çizim gönderdi!',
-          body: 'Ana ekranındaki Lovera Çizim Widget\'ına bak 💕',
+          title: loc('🎨 $myName sana bir çizim gönderdi!', '🎨 $myName sent you a drawing!'),
+          body: loc('Ana ekranındaki Lovera Çizim Widget\'ına bak 💕', 'Check the Lovera Drawing Widget on your home screen 💕'),
+          titleTr: '🎨 $myName sana bir çizim gönderdi!',
+          titleEn: '🎨 $myName sent you a drawing!',
+          bodyTr: 'Ana ekranındaki Lovera Çizim Widget\'ına bak 💕',
+          bodyEn: 'Check the Lovera Drawing Widget on your home screen 💕',
           data: {
             'type': 'drawing_sent',
             'coupleId': coupleId,
@@ -295,7 +300,7 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Çizimin $myName tarafından gönderildi! Partnerinin ana ekranında görünecek 💜'),
+            content: Text(ref.read(stringsProvider).drawingSentSuccess),
             backgroundColor: const Color(0xFF10B981),
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -307,7 +312,7 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Çizim gönderilemedi: $e'),
+            content: Text(loc('Çizim gönderilemedi: $e', 'Could not send drawing: $e')),
             backgroundColor: Colors.redAccent,
           ),
         );
@@ -330,41 +335,39 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF0F0C1B) : const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text('Canlı Çizim Tuvali', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(ref.watch(stringsProvider).drawingTitle, style: const TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
         actions: [
           IconButton(
             icon: const Icon(Icons.undo_rounded),
-            tooltip: 'Geri Al',
+            tooltip: ref.watch(stringsProvider).isEn ? 'Undo' : 'Geri Al',
             onPressed: _lines.isEmpty ? null : _undo,
           ),
           IconButton(
             icon: const Icon(Icons.delete_sweep_rounded),
-            tooltip: 'Tuvali Temizle',
+            tooltip: ref.watch(stringsProvider).clearCanvas,
             onPressed: (_lines.isEmpty && _currentLine.isEmpty) ? null : _clearCanvas,
           ),
           IconButton(
             icon: const Icon(Icons.flag_outlined),
-            tooltip: 'Çizimi Şikayet Et',
+            tooltip: ref.watch(stringsProvider).reportDrawing,
             onPressed: () async {
               final confirm = await showDialog<bool>(
                 context: context,
                 builder: (dCtx) => AlertDialog(
-                  title: const Text('Çizimi Şikayet Et'),
-                  content: const Text(
-                    'Ortak çizim alanında uygunsuz bir içerik paylaşıldığını düşünüyorsanız güvenlik ekibimize bildirebilirsiniz. Bildirilen içerikler 24 saat içinde incelenir.',
-                  ),
+                  title: Text(ref.watch(stringsProvider).reportDrawing),
+                  content: Text(ref.watch(stringsProvider).reportDrawingDesc),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.pop(dCtx, false),
-                      child: const Text('İptal'),
+                      child: Text(ref.watch(stringsProvider).cancel),
                     ),
                     FilledButton(
                       style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
                       onPressed: () => Navigator.pop(dCtx, true),
-                      child: const Text('Şikayet Et'),
+                      child: Text(loc('Şikayet Et', 'Report')),
                     ),
                   ],
                 ),
@@ -377,12 +380,12 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                   contentId: coupleId ?? 'shared_canvas',
                   coupleId: coupleId,
                   reportedUserId: partnerUid,
-                  reason: 'Ortak çizim tuvali üzerinden uygunsuz içerik bildirimi',
+                  reason: loc('Ortak çizim tuvali üzerinden uygunsuz içerik bildirimi', 'Inappropriate content report from shared canvas'),
                 );
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Şikayetiniz güvenlik ekibimize iletildi. 24 saat içinde incelenecektir.'),
+                    SnackBar(
+                      content: Text(ref.read(stringsProvider).reportSubmittedMsg),
                     ),
                   );
                 }
@@ -401,9 +404,9 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xD018132A) : Colors.white,
+                  color: isDark ? LoveraColors.darkSurface.withValues(alpha: 0.82) : Colors.white,
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: const Color(0x55A78BFA), width: 1.2),
+                  border: Border.all(color: LoveraColors.primaryDark.withValues(alpha: 0.33), width: 1.2),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -412,7 +415,7 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                     const SizedBox(width: 6),
                     Flexible(
                       child: Text(
-                        'Çizimin partnerinin ana ekran widget\'ında anında belirir',
+                        ref.watch(stringsProvider).drawingTip,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -439,7 +442,7 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                       decoration: BoxDecoration(
                         color: isDark ? const Color(0xFF161426) : Colors.white,
                         borderRadius: BorderRadius.circular(26),
-                        border: Border.all(color: const Color(0x55A78BFA), width: 1.8),
+                        border: Border.all(color: LoveraColors.primaryDark.withValues(alpha: 0.33), width: 1.8),
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.08),
@@ -574,7 +577,7 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                           color: isDark ? const Color(0xFF1E1938) : Colors.white,
                                           borderRadius: BorderRadius.circular(20),
                                           border: Border.all(
-                                            color: isDark ? const Color(0xFFA78BFA) : const Color(0xFF8B5CF6),
+                                            color: isDark ? LoveraColors.primaryDark : LoveraColors.primary,
                                             width: 1.2,
                                           ),
                                           boxShadow: [
@@ -604,7 +607,7 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                                     ),
                                                     const SizedBox(width: 4),
                                                     Text(
-                                                      'Düzenle',
+                                                      ref.watch(stringsProvider).edit,
                                                       style: TextStyle(
                                                         color: isDark ? Colors.white : const Color(0xFF1E1B4B),
                                                         fontSize: 12,
@@ -629,13 +632,13 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                                   _selectedTextIndex = null;
                                                 });
                                               },
-                                              child: const Padding(
+                                              child: Padding(
                                                 padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                                 child: Row(
                                                   children: [
                                                     Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 14),
                                                     SizedBox(width: 4),
-                                                    Text('Sil', style: TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                                                    Text(loc('Sil', 'Delete'), style: const TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold)),
                                                   ],
                                                 ),
                                               ),
@@ -695,17 +698,17 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                             margin: const EdgeInsets.symmetric(horizontal: 4),
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: _isEraser ? const Color(0x55A78BFA) : Colors.transparent,
+                              color: _isEraser ? LoveraColors.primaryDark.withValues(alpha: 0.33) : Colors.transparent,
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: _isEraser ? const Color(0xFFA78BFA) : Colors.grey.withValues(alpha: 0.3),
+                                color: _isEraser ? LoveraColors.primaryDark : Colors.grey.withValues(alpha: 0.3),
                                 width: 2,
                               ),
                             ),
                             child: Icon(
                               Icons.cleaning_services_rounded,
                               size: 22,
-                              color: _isEraser ? const Color(0xFFA78BFA) : Colors.grey,
+                              color: _isEraser ? LoveraColors.primaryDark : Colors.grey,
                             ),
                           ),
                         ),
@@ -726,17 +729,17 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                             margin: const EdgeInsets.symmetric(horizontal: 4),
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: _isTextMode ? const Color(0x55A78BFA) : Colors.transparent,
+                              color: _isTextMode ? LoveraColors.primaryDark.withValues(alpha: 0.33) : Colors.transparent,
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: _isTextMode ? const Color(0xFFA78BFA) : Colors.grey.withValues(alpha: 0.3),
+                                color: _isTextMode ? LoveraColors.primaryDark : Colors.grey.withValues(alpha: 0.3),
                                 width: 2,
                               ),
                             ),
                             child: Icon(
                               Icons.title_rounded,
                               size: 22,
-                              color: _isTextMode ? const Color(0xFFA78BFA) : Colors.grey,
+                              color: _isTextMode ? LoveraColors.primaryDark : Colors.grey,
                             ),
                           ),
                         ),
@@ -764,7 +767,7 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                 shape: BoxShape.circle,
                                 border: Border.all(
                                   color: isSelected
-                                      ? (isDark ? Colors.white : const Color(0xFF7C3AED))
+                                      ? (isDark ? Colors.white : LoveraColors.primaryDeep)
                                       : (isDark ? Colors.white24 : Colors.black26),
                                   width: isSelected ? 3.2 : 1.5,
                                 ),
@@ -793,15 +796,15 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                       Icon(
                         _isTextMode ? Icons.format_size_rounded : Icons.brush_rounded,
                         size: 20,
-                        color: _isTextMode ? const Color(0xFFA78BFA) : LoveraColors.textMuted,
+                        color: _isTextMode ? LoveraColors.primaryDark : LoveraColors.textMuted,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: SliderTheme(
                           data: SliderTheme.of(context).copyWith(
-                            activeTrackColor: const Color(0xFFA78BFA),
-                            thumbColor: const Color(0xFFA78BFA),
-                            overlayColor: const Color(0x33A78BFA),
+                            activeTrackColor: LoveraColors.primaryDark,
+                            thumbColor: LoveraColors.primaryDark,
+                            overlayColor: LoveraColors.primaryDark.withValues(alpha: 0.2),
                             trackHeight: 3.5,
                           ),
                           child: _isTextMode
@@ -834,7 +837,7 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 12,
-                            color: _isTextMode ? const Color(0xFFA78BFA) : null,
+                            color: _isTextMode ? LoveraColors.primaryDark : null,
                           ),
                         ),
                       ),
@@ -850,7 +853,7 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                     child: ElevatedButton.icon(
                       onPressed: _isSending ? null : _sendDrawing,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFA78BFA),
+                        backgroundColor: LoveraColors.primaryDark,
                         foregroundColor: Colors.white,
                         elevation: 0,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -863,7 +866,7 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                             )
                           : const Icon(Icons.send_rounded, size: 20),
                       label: Text(
-                        _isSending ? 'Widget\'a Gönderiliyor...' : 'Partnere Gönder 💜',
+                        _isSending ? ref.watch(stringsProvider).sendingToWidget : ref.watch(stringsProvider).sendToPartnerBtn,
                         style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                       ),
                     ),
@@ -909,13 +912,13 @@ class _DrawingCanvasPainter extends CustomPainter {
         ..shader = RadialGradient(
           colors: isDark
               ? [
-                  const Color(0xFF8B5CF6).withValues(alpha: 0.12),
-                  const Color(0xFF7C3AED).withValues(alpha: 0.05),
+                  LoveraColors.primary.withValues(alpha: 0.12),
+                  LoveraColors.primaryDeep.withValues(alpha: 0.05),
                   Colors.transparent,
                 ]
               : [
-                  const Color(0xFF8B5CF6).withValues(alpha: 0.10),
-                  const Color(0xFFC4B5FD).withValues(alpha: 0.04),
+                  LoveraColors.primary.withValues(alpha: 0.10),
+                  LoveraColors.primarySoft.withValues(alpha: 0.04),
                   Colors.transparent,
                 ],
           stops: const [0.0, 0.55, 1.0],
@@ -982,7 +985,7 @@ class _DrawingCanvasPainter extends CustomPainter {
       // Seçili metin etrafına hafif neon seçim çerçevesi çiz
       if (isSelected) {
         final borderPaint = Paint()
-          ..color = const Color(0xFFA78BFA)
+          ..color = LoveraColors.primaryDark
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.6;
         final rect = Rect.fromLTWH(
@@ -1034,8 +1037,8 @@ class _DrawingCanvasPainter extends CustomPainter {
     // Çizilen şeyleri gölgede bırakmayacak şekilde çok soluk, zarif fligran opaklığı
     final strokePaint = Paint()
       ..color = isDark
-          ? const Color(0xFFC4B5FD).withValues(alpha: 0.055)
-          : const Color(0xFF8B5CF6).withValues(alpha: 0.065)
+          ? LoveraColors.primarySoft.withValues(alpha: 0.055)
+          : LoveraColors.primary.withValues(alpha: 0.065)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0
       ..strokeCap = StrokeCap.round
@@ -1043,8 +1046,8 @@ class _DrawingCanvasPainter extends CustomPainter {
 
     final fillPaint = Paint()
       ..color = isDark
-          ? const Color(0xFFA78BFA).withValues(alpha: 0.035)
-          : const Color(0xFFC4B5FD).withValues(alpha: 0.045)
+          ? LoveraColors.primaryDark.withValues(alpha: 0.035)
+          : LoveraColors.primarySoft.withValues(alpha: 0.045)
       ..style = PaintingStyle.fill;
 
     const cellW = 80.0;
@@ -1178,12 +1181,6 @@ class _DrawingCanvasPainter extends CustomPainter {
     canvas.drawLine(Offset(0, -s), Offset(0, s), stroke);
     canvas.drawCircle(const Offset(6, -6), 1.0, stroke);
     canvas.drawCircle(const Offset(-6, 6), 0.8, stroke);
-  }
-
-  void _drawOrbitalHeart(Canvas canvas, Paint stroke, double r) {
-    canvas.drawCircle(Offset.zero, r * 0.45, stroke);
-    final ovalRect = Rect.fromCenter(center: Offset.zero, width: r * 1.5, height: r * 0.6);
-    canvas.drawOval(ovalRect, stroke);
   }
 
   @override

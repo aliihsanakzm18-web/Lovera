@@ -11,6 +11,7 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 import 'device_service.dart';
 import 'notification_service.dart';
+import '../localization/app_strings.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -136,7 +137,7 @@ class AuthService {
             'id': cred.user!.uid,
             'name': (existingName != null && existingName.trim().isNotEmpty)
                 ? existingName
-                : (cred.user!.displayName ?? fallbackName ?? 'İsimsiz'),
+                : (cred.user!.displayName ?? fallbackName ?? loc('İsimsiz', 'Unnamed')),
             'email': cred.user!.email ?? fallbackEmail,
             'photoUrl': cred.user!.photoURL,
             'lastLogin': FieldValue.serverTimestamp(),
@@ -226,7 +227,7 @@ class AuthService {
             userData['name'] = cred.user!.displayName;
           } else {
             // Apple Guideline 4.0: Apple ile giriş sonrasında kullanıcıdan tekrar zorunlu isim istenmemelidir
-            userData['name'] = 'Lovera Kullanıcısı';
+            userData['name'] = loc('Lovera Kullanıcısı', 'Lovera User');
           }
 
           final prefs = await SharedPreferences.getInstance();
@@ -325,7 +326,7 @@ class AuthService {
   Future<void> deleteAccount({String? password}) async {
     final user = _auth.currentUser;
     if (user == null) {
-      throw Exception('Oturum açmış kullanıcı bulunamadı.');
+      throw Exception(loc('Oturum açmış kullanıcı bulunamadı.', 'No logged-in user found.'));
     }
 
     final uid = user.uid;
@@ -335,10 +336,10 @@ class AuthService {
     if (providerId == 'password') {
       final email = user.email;
       if (email == null || email.isEmpty) {
-        throw Exception('Kullanıcı e-posta adresi bulunamadı.');
+        throw Exception(loc('Kullanıcı e-posta adresi bulunamadı.', 'User email address not found.'));
       }
       if (password == null || password.isEmpty) {
-        throw Exception('Hesabınızı silmek için mevcut şifrenizi girmelisiniz.');
+        throw Exception(loc('Hesabınızı silmek için mevcut şifrenizi girmelisiniz.', 'You must enter your current password to delete your account.'));
       }
       final credential = EmailAuthProvider.credential(
         email: email,
@@ -355,7 +356,7 @@ class AuthService {
         );
         await user.reauthenticateWithCredential(credential);
       } else {
-        throw Exception('Google doğrulaması iptal edildi. Hesap silinmedi.');
+        throw Exception(loc('Google doğrulaması iptal edildi. Hesap silinmedi.', 'Google verification was cancelled. Account was not deleted.'));
       }
     } else if (providerId == 'apple.com') {
       try {
@@ -372,7 +373,7 @@ class AuthService {
         await user.reauthenticateWithCredential(credential);
       } catch (e) {
         // Kimlik doğrulanamadıysa hesap silinmez; hata kullanıcıya gösterilir.
-        throw Exception('Apple kimlik doğrulaması tamamlanamadı. Hesap silinmedi.');
+        throw Exception(loc('Apple kimlik doğrulaması tamamlanamadı. Hesap silinmedi.', 'Apple verification could not be completed. Account was not deleted.'));
       }
     }
 

@@ -1,3 +1,4 @@
+import '../../../core/localization/app_strings.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -60,8 +61,21 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    ref.read(isChessScreenOpenProvider.notifier).state = false;
-    _setOnlineStatus(false);
+    final coupleId = _currentCoupleId;
+    final isWhite = _currentIsWhite;
+    if (coupleId != null && coupleId.isNotEmpty && isWhite != null) {
+      DatabaseService().setGameOnlineStatus(
+        coupleId: coupleId,
+        gameType: 'backgammon',
+        isPlayer1: isWhite,
+        isOnline: false,
+      );
+    }
+    Future.microtask(() {
+      try {
+        ref.read(isChessScreenOpenProvider.notifier).state = false;
+      } catch (_) {}
+    });
     super.dispose();
   }
 
@@ -96,7 +110,7 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
         coupleId: coupleId,
         gameType: 'backgammon',
         exitUid: myUid,
-        exitReason: 'Partnerin tavla oyunundan ayrıldı.',
+        exitReason: loc('Partnerin tavla oyunundan ayrıldı.', 'Partner left the backgammon game.'),
       );
     }
   }
@@ -129,7 +143,7 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
       'turn': 'w',
       'dice': <int>[],
       'remainingMoves': <int>[],
-      'lastEventText': 'Tavla başladı! Zar atarak ilk hamleni yap 🎲',
+      'lastEventText': loc('Tavla başladı! Zar atarak ilk hamleni yap 🎲', 'Backgammon started! Roll dice to make first move 🎲'),
     };
   }
 
@@ -319,9 +333,9 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
     final nextTurn = canPlay ? (isWhite ? 'w' : 'b') : (isWhite ? 'b' : 'w');
     final eventMsg = canPlay
         ? (d1 == d2
-            ? '🎲 Çift geldi ($d1-$d2)! 4 hamle hakkın var 🔥'
+            ? loc('🎲 Çift geldi ($d1-$d2)! 4 hamle hakkın var 🔥', '🎲 Doubles ($d1-$d2)! You have 4 moves 🔥')
             : '🎲 Zarlar: $d1 - $d2. Hamleni yap!')
-        : '🎲 Zarlar: $d1 - $d2 geldi ancak açık kapı yok! Sıra partnere geçti.';
+        : loc('🎲 Zarlar: $d1 - $d2 geldi ancak açık kapı yok! Sıra partnere geçti.', '🎲 Dice: $d1 - $d2 but no legal moves! Turn passed to partner.');
 
     await Future.delayed(const Duration(milliseconds: 280));
     if (!mounted) return;
@@ -382,14 +396,14 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
       } else {
         oB += 1;
       }
-      actionNote = 'Pul toplandı! ✨';
+      actionNote = loc('Pul toplandı! ✨', 'Checker borne off! ✨');
     } else {
       if (isWhite) {
         if (pts[move.to] == -1) {
           // Rakip pul kırıldı!
           pts[move.to] = 1;
           bB += 1;
-          actionNote = 'Rakibin tek pulunu kırdın! 💥';
+          actionNote = loc('Rakibin tek pulunu kırdın! 💥', 'Hit opponent\'s blot! 💥');
         } else {
           pts[move.to] += 1;
         }
@@ -398,7 +412,7 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
           // Rakip pul kırıldı!
           pts[move.to] = -1;
           bW += 1;
-          actionNote = 'Rakibin tek pulunu kırdın! 💥';
+          actionNote = loc('Rakibin tek pulunu kırdın! 💥', 'Hit opponent\'s blot! 💥');
         } else {
           pts[move.to] -= 1;
         }
@@ -429,9 +443,9 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
           'status': 'completed',
           'winnerUid': myUid,
           'winnerReason': isMars
-              ? 'MARS! Tüm pulları rakip hiç toplamadan bitirdi 🏆🔥'
-              : 'Tüm pulları toplayarak tavlayı kazandı 🎲🏆',
-          'lastEventText': isMars ? 'MARS! Muhteşem zafer! 🎉' : 'Oyun bitti!',
+              ? loc('MARS! Tüm pulları rakip hiç toplamadan bitirdi 🏆🔥', 'GAMMON! Cleared all checkers before opponent bore off any 🏆🔥')
+              : loc('Tüm pulları toplayarak tavlayı kazandı 🎲🏆', 'Won the backgammon game by bearing off all checkers 🎲🏆'),
+          'lastEventText': isMars ? loc('MARS! Muhteşem zafer! 🎉', 'GAMMON! Glorious victory! 🎉') : loc('Oyun bitti!', 'Game Over!'),
         },
       );
       return;
@@ -452,8 +466,8 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
     String eventText = actionNote.isNotEmpty
         ? actionNote
         : (turnEnded
-            ? 'Hamle tamamlandı, sıra partnerine geçti 🎲'
-            : 'Kalan zarların: ${rem.join(", ")}');
+            ? loc('Hamle tamamlandı, sıra partnerine geçti 🎲', 'Move done, turn passed to partner 🎲')
+            : loc('Kalan zarların: ${rem.join(", ")}', 'Remaining dice: ${rem.join(", ")}'));
 
     if (!turnEnded && myNewBar > 0) {
       setState(() => _selectedFrom = -1);
@@ -498,11 +512,11 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
                 child: const Icon(Icons.exit_to_app_rounded, color: Color(0xFFEF4444), size: 24),
               ),
               const SizedBox(width: 10),
-              const Text('Oyun Bitti', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+              Text(loc('Oyun Bitti', 'Game Over'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
             ],
           ),
           content: Text(
-            reason.isNotEmpty ? reason : 'Partnerin oyundan çıktı.',
+            reason.isNotEmpty ? reason : loc('Partnerin oyundan çıktı.', 'Your partner left the game.'),
             style: const TextStyle(fontSize: 14.5, height: 1.4),
           ),
           actions: [
@@ -515,7 +529,7 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
                 Navigator.pop(ctx);
                 if (mounted) Navigator.pop(context);
               },
-              child: const Text('Tamam', style: TextStyle(fontWeight: FontWeight.w700)),
+              child: Text(loc('Tamam', 'OK'), style: const TextStyle(fontWeight: FontWeight.w700)),
             ),
           ],
         ),
@@ -535,14 +549,13 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
       return Scaffold(
         backgroundColor: isDark ? LoveraColors.darkBg : LoveraColors.lightBg,
         appBar: AppBar(
-          title: const Text('Tavla 🎲'),
+          title: Text(loc('Tavla 🎲', 'Backgammon 🎲')),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_new_rounded),
             onPressed: () => Navigator.pop(context),
           ),
         ),
-        body: const Center(
-          child: Text('Karşılıklı tavla oynamak için önce partnerinizle eşleşmelisiniz 💕'),
+        body: Center(child: Text(loc('Karşılıklı tavla oynamak için önce partnerinizle eşleşmelisiniz 💕', 'You must pair with your partner to play backgammon 💕')),
         ),
       );
     }
@@ -554,7 +567,7 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
         final status = gameData?['status'] as String?;
 
         if (_hasActiveGame && (status == 'ended' || status == null)) {
-          final exitReason = gameData?['exitReason'] as String? ?? 'Partnerin oyundan çıktı.';
+          final exitReason = gameData?['exitReason'] as String? ?? loc('Partnerin oyundan çıktı.', 'Partner left the game.');
           final exitUid = gameData?['exitUid'] as String?;
           if (exitUid != myUid) {
             _handlePartnerLeft(exitReason);
@@ -685,8 +698,7 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text(
-                        'Klasik Tavla 🎲',
+                      Text(loc('Klasik Tavla 🎲', 'Classic Backgammon 🎲'),
                         style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
                       ),
                       Text(
@@ -702,13 +714,13 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
                   actions: [
                     _buildChatActionButton(context, unreadCount),
                     IconButton(
-                      tooltip: 'Yeni Oyun',
+                      tooltip: loc('Yeni Oyun', 'New Game'),
                       icon: const Icon(Icons.refresh_rounded, color: Color(0xFFEA580C)),
                       onPressed: () => _confirmNewGame(context, coupleId, myUid, myName, partner),
                     ),
                     if (!isGameOver)
                       IconButton(
-                        tooltip: 'Pes Et',
+                        tooltip: loc('Pes Et', 'Resign'),
                         icon: const Icon(Icons.flag_outlined, color: Color(0xFFF43F5E)),
                         onPressed: () => _confirmResign(context, coupleId, myUid, partner?.id),
                       ),
@@ -744,9 +756,9 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
                           ),
                           child: Text(
                             myBar > 0 && isMyTurn
-                                ? '⚠️ Kırık pulun var! Önce ortadaki Bar\'dan oyuna girmelisin.'
+                                ? loc('⚠️ Kırık pulun var! Önce ortadaki Bar\'dan oyuna girmelisin.', '⚠️ You have checkers on the bar! You must enter from the bar first.')
                                 : (lastEventText ??
-                                    (isMyTurn ? 'Senin sıran! Zar at ve pullarını ilerlet.' : 'Partnerin oynuyor...')),
+                                    (isMyTurn ? loc('Senin sıran! Zar at ve pullarını ilerlet.', 'Your turn! Roll dice and move checkers.') : loc('Partnerin oynuyor...', 'Partner is playing...'))),
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
@@ -1034,7 +1046,7 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
                 const SizedBox(height: 2),
                 Text(
                   barCount > 0
-                      ? 'Toplanan: $offCount/15 • Kırık: $barCount'
+                      ? loc('Toplanan: $offCount/15 • Kırık: $barCount', 'Off: $offCount/15 • Bar: $barCount')
                       : 'Toplanan Pul: $offCount / 15',
                   style: TextStyle(
                     fontSize: 10.5,
@@ -1108,10 +1120,7 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
               const SizedBox(width: 8),
               _buildDieBox(dice[1], remainingMoves.isNotEmpty, isDark),
             ] else
-              const Text(
-                '🎲 Zar bekleniyor',
-                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
-              ),
+              Text(loc('🎲 Zar bekleniyor', '🎲 Waiting for roll'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
 
             const SizedBox(width: 12),
 
@@ -1153,7 +1162,7 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 ),
                 icon: const Icon(Icons.download_done_rounded, size: 18),
-                label: const Text('Pulu Topla', style: TextStyle(fontWeight: FontWeight.w800)),
+                label: Text(loc('Pulu Topla', 'Bear Off'), style: const TextStyle(fontWeight: FontWeight.w800)),
                 onPressed: () => _applyMove(
                   coupleId: coupleId,
                   move: bearOffMove,
@@ -1181,7 +1190,7 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
                 ),
                 icon: const Icon(Icons.casino_rounded, size: 20),
                 label: Text(
-                  _isRolling ? 'Atılıyor...' : 'Zar At',
+                  _isRolling ? loc('Atılıyor...', 'Rolling...') : loc('Zar At', 'Roll Dice'),
                   style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
                 ),
                 onPressed: canRollNow
@@ -1247,13 +1256,12 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
           children: [
             const Text('🎲', style: TextStyle(fontSize: 42)),
             const SizedBox(height: 10),
-            const Text(
-              'Tavla Tahtası Hazır',
+            Text(loc('Tavla Tahtası Hazır', 'Backgammon Board Ready'),
               style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 6),
             Text(
-              'İki taraf da hazır olduğunda zarlar açılacak.',
+              loc('İki taraf da hazır olduğunda zarlar açılacak.', 'Dice will unlock when both sides are ready.'),
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 12.5),
             ),
@@ -1284,7 +1292,7 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
                   );
                 },
                 child: Text(
-                  myReady ? 'Hazırsın ✅' : 'Hazırım 🚀',
+                  myReady ? loc('Hazırsın ✅', 'You\'re Ready ✅') : loc('Hazırım 🚀', 'I\'m Ready 🚀'),
                   style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
                 ),
               ),
@@ -1345,21 +1353,18 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
             Text(isWinner ? '🏆' : '🎲', style: const TextStyle(fontSize: 48)),
             const SizedBox(height: 10),
             Text(
-              isWinner ? 'Tebrikler, Kazandın!' : 'Partnerin Kazandı!',
+              isWinner ? loc('Tebrikler, Kazandın!', 'Congratulations, You Won!') : loc('Partnerin Kazandı!', 'Partner Won!'),
               style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 6),
             Text(
-              winnerReason ?? 'Oyun tamamlandı',
+              winnerReason ?? loc('Oyun tamamlandı', 'Game completed'),
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.white70, fontSize: 13),
             ),
             const SizedBox(height: 18),
             if (partnerRematch && !myRematch)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 10),
-                child: Text(
-                  'Partnerin rövanş istiyor! 🔥',
+              Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text(loc('Partnerin rövanş istiyor! 🔥', 'Partner wants a rematch! 🔥'),
                   style: TextStyle(color: Color(0xFFFBBF24), fontWeight: FontWeight.w800),
                 ),
               ),
@@ -1374,7 +1379,7 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
                 ),
                 icon: const Icon(Icons.replay_rounded, size: 18),
                 label: Text(
-                  myRematch ? 'Partner Bekleniyor...' : 'Tekrar Oyna',
+                  myRematch ? loc('Partner Bekleniyor...', 'Waiting for partner...') : loc('Tekrar Oyna', 'Play Again'),
                   style: const TextStyle(fontWeight: FontWeight.w800),
                 ),
                 onPressed: myRematch
@@ -1413,7 +1418,7 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Klasik Tavla 🎲', style: TextStyle(fontWeight: FontWeight.w800)),
+        title: Text(loc('Klasik Tavla 🎲', 'Classic Backgammon 🎲'), style: TextStyle(fontWeight: FontWeight.w800)),
       ),
       body: Center(
         child: Padding(
@@ -1450,15 +1455,14 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
                   ),
                 ),
                 const SizedBox(height: 20),
-                const Text(
-                  'Canlı Klasik Tavla',
+                Text(loc('Canlı Klasik Tavla', 'Live Classic Backgammon'),
                   style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   status == 'rejected'
-                      ? 'Önceki tavla daveti kabul edilmedi. Yeniden davet gönderebilirsin.'
-                      : 'Gerçek tavla kuralları, çift zar 4 hamle, pul kırma (Bar), kapı alma, pul toplama ve Mars ile karşılıklı tavla heyecanı!',
+                      ? loc('Önceki tavla daveti kabul edilmedi. Yeniden davet gönderebilirsin.', 'The previous backgammon invitation was declined. You can send a new invitation.')
+                      : loc('Gerçek tavla kuralları, çift zar 4 hamle, pul kırma (Bar), kapı alma, pul toplama ve Mars ile karşılıklı tavla heyecanı!', 'Real backgammon rules, double dice 4 moves, hitting, making points, bearing off and gammon excitement!'),
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 13.5,
@@ -1478,8 +1482,7 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     ),
                     icon: const Icon(Icons.play_arrow_rounded, size: 24),
-                    label: const Text(
-                      'Oyna',
+                    label: Text(loc('Oyna', 'Play'),
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
                     ),
                     onPressed: () => _initNewGame(coupleId, myUid, myName, partner),
@@ -1503,7 +1506,7 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Klasik Tavla 🎲', style: TextStyle(fontWeight: FontWeight.w800)),
+        title: Text(loc('Klasik Tavla 🎲', 'Classic Backgammon 🎲'), style: TextStyle(fontWeight: FontWeight.w800)),
       ),
       body: Center(
         child: Padding(
@@ -1520,13 +1523,13 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
                 const CircularProgressIndicator(color: Color(0xFFEA580C)),
                 const SizedBox(height: 24),
                 Text(
-                  isSender ? 'Partnerin Bekleniyor...' : 'Tavla Daveti Alındı',
+                  isSender ? loc('Partnerin Bekleniyor...', 'Waiting for Partner...') : loc('Tavla Daveti Alındı', 'Backgammon Invite Received'),
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   isSender
-                      ? 'Partnerine tavla daveti gönderildi. Kabul ettiğinde tahta açılacak.'
+                      ? loc('Partnerine tavla daveti gönderildi. Kabul ettiğinde tahta açılacak.', 'Backgammon invite sent to partner. The board will open when accepted.')
                       : 'Partnerin seni tavla oynamaya davet etti.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
@@ -1544,7 +1547,7 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
 
   Widget _buildChatActionButton(BuildContext context, int unreadCount) {
     return IconButton(
-      tooltip: 'Sohbet 💬',
+      tooltip: loc('Sohbet 💬', 'Chat 💬'),
       icon: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -1606,8 +1609,12 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
 
     NotificationService().sendPushToPartner(
       partnerUid: partnerUid,
-      title: 'Tavla Daveti 🎲',
-      body: '$name seninle tavla oynamak istiyor!',
+      title: loc('Tavla Daveti 🎲', 'Backgammon Invitation 🎲'),
+      body: loc('$name seninle tavla oynamak istiyor!', '$name wants to play backgammon with you!'),
+      titleTr: 'Tavla Daveti 🎲',
+      titleEn: 'Backgammon Invitation 🎲',
+      bodyTr: '$name seninle tavla oynamak istiyor!',
+      bodyEn: '$name wants to play backgammon with you!',
       data: {'type': 'game_request', 'game': 'backgammon'},
     );
   }
@@ -1622,17 +1629,17 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Yeni Tavla Oyunu'),
-        content: const Text('Mevcut pullar sıfırlanarak yeni bir tavla oyunu başlatılsın mı?'),
+        title: Text(loc('Yeni Tavla Oyunu', 'New Backgammon Game')),
+        content: Text(loc('Mevcut pullar sıfırlanarak yeni bir tavla oyunu başlatılsın mı?', 'Reset checkers and start a new backgammon game?')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('İptal')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(loc('İptal', 'Cancel'))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEA580C)),
             onPressed: () {
               Navigator.pop(ctx);
               _initNewGame(coupleId, myUid, myName, partner);
             },
-            child: const Text('Başlat', style: TextStyle(color: Colors.white)),
+            child: Text(loc('Başlat', 'Start'), style: const TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -1649,10 +1656,10 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Pes Et'),
-        content: const Text('Tavla oyunundan çekilmek istediğinize emin misiniz?'),
+        title: Text(loc('Pes Et', 'Resign')),
+        content: Text(loc('Tavla oyunundan çekilmek istediğinize emin misiniz?', 'Are you sure you want to resign from backgammon?')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Vazgeç')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(loc('Vazgeç', 'Cancel'))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF43F5E)),
             onPressed: () {
@@ -1664,7 +1671,7 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
                 winnerUid: partnerUid,
               );
             },
-            child: const Text('Pes Et', style: TextStyle(color: Colors.white)),
+            child: Text(loc('Pes Et', 'Resign'), style: const TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -1675,10 +1682,10 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Oyundan Çık'),
-        content: const Text('Oyundan çıkarsanız tavla maçı sonlanacaktır. Çıkmak istediğinize emin misiniz?'),
+        title: Text(loc('Oyundan Çık', 'Leave Game')),
+        content: Text(loc('Oyundan çıkarsanız tavla maçı sonlanacaktır. Çıkmak istediğinize emin misiniz?', 'If you exit, the match will end. Are you sure?')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Vazgeç')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(loc('Vazgeç', 'Cancel'))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF43F5E)),
             onPressed: () {
@@ -1686,7 +1693,7 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
               DatabaseService().resetGame(coupleId: coupleId, gameType: 'backgammon');
               Navigator.pop(context);
             },
-            child: const Text('Çık', style: TextStyle(color: Colors.white)),
+            child: Text(loc('Çık', 'Exit'), style: const TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -1702,7 +1709,7 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
       builder: (ctx) => Container(
         height: MediaQuery.of(ctx).size.height * 0.85,
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF0F1015) : const Color(0xFFF7F8FA),
+          color: isDark ? LoveraColors.darkBg : const Color(0xFFF7F8FA),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         ),
         child: ClipRRect(

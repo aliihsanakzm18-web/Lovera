@@ -1,3 +1,4 @@
+import '../../../core/localization/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -27,7 +28,7 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
 
     if (partner == null || partnerUid == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Önce partnerin ile eşleşmiş olmalısın.')),
+        SnackBar(content: Text(loc('Önce partnerin ile eşleşmiş olmalısın.', 'You must be paired with your partner first.'))),
       );
       return;
     }
@@ -37,7 +38,7 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
       initialDate: currentStart,
       firstDate: DateTime(1990),
       lastDate: DateTime.now(),
-      helpText: 'Yeni Birliktelik Başlangıç Tarihi',
+      helpText: loc('Yeni Birliktelik Başlangıç Tarihi', 'New Relationship Start Date'),
     );
 
     if (picked == null || !mounted) return;
@@ -56,10 +57,15 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
       );
 
       // Partnere push bildirim gönder
+      final effectiveNameEn = myName.isEmpty ? 'Partner' : myName;
       NotificationService().sendPushToPartner(
         partnerUid: partnerUid,
-        title: '🗓️ Birliktelik Tarihi Güncellendi',
-        body: '$effectiveName birliktelik başlangıç tarihinizi ${picked.day}.${picked.month}.${picked.year} olarak güncelledi 💕',
+        title: loc('🗓️ Birliktelik Tarihi Güncellendi', '🗓️ Relationship Date Updated'),
+        body: loc('$effectiveName birliktelik başlangıç tarihinizi ${picked.day}.${picked.month}.${picked.year} olarak güncelledi 💕', '$effectiveNameEn updated your relationship start date to ${picked.day}.${picked.month}.${picked.year} 💕'),
+        titleTr: '🗓️ Birliktelik Tarihi Güncellendi',
+        titleEn: '🗓️ Relationship Date Updated',
+        bodyTr: '$effectiveName birliktelik başlangıç tarihinizi ${picked.day}.${picked.month}.${picked.year} olarak güncelledi 💕',
+        bodyEn: '$effectiveNameEn updated your relationship start date to ${picked.day}.${picked.month}.${picked.year} 💕',
         data: {'type': 'date_updated'},
       );
 
@@ -69,7 +75,7 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Birliktelik tarihi güncellendi ve ${partner.name} adlı partnere bildirildi! 💕',
+            loc('Birliktelik tarihi güncellendi ve ${partner.name} adlı partnere bildirildi! 💕', 'Relationship date updated and notified to ${partner.name}! 💕'),
           ),
           backgroundColor: LoveraColors.secondary,
         ),
@@ -77,7 +83,7 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Tarih güncellenemedi: $e')),
+        SnackBar(content: Text(loc('Tarih güncellenemedi: $e', 'Could not update date: $e'))),
       );
     } finally {
       if (mounted) setState(() => _requesting = false);
@@ -92,7 +98,7 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
 
     if (partner == null || partnerUid == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Aktif bir eşleşme bulunamadı.')),
+        SnackBar(content: Text(loc('Aktif bir eşleşme bulunamadı.', 'No active pairing found.'))),
       );
       return;
     }
@@ -100,19 +106,17 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (dCtx) => AlertDialog(
-        title: const Text('Partneri Engelle'),
-        content: Text(
-          '$partnerName adlı kullanıcıyı engellediğinizde eşleşmeniz ve konum paylaşımınız sonlandırılır. Bu kullanıcı size tekrar eşleşme isteği gönderemez.',
-        ),
+        title: Text(loc('Partneri Engelle', 'Block Partner')),
+        content: Text(loc('$partnerName adlı kullanıcıyı engellediğinizde eşleşmeniz ve konum paylaşımınız sonlandırılır. Bu kullanıcı size tekrar eşleşme isteği gönderemez.', 'When you block $partnerName, your connection and location sharing will be terminated. This user cannot send you pairing requests again.')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dCtx, false),
-            child: const Text('Vazgeç'),
+            child: Text(loc('Vazgeç', 'Cancel')),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
             onPressed: () => Navigator.pop(dCtx, true),
-            child: const Text('Engelle'),
+            child: Text(loc('Engelle', 'Block')),
           ),
         ],
       ),
@@ -131,16 +135,16 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
       ref.read(partnerProvider.notifier).state = null;
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Kullanıcı engellendi ve tüm bağlantınız anında sonlandırıldı.'),
-          backgroundColor: Color(0xFFEF4444),
+        SnackBar(
+          content: Text(loc('Kullanıcı engellendi ve tüm bağlantınız anında sonlandırıldı.', 'User blocked and your connection was terminated immediately.')),
+          backgroundColor: const Color(0xFFEF4444),
         ),
       );
       Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('İşlem sırasında hata oluştu: $e')),
+        SnackBar(content: Text(loc('İşlem sırasında hata oluştu: $e', 'An error occurred during operation: $e'))),
       );
     } finally {
       if (mounted) setState(() => _requesting = false);
@@ -155,21 +159,21 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (dCtx) => AlertDialog(
-        title: const Text('Kullanıcıyı Şikayet Et'),
+        title: Text(loc('Kullanıcıyı Şikayet Et', 'Report User')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Rahatsız edici davranış veya uygunsuz içerik bildirimleriniz güvenlik ekibimiz tarafından en geç 24 saat içinde incelenir.',
-              style: TextStyle(fontSize: 13),
+            Text(
+              loc('Rahatsız edici davranış veya uygunsuz içerik bildirimleriniz güvenlik ekibimiz tarafından en geç 24 saat içinde incelenir.', 'Reports of abusive behavior or inappropriate content will be reviewed by our safety team within 24 hours.'),
+              style: const TextStyle(fontSize: 13),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: reasonCtrl,
               maxLines: 3,
-              decoration: const InputDecoration(
-                hintText: 'Şikayet nedeninizi kısaca yazın...',
+              decoration: InputDecoration(
+                hintText: loc('Şikayet nedeninizi kısaca yazın...', 'Briefly explain reason for report...'),
               ),
             ),
           ],
@@ -177,12 +181,12 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dCtx, false),
-            child: const Text('İptal'),
+            child: Text(loc('İptal', 'Cancel')),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
             onPressed: () => Navigator.pop(dCtx, true),
-            child: const Text('Gönder'),
+            child: Text(loc('Gönder', 'Send')),
           ),
         ],
       ),
@@ -195,13 +199,13 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
         coupleId: coupleId,
         reportedUserId: partnerUid,
         reason: reasonCtrl.text.trim().isEmpty
-            ? 'Eş yönetim panelinden kullanıcı şikayeti'
+            ? loc('Eş yönetim panelinden kullanıcı şikayeti', 'User report from couple management panel')
             : reasonCtrl.text.trim(),
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Şikayetiniz güvenlik ekibimize iletildi. 24 saat içinde incelenecektir.'),
+          SnackBar(
+            content: Text(loc('Şikayetiniz güvenlik ekibimize iletildi. 24 saat içinde incelenecektir.', 'Your report has been submitted to our security team. It will be reviewed within 24 hours.')),
           ),
         );
       }
@@ -217,7 +221,7 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
 
     if (partner == null || partnerUid == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Aktif bir eşleşme bulunamadı.')),
+        SnackBar(content: Text(loc('Aktif bir eşleşme bulunamadı.', 'No active pairing found.'))),
       );
       return;
     }
@@ -230,7 +234,7 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
         return Container(
           padding: const EdgeInsets.fromLTRB(22, 14, 22, 28),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E212B) : Colors.white,
+            color: isDark ? LoveraColors.darkSurfaceAlt : Colors.white,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
             boxShadow: [
               BoxShadow(
@@ -266,13 +270,13 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                const Text(
-                  'Eşleşmeyi Sonlandır',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                Text(
+                  loc('Eşleşmeyi Sonlandır', 'End Connection'),
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '$partnerName ile olan eşleşmeniz anında sonlandırılacak; sayaç ve ortak bağlantı her iki cihazda da kapatılacaktır. Onaylıyor musunuz?',
+                  loc('$partnerName ile olan eşleşmeniz anında sonlandırılacak; sayaç ve ortak bağlantı her iki cihazda da kapatılacaktır. Onaylıyor musunuz?', 'Your connection with $partnerName will be terminated immediately; counters and shared link will be closed on both devices. Do you confirm?'),
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 13.5,
@@ -290,7 +294,7 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         ),
                         onPressed: () => Navigator.pop(bCtx, false),
-                        child: const Text('Vazgeç'),
+                        child: Text(loc('Vazgeç', 'Cancel')),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -304,7 +308,7 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         ),
                         onPressed: () => Navigator.pop(bCtx, true),
-                        child: const Text('Ayrıl 💔', style: TextStyle(fontWeight: FontWeight.w800)),
+                        child: Text(loc('Ayrıl 💔', 'Disconnect 💔'), style: const TextStyle(fontWeight: FontWeight.w800)),
                       ),
                     ),
                   ],
@@ -328,10 +332,16 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
       );
 
       // Partnere anlık bilgi bildirimi
+      final partnerSenderNameTr = myName.isEmpty ? 'Partnerin' : myName;
+      final partnerSenderNameEn = myName.isEmpty ? 'Partner' : myName;
       NotificationService().sendPushToPartner(
         partnerUid: partnerUid,
-        title: '💔 Eşleşme Sonlandırıldı',
-        body: '${myName.isEmpty ? "Partnerin" : myName} seninle olan eşleşmeyi sonlandırdı.',
+        title: loc('💔 Eşleşme Sonlandırıldı', '💔 Pairing Ended'),
+        body: loc('$partnerSenderNameTr seninle olan eşleşmeyi sonlandırdı.', '$partnerSenderNameEn ended the pairing with you.'),
+        titleTr: '💔 Eşleşme Sonlandırıldı',
+        titleEn: '💔 Pairing Ended',
+        bodyTr: '$partnerSenderNameTr seninle olan eşleşmeyi sonlandırdı.',
+        bodyEn: '$partnerSenderNameEn ended the pairing with you.',
         data: {'type': 'breakup_completed'},
       );
 
@@ -341,9 +351,9 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Eşleşmeniz sonlandırıldı.'),
-          backgroundColor: Color(0xFFEF4444),
+        SnackBar(
+          content: Text(loc('Eşleşmeniz sonlandırıldı.', 'Your pairing has ended.')),
+          backgroundColor: const Color(0xFFEF4444),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -351,7 +361,7 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ayrılma işlemi sırasında hata oluştu: $e')),
+        SnackBar(content: Text(loc('Ayrılma işlemi sırasında hata oluştu: $e', 'Error during breakup: $e'))),
       );
     } finally {
       if (mounted) setState(() => _requesting = false);
@@ -372,7 +382,7 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Eş Yönetim Paneli'),
+        title: Text(loc('Eş Yönetim Paneli', 'Couple Management')),
       ),
       body: LoveraThemeBackground(
         child: ListView(
@@ -398,7 +408,7 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
                       radius: 34,
                     ),
                     const SizedBox(width: 14),
-                    const Icon(Icons.favorite_rounded, color: LoveraColors.primary, size: 28)
+                    Icon(Icons.favorite_rounded, color: LoveraColors.primary, size: 28)
                         .animate(onPlay: (c) => c.repeat(reverse: true))
                         .scale(begin: const Offset(0.85, 0.85), end: const Offset(1.15, 1.15)),
                     const SizedBox(width: 14),
@@ -421,8 +431,8 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
                     color: LoveraColors.secondary.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Text(
-                    'Aktif Eşleşme Bağlantısı',
+                  child: Text(
+                    loc('Aktif Eşleşme Bağlantısı', 'Active Paired Connection'),
                     style: TextStyle(
                       color: LoveraColors.secondary,
                       fontSize: 12,
@@ -455,19 +465,19 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
                         color: LoveraColors.primary.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(Icons.calendar_month_rounded, color: LoveraColors.primary),
+                      child: Icon(Icons.calendar_month_rounded, color: LoveraColors.primary),
                     ),
                     const SizedBox(width: 14),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Birlikte Geçen Süre',
+                          Text(loc('Birlikte Geçen Süre', 'Time Spent Together'),
                               style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                           Text(
                             startDate != null
-                                ? '${startDate.day}.${startDate.month}.${startDate.year} ($days Gündür)'
-                                : 'Henüz belirlenmedi',
+                                ? '${startDate.day}.${startDate.month}.${startDate.year} (${loc('$days Gündür', '$days Days')})'
+                                : loc('Henüz belirlenmedi', 'Not set yet'),
                             style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted),
                           ),
                         ],
@@ -477,7 +487,7 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  'Aşk sayacınızın tarihini doğrudan güncelleyebilirsiniz. Güncellediğinizde partnerinize anında bilgilendirme bildirimi iletilir.',
+                  loc('Aşk sayacınızın tarihini doğrudan güncelleyebilirsiniz. Güncellediğinizde partnerinize anında bilgilendirme bildirimi iletilir.', 'You can update your love counter date directly. When updated, an instant notification is sent to your partner.'),
                   style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted, height: 1.4),
                 ),
                 const SizedBox(height: 16),
@@ -492,7 +502,7 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.edit_calendar_rounded, size: 20),
-                    label: const Text('Birliktelik Tarihini Değiştir'),
+                    label: Text(loc('Birliktelik Tarihini Değiştir', 'Change Anniversary Date')),
                   ),
                 ),
               ],
@@ -531,14 +541,14 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Eşleşmeyi Sonlandır',
+                            loc('Eşleşmeyi Sonlandır', 'Break Connection'),
                             style: theme.textTheme.titleMedium?.copyWith(
                               fontWeight: FontWeight.w700,
                               color: const Color(0xFFEF4444),
                             ),
                           ),
                           Text(
-                            'Partnerinle olan bağlantıyı kopar',
+                            loc('Partnerinle olan bağlantıyı kopar', 'Disconnect from your partner'),
                             style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted),
                           ),
                         ],
@@ -548,7 +558,7 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  'Eşleşmeden ayrıldığınızda ortak sayaç, anılar ve canlı bağlantı iki tarafta da sonlandırılır. Engellediğinizde ise kullanıcı size tekrar istek gönderemez.',
+                  loc('Eşleşmeden ayrıldığınızda ortak sayaç, anılar ve canlı bağlantı iki tarafta da sonlandırılır. Engellediğinizde ise kullanıcı size tekrar istek gönderemez.', 'When you disconnect, the shared counter, memories, and live connection will end on both sides. When blocked, the user cannot send you requests again.'),
                   style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted, height: 1.4),
                 ),
                 const SizedBox(height: 16),
@@ -564,8 +574,8 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
                         ),
                         onPressed: _requesting ? null : _unpairImmediately,
                         icon: const Icon(Icons.heart_broken_outlined, size: 20),
-                        label: const Text(
-                          'Eşleşmeden Ayrıl',
+                        label: Text(
+                          loc('Eşleşmeden Ayrıl', 'Disconnect'),
                           style: TextStyle(fontWeight: FontWeight.w700),
                         ),
                       ),
@@ -585,8 +595,8 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
                         ),
                         onPressed: _requesting ? null : _blockAndDisconnectImmediately,
                         icon: const Icon(Icons.block_rounded, size: 20),
-                        label: const Text(
-                          'Engelle',
+                        label: Text(
+                          loc('Engelle', 'Block'),
                           style: TextStyle(fontWeight: FontWeight.w700),
                         ),
                       ),
@@ -603,8 +613,8 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
                     ),
                     onPressed: _requesting ? null : _reportPartnerDialog,
                     icon: const Icon(Icons.flag_outlined, size: 16),
-                    label: const Text(
-                      'Kullanıcıyı Şikayet Et',
+                    label: Text(
+                      loc('Kullanıcıyı Şikayet Et', 'Report Partner'),
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                     ),
                   ),

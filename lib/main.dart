@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -17,6 +18,7 @@ import 'core/services/notification_service.dart';
 import 'core/services/widget_sync_service.dart';
 import 'core/state/app_state.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/theme_palette.dart';
 import 'features/splash/presentation/splash_view.dart';
 
 import 'firebase_options.dart';
@@ -44,10 +46,15 @@ Future<void> main() async {
   };
 
   final prefs = await SharedPreferences.getInstance();
+  currentAppLanguage = prefs.getString('app_language') == 'en' ? AppLanguage.en : AppLanguage.tr;
   final currentUid = FirebaseAuth.instance.currentUser?.uid;
   // Not: Bildirim ve Konum izinleri kullanıcı hesaba giriş yaptıktan sonra (DashboardView içinde)
   // zarifçe ve sırayla istenir. Giriş öncesinde izin popup'ı ASLA açılmaz.
   if (currentUid != null && currentUid.isNotEmpty) {
+    final langStr = currentAppLanguage == AppLanguage.en ? 'en' : 'tr';
+    FirebaseFirestore.instance.collection('users').doc(currentUid).set({
+      'language': langStr,
+    }, SetOptions(merge: true)).catchError((_) {});
     NotificationService().init(requestPermissions: false).catchError((e) => debugPrint('Notification init error: $e'));
     BackgroundTrackingService().initialize().catchError((e) => debugPrint('BG init error: $e'));
   }
@@ -118,6 +125,13 @@ Future<void> main() async {
     debugPrint('[Main] Widget early sync error: $e');
   }
 
+  final themePaletteKey = prefs.getString('theme_palette');
+  final initialPalette = ThemePaletteData.fromKey(themePaletteKey);
+  ActivePalette.current = initialPalette;
+  try {
+    await WidgetSyncService.syncWidgetPalette(initialPalette);
+  } catch (_) {}
+
   runApp(ProviderScope(
     overrides: [
       userNameProvider.overrideWith((ref) => name),
@@ -127,6 +141,7 @@ Future<void> main() async {
       if (initialPartner != null) partnerProvider.overrideWith((ref) => initialPartner),
       if (initialStartDate != null) startDateProvider.overrideWith((ref) => initialStartDate),
       themeModeProvider.overrideWith((ref) => ThemeModeNotifier(initialMode: initialThemeMode)),
+      themePaletteProvider.overrideWith((ref) => ThemePaletteNotifier(initialPalette: initialPalette)),
     ],
     child: LoveraApp(onboarded: onboarded),
   ));
@@ -139,6 +154,7 @@ class LoveraApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
+    final palette = ref.watch(themePaletteProvider);
     final appLanguage = ref.watch(appLanguageProvider);
 
     return MaterialApp(
@@ -146,8 +162,8 @@ class LoveraApp extends ConsumerWidget {
       title: 'Lovera',
       debugShowCheckedModeBanner: false,
       locale: Locale(appLanguage == AppLanguage.en ? 'en' : 'tr'),
-      theme: AppTheme.light,
-      darkTheme: AppTheme.dark,
+      theme: AppTheme.buildLight(palette),
+      darkTheme: AppTheme.buildDark(palette),
       themeMode: themeMode,
       builder: (context, child) {
         return _OfflineBannerWrapper(child: child ?? const SizedBox());

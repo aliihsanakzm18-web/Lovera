@@ -1,13 +1,16 @@
-import 'dart:math';
-
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/localization/app_strings.dart';
+import '../../../core/services/database_service.dart';
+import '../../../core/services/notification_service.dart';
 import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/lovera_theme_background.dart';
+import 'love_questions_game_view.dart';
 
 class GamesView extends ConsumerStatefulWidget {
   const GamesView({super.key, this.onBackToHome});
@@ -18,71 +21,87 @@ class GamesView extends ConsumerStatefulWidget {
 }
 
 class _GamesViewState extends ConsumerState<GamesView> {
-  final PageController _pageController = PageController();
-  int _currentPage = 0;
-  int _activeCardIndex = 0;
-  final Random _rng = Random();
+  bool _isSendingInvite = false;
 
-  final List<GameCategory> _categories = [
-    GameCategory(
-      title: 'Aşk & Uyum Testi',
-      subtitle: 'Birbirinizi ne kadar iyi tanıyorsunuz?',
-      icon: Icons.quiz_rounded,
-      color: LoveraColors.primary,
-      pages: [
-        'Birlikte en çok ne yapmayı seversiniz?',
-        'Partnerinin en sevdiği yemek ve tatlı nedir?',
-        'İlk buluşmanızda seni en çok etkileyen detay neydi?',
-        'İlişkinizin en unutulmaz günü hangisiydi?',
-        'Partnerinin gizli süper gücü sence ne?',
-        'Birlikte yaşlanınca kendinizi nerede hayal ediyorsunuz?',
-      ],
-    ),
-    GameCategory(
-      title: 'Doğruluk mu Cesaret mi?',
-      subtitle: 'Romantik ve eğlenceli çift görevleri',
-      icon: Icons.casino_rounded,
-      color: LoveraColors.secondary,
-      pages: [
-        'Partnerine şu an hissettiğin en tatlı duyguyu sesli söyle.',
-        'Birbirinize en son ne zaman sürpriz yaptınız?',
-        'Partnerin için 10 saniyelik komik bir yüz ifadesi yap.',
-        'Birlikte gitmek istediğiniz hayalinizdeki tatil yeri neresi?',
-        'Partnerinin gözlerinin içine bakarak 15 saniye gülümsemeden dur.',
-        'Telefonundaki en sevdiğin ortak fotoğrafınızı göster ve nedenini anlat.',
-      ],
-    ),
-    GameCategory(
-      title: 'Çift Soru Kartları',
-      subtitle: 'Derin sohbet ve kalp kalbe paylaşımlar',
-      icon: Icons.style_rounded,
-      color: LoveraColors.accentViolet,
-      pages: [
-        'Bu yıl birlikte mutlaka gerçekleştirmek istediğimiz 3 hayal nedir?',
-        'Zor bir gün geçirdiğinde partnerinin sana nasıl destek olması seni en çok rahatlatır?',
-        'İlişkimizde seni en çok güvende ve mutlu hissettiren alışkanlığımız hangisi?',
-        'Birbirimize daha sık söylememiz gereken güzel söz sence hangisi?',
-        'Gelecekteki evimizde mutlaka olmasını istediğin en özel köşe nasıl olmalı?',
-      ],
-    ),
-  ];
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
-
-  void _drawRandomCard(GameCategory cat) {
+  Future<void> _startOrJoinGame({
+    required String? coupleId,
+    required dynamic partner,
+    required String myName,
+    required String? currentStatus,
+  }) async {
     HapticFeedback.mediumImpact();
-    if (cat.pages.length <= 1) return;
-    int next = _rng.nextInt(cat.pages.length);
-    if (next == _activeCardIndex) {
-      next = (next + 1) % cat.pages.length;
+    if (coupleId == null || coupleId.isEmpty || partner == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(loc('Oynamak için önce partnerinle eşleşmelisin 💕', 'Pair with your partner first to play 💕')),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
     }
-    setState(() {
-      _activeCardIndex = next;
-    });
+
+    final partnerUid = (partner.id ?? '').toString();
+    final isAlreadyActiveOrPending = currentStatus == 'active' ||
+        currentStatus == 'waiting_ready' ||
+        currentStatus == 'invitation_pending';
+
+    // Eğer bekleyen davet veya aktif oyun yoksa yeni istek gönder
+    if (!isAlreadyActiveOrPending && partnerUid.isNotEmpty && !_isSendingInvite) {
+      setState(() => _isSendingInvite = true);
+      try {
+        final senderName = myName.isNotEmpty ? myName : loc('Partnerin', 'Your Partner');
+        await DatabaseService().sendGameRequest(
+          gameType: 'love_questions',
+          gameTitle: loc('Aşk Sandığı: Kalp Kalbe', 'Love Chest: Heart to Heart'),
+          partnerUid: partnerUid,
+          fromName: senderName,
+          coupleId: coupleId,
+          initialGameData: {
+            'step': 'coin_flip',
+            'player1Uid': DatabaseService().uid,
+            'player1Name': senderName,
+            'player2Uid': partnerUid,
+            'player2Name': partner.name ?? 'Partner',
+            'activeQuestionId': null,
+            'answeredMap': {},
+          },
+        );
+
+        NotificationService().sendPushToPartner(
+          partnerUid: partnerUid,
+          title: loc('Aşk Sandığı Daveti! 💌', 'Love Chest Invitation! 💌'),
+          body: loc('$senderName seninle Kalp Kalbe oynamak istiyor!', '$senderName wants to play Heart to Heart with you!'),
+          titleTr: 'Aşk Sandığı Daveti! 💌',
+          titleEn: 'Love Chest Invitation! 💌',
+          bodyTr: '$senderName seninle Kalp Kalbe oynamak istiyor!',
+          bodyEn: '$senderName wants to play Heart to Heart with you!',
+          data: {'type': 'game_request', 'game': 'love_questions'},
+        );
+      } catch (e) {
+        debugPrint('[LOVE_QUESTIONS] sendGameRequest error: $e');
+      } finally {
+        if (mounted) {
+          setState(() => _isSendingInvite = false);
+        }
+      }
+    }
+
+    if (!mounted) return;
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) => const LoveQuestionsGameView(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          const begin = Offset(1.0, 0.0);
+          const end = Offset.zero;
+          const curve = Curves.easeInOutCubic;
+          final tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+          return SlideTransition(
+            position: animation.drive(tween),
+            child: child,
+          );
+        },
+      ),
+    );
   }
 
   @override
@@ -90,11 +109,14 @@ class _GamesViewState extends ConsumerState<GamesView> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final partner = ref.watch(partnerProvider);
+    final coupleId = ref.watch(coupleIdProvider);
+    final myName = ref.watch(userNameProvider);
+    final myUid = DatabaseService().uid;
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0F1015) : const Color(0xFFF7F8FA),
+      backgroundColor: isDark ? LoveraColors.darkBg : LoveraColors.lightBg,
       appBar: AppBar(
-        backgroundColor: isDark ? const Color(0xFF161822) : Colors.white,
+        backgroundColor: isDark ? LoveraColors.darkSurface : LoveraColors.lightSurface,
         elevation: 0.5,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
@@ -108,11 +130,11 @@ class _GamesViewState extends ConsumerState<GamesView> {
                 color: LoveraColors.primarySoft.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.sports_esports_rounded, color: LoveraColors.primary, size: 22),
+              child: Icon(Icons.sports_esports_rounded, color: LoveraColors.primary, size: 22),
             ),
             const SizedBox(width: 10),
             Text(
-              'Oyun & Eğlence',
+              loc('Oyun & Eğlence', 'Games & Fun'),
               style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
             ),
           ],
@@ -120,325 +142,310 @@ class _GamesViewState extends ConsumerState<GamesView> {
       ),
       body: LoveraThemeBackground(
         child: SafeArea(
-          child: Column(
-            children: [
-              // Kategori Seçim Sekmeleri
-              Container(
-                height: 54,
-                margin: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _categories.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 10),
-                  itemBuilder: (context, index) {
-                    final cat = _categories[index];
-                    final isSelected = _currentPage == index;
-                    return InkWell(
-                      borderRadius: BorderRadius.circular(20),
-                      onTap: () {
-                        HapticFeedback.selectionClick();
-                        _pageController.animateToPage(
-                          index,
-                          duration: const Duration(milliseconds: 350),
-                          curve: Curves.easeInOutCubic,
-                        );
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? cat.color
-                              : (isDark ? const Color(0xFF1C1E2A) : Colors.white),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: isSelected
-                                ? cat.color
-                                : (isDark ? Colors.white12 : Colors.black12),
-                          ),
-                          boxShadow: isSelected
-                              ? [
-                                  BoxShadow(
-                                    color: cat.color.withValues(alpha: 0.35),
-                                    blurRadius: 12,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ]
-                              : null,
+          child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+            stream: (coupleId != null && coupleId.isNotEmpty)
+                ? DatabaseService().gameStream(coupleId, 'love_questions')
+                : const Stream.empty(),
+            builder: (context, snapshot) {
+              final data = snapshot.data?.data();
+              final status = data?['status'] as String?;
+              final fromUid = (data?['fromUid'] ?? data?['requestedBy']) as String?;
+              final isInvitePending = status == 'invitation_pending';
+              final isIncomingInvite = isInvitePending && fromUid != null && fromUid != myUid;
+              final isActive = status == 'active';
+              final answeredCount = (data?['answeredMap'] as Map?)?.length ?? 0;
+
+              return ListView(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 36),
+                children: [
+                  // ANA OYUN KARTI (Lovera Özel: Aşk Sandığı)
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          LoveraColors.primary,
+                          LoveraColors.primaryDeep,
+                          const Color(0xFF9D174D),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(30),
+                      boxShadow: [
+                        BoxShadow(
+                          color: LoveraColors.primary.withValues(alpha: 0.38),
+                          blurRadius: 28,
+                          offset: const Offset(0, 12),
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Icon(
-                              cat.icon,
-                              size: 18,
-                              color: isSelected
-                                  ? Colors.white
-                                  : (isDark ? Colors.white70 : Colors.black87),
+                            Container(
+                              width: 52,
+                              height: 52,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.22),
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
+                              ),
+                              child: const Center(
+                                child: Text('💌', style: TextStyle(fontSize: 26)),
+                              ),
                             ),
-                            const SizedBox(width: 8),
-                            Text(
-                              cat.title,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13,
-                                color: isSelected
-                                    ? Colors.white
-                                    : (isDark ? Colors.white70 : Colors.black87),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: isIncomingInvite
+                                    ? const Color(0xFF10B981)
+                                    : (isActive
+                                        ? const Color(0xFF10B981)
+                                        : Colors.white.withValues(alpha: 0.22)),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                isIncomingInvite
+                                    ? loc('DAVET VAR 🔔', 'INVITATION 🔔')
+                                    : (isActive
+                                        ? loc('CANLI OYUN 🔥', 'LIVE GAME 🔥')
+                                        : loc('ÇİFT DÜELLOSU ✨', 'COUPLE DUEL ✨')),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.6,
+                                ),
                               ),
                             ),
                           ],
                         ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-
-              // Oyun Kategorisi Sayfaları
-              Expanded(
-                child: PageView.builder(
-                  controller: _pageController,
-                  onPageChanged: (index) {
-                    setState(() {
-                      _currentPage = index;
-                      _activeCardIndex = 0;
-                    });
-                  },
-                  itemCount: _categories.length,
-                  itemBuilder: (context, index) {
-                    final cat = _categories[index];
-                    final currentIdx = _activeCardIndex.clamp(0, cat.pages.length - 1);
-                    final activeQuestion = cat.pages[currentIdx];
-
-                    return ListView(
-                      padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
-                      children: [
-                        // Kategori Başlık & Rastgele Kart Çekme Kartı
-                        Container(
-                          padding: const EdgeInsets.all(22),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                cat.color,
-                                cat.color.withValues(alpha: 0.78),
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(AppTheme.radius),
-                            boxShadow: [
-                              BoxShadow(
-                                color: cat.color.withValues(alpha: 0.3),
-                                blurRadius: 20,
-                                offset: const Offset(0, 8),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(10),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withValues(alpha: 0.2),
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                    child: Icon(cat.icon, color: Colors.white, size: 26),
-                                  ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                    decoration: BoxDecoration(
-                                      color: Colors.black.withValues(alpha: 0.2),
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    child: Text(
-                                      partner != null ? 'Partner: ${partner.name}' : 'Çift Etkinliği',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                cat.title,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                cat.subtitle,
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.9),
-                                  fontSize: 13,
-                                ),
-                              ),
-                              const SizedBox(height: 18),
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.16),
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'AKTİF KART #${currentIdx + 1}',
-                                      style: TextStyle(
-                                        color: Colors.white.withValues(alpha: 0.8),
-                                        fontSize: 10.5,
-                                        fontWeight: FontWeight.w800,
-                                        letterSpacing: 1.1,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      activeQuestion,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w800,
-                                        height: 1.35,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 14),
-                              SizedBox(
-                                width: double.infinity,
-                                child: FilledButton.icon(
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: Colors.white,
-                                    foregroundColor: cat.color,
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                  ),
-                                  onPressed: () => _drawRandomCard(cat),
-                                  icon: const Icon(Icons.shuffle_rounded, size: 18),
-                                  label: const Text(
-                                    'Rastgele Yeni Kart Çek',
-                                    style: TextStyle(fontWeight: FontWeight.w800),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ).animate().fadeIn(duration: 350.ms).slideY(begin: 0.08),
-
-                        const SizedBox(height: 24),
-
+                        const SizedBox(height: 20),
                         Text(
-                          'TÜM SORU & GÖREV KARTLARI',
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            color: LoveraColors.textMuted,
-                            letterSpacing: 1.2,
-                            fontWeight: FontWeight.w700,
+                          loc('Aşk Sandığı: Kalp Kalbe', 'Love Chest: Heart to Heart'),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
+                        const SizedBox(height: 6),
+                        Text(
+                          loc(
+                            'Yazı-tura ile ilk kimin soru soracağı belirlenir. Beğendiğin kartı seç, partnerin karta cevabını yazsın ve ilişkinizin ömürlük albümüne mühürlensin! 💕',
+                            'Flip the named coin to decide who asks first. Pick a card, let your partner write the answer, and seal it into your eternal memory chest! 💕',
+                          ),
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.92),
+                            fontSize: 13,
+                            height: 1.4,
+                          ),
+                        ),
+                        const SizedBox(height: 18),
 
-                        const SizedBox(height: 12),
+                        // ÖZELLİK ROZETLERİ
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _buildBadge('🪙 ' + loc('İsimli Yazı-Tura', 'Named Coin Flip')),
+                            _buildBadge('📚 60+ ' + loc('Özel Soru Kartı', 'Curated Cards')),
+                            _buildBadge('💖 $answeredCount ' + loc('Cevaplandı', 'Answered')),
+                          ],
+                        ),
 
-                        ...cat.pages.asMap().entries.map((entry) {
-                          final pIdx = entry.key;
-                          final pageText = entry.value;
-                          final isCurrent = pIdx == currentIdx;
-                          return GestureDetector(
-                            onTap: () {
-                              HapticFeedback.selectionClick();
-                              setState(() => _activeCardIndex = pIdx);
-                            },
-                            child: Container(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.surface,
-                                borderRadius: BorderRadius.circular(AppTheme.radius),
-                                border: Border.all(
-                                  color: isCurrent ? cat.color : theme.dividerColor,
-                                  width: isCurrent ? 1.6 : 1.0,
-                                ),
-                                boxShadow: AppTheme.ambientShadow,
+                        const SizedBox(height: 22),
+
+                        // OYNA / KATIL BUTONU
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: LoveraColors.primaryDeep,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
                               ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 36,
-                                    height: 36,
-                                    decoration: BoxDecoration(
-                                      color: cat.color.withValues(alpha: isCurrent ? 0.22 : 0.12),
-                                      borderRadius: BorderRadius.circular(10),
+                            ),
+                            onPressed: _isSendingInvite
+                                ? null
+                                : () => _startOrJoinGame(
+                                      coupleId: coupleId,
+                                      partner: partner,
+                                      myName: myName,
+                                      currentStatus: status,
                                     ),
-                                    child: Center(
-                                      child: Text(
-                                        '${pIdx + 1}',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w800,
-                                          color: cat.color,
-                                        ),
-                                      ),
+                            icon: _isSendingInvite
+                                ? SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.2,
+                                      color: LoveraColors.primaryDeep,
                                     ),
-                                  ),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Text(
-                                      pageText,
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Icon(
-                                    isCurrent ? Icons.check_circle_rounded : Icons.chevron_right_rounded,
-                                    color: isCurrent ? cat.color : LoveraColors.textMuted,
+                                  )
+                                : Icon(
+                                    isIncomingInvite
+                                        ? Icons.notifications_active_rounded
+                                        : (isActive ? Icons.play_arrow_rounded : Icons.rocket_launch_rounded),
                                     size: 20,
                                   ),
-                                ],
+                            label: Text(
+                              isIncomingInvite
+                                  ? loc('Daveti Kabul Et & Oyna 🚀', 'Accept & Play 🚀')
+                                  : (isActive
+                                      ? loc('Oyuna Devam Et 🔥', 'Resume Game 🔥')
+                                      : loc('Oyuna Başla 🚀', 'Start Game 🚀')),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 15,
                               ),
-                            ).animate(delay: (pIdx * 60).ms).fadeIn().slideY(begin: 0.06),
-                          );
-                        }),
+                            ),
+                          ),
+                        ),
                       ],
-                    );
-                  },
-                ),
-              ),
-            ],
+                    ),
+                  ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.08),
+
+                  const SizedBox(height: 28),
+
+                  // NASIL OYNANIR BİLGİ KARTLARI
+                  Text(
+                    loc('OYUN KURALLARI & ADIMLAR', 'HOW TO PLAY & STEPS'),
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: LoveraColors.textMuted,
+                      letterSpacing: 1.2,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  _buildStepCard(
+                    number: '1',
+                    emoji: '🪙',
+                    title: loc('3D İsimli Yazı-Tura', '3D Named Coin Flip'),
+                    desc: loc('Paranın yüzlerinde ikinizin ismi yazar. Atışı kazanan ilk soruyu sorma hakkını alır.', 'The coin has your names on both sides. The winner gets the first turn to ask.'),
+                    theme: theme,
+                    isDark: isDark,
+                  ),
+                  const SizedBox(height: 10),
+                  _buildStepCard(
+                    number: '2',
+                    emoji: '🎴',
+                    title: loc('Büyüyen Soru Kartı', 'Hero Question Card'),
+                    desc: loc('Seçtiğin kart iki ekranda da büyüyerek ekrana gelir ve soru mühürlenir.', 'The chosen card expands on both screens with beautiful animations.'),
+                    theme: theme,
+                    isDark: isDark,
+                  ),
+                  const SizedBox(height: 10),
+                  _buildStepCard(
+                    number: '3',
+                    emoji: '✍️',
+                    title: loc('Canlı Cevap & Sıra Değişimi', 'Live Answer & Turn Switch'),
+                    desc: loc('Partnerin cevabını yazıp mühürler. Kart arşive eklenir ve soru sorma sırası diğerine geçer!', 'Partner writes and seals the answer. The card is archived and turns switch!'),
+                    theme: theme,
+                    isDark: isDark,
+                  ),
+                  const SizedBox(height: 10),
+                  _buildStepCard(
+                    number: '4',
+                    emoji: '💖',
+                    title: loc('Ömürlük Anı Albümü', 'Eternal Memory Archive'),
+                    desc: loc('Cevaplanan sorular havuzda yeşil mühürle kalır. Üzerine dokunarak istediğin zaman partnerinin cevabını okuyabilirsin.', 'Answered questions remain with a green seal. Tap anytime to read your partner\'s response.'),
+                    theme: theme,
+                    isDark: isDark,
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ),
     );
   }
-}
 
-class GameCategory {
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final Color color;
-  final List<String> pages;
+  Widget _buildBadge(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
 
-  GameCategory({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.color,
-    required this.pages,
-  });
+  Widget _buildStepCard({
+    required String number,
+    required String emoji,
+    required String title,
+    required String desc,
+    required ThemeData theme,
+    required bool isDark,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(AppTheme.radius),
+        border: Border.all(color: theme.dividerColor),
+        boxShadow: AppTheme.ambientShadow,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: LoveraColors.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Center(
+              child: Text(emoji, style: const TextStyle(fontSize: 20)),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: isDark ? Colors.white : LoveraColors.textDark,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  desc,
+                  style: TextStyle(
+                    color: LoveraColors.textMuted,
+                    fontSize: 12,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

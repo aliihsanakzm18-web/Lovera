@@ -1,10 +1,11 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../state/app_state.dart';
 
 /// Lovera Özel Karma Arka Plan Deseni & Atmosferik Işık Havuzu (Ambient Aurora + Romantic Doodle)
-/// Hem derin mor/pembe/leylak aurora ışık harelerini hem de yıldız, kalp, mektup, gezegen ve ışıltı sembollerini harmanlar.
-/// RepaintBoundary ile donatılmıştır; kaydırma esnasında sıfır pil ve GPU yükü oluşturur.
-class LoveraThemeBackground extends StatelessWidget {
+/// Seçilen tema paketinin 1. ve 2. canlı renklerine göre dinamik ve zengin bir ışık atmosferi sunar.
+class LoveraThemeBackground extends ConsumerWidget {
   final Widget? child;
   final bool showPatterns;
 
@@ -15,37 +16,42 @@ class LoveraThemeBackground extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final palette = ref.watch(themePaletteProvider);
 
     return Stack(
       fit: StackFit.expand,
       children: [
-        // 1. Zemin Degrade & Taban Rengi (Daha zengin derinlik)
+        // 1. Zemin Degrade & Taban Rengi (Temanın kendi zemin tonu)
         DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: isDark
-                  ? const [
-                      Color(0xFF0D0E15),
-                      Color(0xFF090A0F),
-                      Color(0xFF07070B),
+                  ? [
+                      palette.darkBg,
+                      Color.lerp(palette.darkBg, palette.darkSurface, 0.45) ?? palette.darkBg,
+                      palette.darkBg,
                     ]
-                  : const [
-                      Color(0xFFFCFCFE),
-                      Color(0xFFF6F7FA),
-                      Color(0xFFEDEFF5),
+                  : [
+                      palette.lightBg,
+                      Color.lerp(palette.lightBg, palette.primary, 0.05) ?? palette.lightBg,
+                      palette.lightBg,
                     ],
             ),
           ),
         ),
 
-        // 2. Atmosferik Aurora Işık Hareleri (Ambient Mesh Glow - iOS / Linear Tarzı Zengin Işık)
+        // 2. Atmosferik Aurora Işık Hareleri (Temanın 1. ve 2. canlı renkleri)
         RepaintBoundary(
           child: CustomPaint(
-            painter: _AuroraGlowPainter(isDark: isDark),
+            painter: _AuroraGlowPainter(
+              isDark: isDark,
+              primary: palette.primary,
+              secondary: palette.secondary,
+            ),
             size: Size.infinite,
           ),
         ),
@@ -54,7 +60,10 @@ class LoveraThemeBackground extends StatelessWidget {
         if (showPatterns)
           RepaintBoundary(
             child: CustomPaint(
-              painter: _LoveraDoodlePatternPainter(isDark: isDark),
+              painter: _LoveraDoodlePatternPainter(
+                isDark: isDark,
+                accentColor: palette.primary,
+              ),
               size: Size.infinite,
             ),
           ),
@@ -66,135 +75,124 @@ class LoveraThemeBackground extends StatelessWidget {
   }
 }
 
-/// Atmosferik Işık Hareleri (Üstte romantik violet/indigo, ortada gül pembesi, altta nane/aurora)
+/// Atmosferik Işık Hareleri (Temanın 1. ana ve 2. eşlikçi rengiyle parıldar)
 class _AuroraGlowPainter extends CustomPainter {
   final bool isDark;
+  final Color primary;
+  final Color secondary;
 
-  const _AuroraGlowPainter({required this.isDark});
+  const _AuroraGlowPainter({
+    required this.isDark,
+    required this.primary,
+    required this.secondary,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 1. Sol Üst Derin Leylak / Violet Işığı
-    final violetPaint = Paint()
+    // 1. Sol Üst Canlı 1. Renk (Primary Aurora)
+    final primaryPaint = Paint()
       ..shader = RadialGradient(
         colors: isDark
             ? [
-                const Color(0xFF8B5CF6).withValues(alpha: 0.18),
-                const Color(0xFF6D28D9).withValues(alpha: 0.08),
+                primary.withValues(alpha: 0.32),
+                primary.withValues(alpha: 0.14),
                 Colors.transparent,
               ]
             : [
-                const Color(0xFFA78BFA).withValues(alpha: 0.12),
-                const Color(0xFFC4B5FD).withValues(alpha: 0.04),
+                primary.withValues(alpha: 0.22),
+                primary.withValues(alpha: 0.08),
                 Colors.transparent,
               ],
         stops: const [0.0, 0.50, 1.0],
       ).createShader(Rect.fromCircle(
         center: Offset(size.width * 0.12, size.height * 0.10),
-        radius: size.width * 0.90,
+        radius: size.width * 0.95,
       ));
 
     canvas.drawCircle(
       Offset(size.width * 0.12, size.height * 0.10),
-      size.width * 0.90,
-      violetPaint,
+      size.width * 0.95,
+      primaryPaint,
     );
 
-    // 2. Sağ Üst/Orta Romantik Pembe / Gül Işıltısı
-    final pinkPaint = Paint()
+    // 2. Sağ Üst/Orta Eşlikçi 2. Renk (Secondary Aurora)
+    final secondaryPaint = Paint()
       ..shader = RadialGradient(
         colors: isDark
             ? [
-                const Color(0xFFEC4899).withValues(alpha: 0.10),
-                const Color(0xFFBE185D).withValues(alpha: 0.03),
+                secondary.withValues(alpha: 0.26),
+                secondary.withValues(alpha: 0.10),
                 Colors.transparent,
               ]
             : [
-                const Color(0xFFF472B6).withValues(alpha: 0.08),
-                const Color(0xFFFBCFE8).withValues(alpha: 0.03),
+                secondary.withValues(alpha: 0.18),
+                secondary.withValues(alpha: 0.06),
                 Colors.transparent,
               ],
         stops: const [0.0, 0.55, 1.0],
       ).createShader(Rect.fromCircle(
         center: Offset(size.width * 0.92, size.height * 0.38),
-        radius: size.width * 0.75,
+        radius: size.width * 0.85,
       ));
 
     canvas.drawCircle(
       Offset(size.width * 0.92, size.height * 0.38),
-      size.width * 0.75,
-      pinkPaint,
+      size.width * 0.85,
+      secondaryPaint,
     );
 
-    // 3. Sol Alt Dingin Nane / Zümrüt Işıltısı (Lovera Canlılığı)
-    final mintPaint = Paint()
+    // 3. Sol Alt Renk Harmanı (Zenginleştirilmiş geçiş)
+    final blendColor = Color.lerp(primary, secondary, 0.5) ?? primary;
+    final blendPaint = Paint()
       ..shader = RadialGradient(
         colors: isDark
             ? [
-                const Color(0xFF10B981).withValues(alpha: 0.06),
+                blendColor.withValues(alpha: 0.20),
                 Colors.transparent,
               ]
             : [
-                const Color(0xFF34D399).withValues(alpha: 0.04),
+                blendColor.withValues(alpha: 0.12),
                 Colors.transparent,
               ],
         stops: const [0.0, 1.0],
       ).createShader(Rect.fromCircle(
-        center: Offset(size.width * 0.08, size.height * 0.85),
-        radius: size.width * 0.70,
+        center: Offset(size.width * 0.05, size.height * 0.88),
+        radius: size.width * 0.80,
       ));
 
     canvas.drawCircle(
-      Offset(size.width * 0.08, size.height * 0.85),
-      size.width * 0.70,
-      mintPaint,
-    );
-
-    // 4. Sağ Alt Sıcak Altın / Gece Işıltısı
-    final amberPaint = Paint()
-      ..shader = RadialGradient(
-        colors: isDark
-            ? [
-                const Color(0xFFF59E0B).withValues(alpha: 0.04),
-                Colors.transparent,
-              ]
-            : [
-                const Color(0xFFFBBF24).withValues(alpha: 0.03),
-                Colors.transparent,
-              ],
-        stops: const [0.0, 1.0],
-      ).createShader(Rect.fromCircle(
-        center: Offset(size.width * 0.85, size.height * 0.92),
-        radius: size.width * 0.60,
-      ));
-
-    canvas.drawCircle(
-      Offset(size.width * 0.85, size.height * 0.92),
-      size.width * 0.60,
-      amberPaint,
+      Offset(size.width * 0.05, size.height * 0.88),
+      size.width * 0.80,
+      blendPaint,
     );
   }
 
   @override
-  bool shouldRepaint(covariant _AuroraGlowPainter oldDelegate) => oldDelegate.isDark != isDark;
+  bool shouldRepaint(covariant _AuroraGlowPainter old) {
+    return old.isDark != isDark || old.primary != primary || old.secondary != secondary;
+  }
 }
 
-/// Gözü Yormayan (%5-%8 Opaklık) Dünya Standartlarında Romantik İllüstratif Desen
+/// Gözü Yormayan Dünya Standartlarında Romantik İllüstratif Desen (Temanın rengiyle uyumlu)
 class _LoveraDoodlePatternPainter extends CustomPainter {
   final bool isDark;
+  final Color accentColor;
 
-  const _LoveraDoodlePatternPainter({required this.isDark});
+  const _LoveraDoodlePatternPainter({
+    required this.isDark,
+    required this.accentColor,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Çizgi ve dolgu boyaları: Açık modda zarif lavanta fligranı, koyu modda gece parıltısı
+    // Çizgi ve dolgu boyaları: Seçilen temanın rengiyle ince fligran
     final strokeColor = isDark
-        ? Colors.white.withValues(alpha: 0.065)
-        : const Color(0xFF6D28D9).withValues(alpha: 0.075);
+        ? Colors.white.withValues(alpha: 0.07)
+        : accentColor.withValues(alpha: 0.08);
 
     final fillColor = isDark
         ? Colors.white.withValues(alpha: 0.04)
-        : const Color(0xFF7C3AED).withValues(alpha: 0.045);
+        : accentColor.withValues(alpha: 0.05);
 
     final strokePaint = Paint()
       ..color = strokeColor
@@ -215,7 +213,6 @@ class _LoveraDoodlePatternPainter extends CustomPainter {
 
     for (int r = 0; r < rows; r++) {
       for (int c = 0; c < cols; c++) {
-        // Çapraz şaşırtmalı grid ve hafif açı varyasyonu (tamamen canlı & doğal tasarım)
         final x = c * cellW + ((r % 2 == 1) ? cellW * 0.5 : 0.0);
         final y = r * cellH;
 
@@ -281,7 +278,6 @@ class _LoveraDoodlePatternPainter extends CustomPainter {
     path.close();
     canvas.drawPath(path, fill);
     canvas.drawPath(path, stroke);
-    // Merkezine minik nokta
     canvas.drawCircle(Offset.zero, 1.2, stroke);
   }
 
@@ -294,14 +290,11 @@ class _LoveraDoodlePatternPainter extends CustomPainter {
     );
     canvas.drawRRect(rrect, stroke);
 
-    // Zarf kapağı çizgileri
     final flap = Path()
       ..moveTo(-w / 2, -h / 2)
       ..lineTo(0, h * 0.16)
       ..lineTo(w / 2, -h / 2);
     canvas.drawPath(flap, stroke);
-
-    // Kalp mühür noktası
     canvas.drawCircle(Offset(0, h * 0.05), 1.5, stroke);
   }
 
@@ -313,8 +306,6 @@ class _LoveraDoodlePatternPainter extends CustomPainter {
     path.close();
     canvas.drawPath(path, fill);
     canvas.drawPath(path, stroke);
-
-    // Hilal yanında minik yıldız
     canvas.drawCircle(Offset(r * 0.6, -r * 0.3), 1.2, stroke);
   }
 
@@ -323,7 +314,6 @@ class _LoveraDoodlePatternPainter extends CustomPainter {
     final r = w * 0.34;
     canvas.drawCircle(Offset(-r, 0), r * 0.72, stroke);
     canvas.drawCircle(Offset(r, 0), r * 0.72, stroke);
-    // Merkezde minik artı
     canvas.drawLine(const Offset(-2, 0), const Offset(2, 0), stroke);
     canvas.drawLine(const Offset(0, -2), const Offset(0, 2), stroke);
   }
@@ -349,13 +339,11 @@ class _LoveraDoodlePatternPainter extends CustomPainter {
 
   // 8. İç İçe Geçmiş Çift Kalp (💕)
   void _drawDoubleHearts(Canvas canvas, Paint stroke, Paint fill, double r) {
-    // Sol kalp
     canvas.save();
     canvas.translate(-4, -2);
     _drawHeart(canvas, stroke, fill, r * 0.85);
     canvas.restore();
 
-    // Sağ üst küçük kalp
     canvas.save();
     canvas.translate(5, 3);
     _drawHeart(canvas, stroke, fill, r * 0.65);
@@ -363,5 +351,7 @@ class _LoveraDoodlePatternPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _LoveraDoodlePatternPainter oldDelegate) => oldDelegate.isDark != isDark;
+  bool shouldRepaint(covariant _LoveraDoodlePatternPainter old) {
+    return old.isDark != isDark || old.accentColor != accentColor;
+  }
 }

@@ -8,8 +8,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/localization/app_strings.dart';
 import '../../../core/services/database_service.dart';
-import '../../../core/services/notification_service.dart';
 import '../../../core/services/widget_sync_service.dart';
 import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
@@ -121,11 +121,11 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
 
     if (mounted) {
       final label = mode == 'app'
-          ? 'Uygulama Temasıyla Senkron'
-          : (mode == 'dark' ? 'Koyu Gece Teması' : 'Açık Ferah Tema');
+          ? loc('Uygulama Temasıyla Senkron', 'Sync with App Theme')
+          : (mode == 'dark' ? loc('Koyu Gece Teması', 'Dark Night Theme') : loc('Açık Ferah Tema', 'Light Fresh Theme'));
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Widget teması "$label" olarak ayarlandı ✨'),
+          content: Text(loc('Widget teması "$label" olarak ayarlandı ✨', 'Widget theme set to "$label" ✨')),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -179,8 +179,8 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Widget fotoğrafın başarıyla güncellendi! 💕'),
+          SnackBar(
+            content: Text(loc('Widget fotoğrafın başarıyla güncellendi! 💕', 'Widget photo updated successfully! 💕')),
             backgroundColor: LoveraColors.secondary,
             behavior: SnackBarBehavior.floating,
           ),
@@ -191,7 +191,7 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Fotoğraf eklenirken bir hata oluştu: $e'),
+            content: Text(loc('Fotoğraf eklenirken bir hata oluştu: $e', 'An error occurred while adding photo: $e')),
             backgroundColor: Colors.redAccent,
           ),
         );
@@ -224,8 +224,8 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Widget fotoğrafı kaldırıldı, varsayılan temaya dönüldü.'),
+          SnackBar(
+            content: Text(loc('Widget fotoğrafı kaldırıldı, varsayılan temaya dönüldü.', 'Widget photo removed, restored to default theme.')),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -235,7 +235,7 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Fotoğraf kaldırılırken bir hata oluştu: $e'),
+            content: Text(loc('Fotoğraf kaldırılırken bir hata oluştu: $e', 'An error occurred while removing photo: $e')),
             backgroundColor: Colors.redAccent,
           ),
         );
@@ -247,6 +247,7 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final palette = ref.watch(themePaletteProvider);
 
     final partner = ref.watch(partnerProvider);
     final partnerName = partner?.name.isNotEmpty == true ? partner!.name : 'Eda';
@@ -260,7 +261,7 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Widget Ayarları'),
+        title: Text(loc('Widget Ayarları', 'Widget Settings')),
         centerTitle: true,
       ),
       body: LoveraThemeBackground(
@@ -271,12 +272,15 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                 children: [
                 // Başlık Bilgi Metni
                 Text(
-                  'Ana Ekran Widget Görünümü',
+                  loc('Ana Ekran Widget Görünümü', 'Home Screen Widget Appearance'),
                   style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Widget arkasına sevgilinizle olan özel bir anınızı ekleyin veya Lovera temalarını kullanın. Widget\'ların açık/koyu modunu ayrı olarak seçebilir ya da uygulama temanızla eşitleyebilirsiniz.',
+                  loc(
+                    'Widget arkasına sevgilinizle olan özel bir anınızı ekleyin veya Lovera temalarını kullanın. Widget\'ların açık/koyu modunu ayrı olarak seçebilir ya da uygulama temanızla eşitleyebilirsiniz.',
+                    'Add a special memory behind your widget or use Lovera themes. Choose light/dark mode independently or sync with your app theme.',
+                  ),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
                     height: 1.45,
@@ -325,24 +329,22 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                                   end: Alignment.bottomRight,
                                   colors: previewIsDark
                                       ? [
-                                          const Color(0xFF0F0C1B),
-                                          const Color(0xFF1B1530),
-                                          const Color(0xFF120E22),
+                                          palette.darkBg,
+                                          palette.darkSurface,
+                                          palette.darkSurfaceAlt,
                                         ]
                                       : [
-                                          const Color(0xFFFFFFFF),
-                                          const Color(0xFFF8FAFC),
-                                          const Color(0xFFF1F5F9),
+                                          palette.lightSurface,
+                                          palette.lightBg,
+                                          palette.lightSurfaceAlt,
                                         ],
                                 ),
                               ),
-                              child: Center(
-                                child: Icon(
-                                  Icons.favorite_rounded,
-                                  size: 64,
-                                  color: previewIsDark
-                                      ? const Color(0x18A78BFA)
-                                      : const Color(0x228B5CF6),
+                              child: CustomPaint(
+                                painter: _WidgetDoodlePreviewPainter(
+                                  primary: previewIsDark ? palette.primaryDark : palette.primary,
+                                  secondary: palette.secondary,
+                                  isDark: previewIsDark,
                                 ),
                               ),
                             ),
@@ -369,7 +371,7 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(26),
                               border: Border.all(
-                                color: const Color(0x55A78BFA),
+                                color: LoveraColors.primaryDark.withValues(alpha: 0.33),
                                 width: 1.5,
                               ),
                             ),
@@ -388,24 +390,24 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                                       child: Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
                                         decoration: BoxDecoration(
-                                          color: previewIsDark ? const Color(0xD018132A) : const Color(0xF0FFFFFF),
+                                          color: previewIsDark ? palette.darkSurface.withValues(alpha: 0.85) : palette.lightSurface.withValues(alpha: 0.94),
                                           borderRadius: BorderRadius.circular(16),
                                           border: Border.all(
-                                            color: previewIsDark ? const Color(0x55A78BFA) : const Color(0x358B5CF6),
+                                            color: previewIsDark ? palette.primaryDark.withValues(alpha: 0.38) : palette.primary.withValues(alpha: 0.28),
                                             width: 1,
                                           ),
                                         ),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            const Text('💜', style: TextStyle(fontSize: 10)),
-                                            const SizedBox(width: 3),
+                                            Icon(Icons.favorite_rounded, size: 11, color: previewIsDark ? palette.primaryDark : palette.primary),
+                                            const SizedBox(width: 4),
                                             Flexible(
                                               child: Text(
                                                 partnerName,
                                                 overflow: TextOverflow.ellipsis,
                                                 style: TextStyle(
-                                                  color: previewIsDark ? const Color(0xFFF3F4F6) : const Color(0xFF1E1B4B),
+                                                  color: previewIsDark ? palette.darkText : palette.textDark,
                                                   fontSize: 11,
                                                   fontWeight: FontWeight.bold,
                                                 ),
@@ -419,10 +421,10 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
                                       decoration: BoxDecoration(
-                                        color: previewIsDark ? const Color(0xD018132A) : const Color(0xF0FFFFFF),
+                                        color: previewIsDark ? palette.darkSurface.withValues(alpha: 0.85) : palette.lightSurface.withValues(alpha: 0.94),
                                         borderRadius: BorderRadius.circular(16),
                                         border: Border.all(
-                                          color: previewIsDark ? const Color(0x55A78BFA) : const Color(0x358B5CF6),
+                                          color: previewIsDark ? palette.primaryDark.withValues(alpha: 0.38) : palette.primary.withValues(alpha: 0.28),
                                           width: 1,
                                         ),
                                       ),
@@ -434,16 +436,16 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                                           Text(
                                             daysCount,
                                             style: TextStyle(
-                                              color: previewIsDark ? const Color(0xFFA78BFA) : const Color(0xFF7C3AED),
+                                              color: previewIsDark ? palette.primaryDark : palette.primaryDeep,
                                               fontSize: 12,
                                               fontWeight: FontWeight.bold,
                                             ),
                                           ),
                                           const SizedBox(width: 2),
                                           Text(
-                                            'gün',
+                                            loc('gün', 'days'),
                                             style: TextStyle(
-                                              color: previewIsDark ? const Color(0xFFE2E8F0) : const Color(0xFF64748B),
+                                              color: previewIsDark ? palette.darkTextMuted : palette.textMuted,
                                               fontSize: 10,
                                               fontWeight: FontWeight.bold,
                                             ),
@@ -455,16 +457,16 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
                                       decoration: BoxDecoration(
-                                        color: previewIsDark ? const Color(0xD018132A) : const Color(0xF0FFFFFF),
+                                        color: previewIsDark ? palette.darkSurface.withValues(alpha: 0.85) : palette.lightSurface.withValues(alpha: 0.94),
                                         borderRadius: BorderRadius.circular(16),
                                         border: Border.all(
-                                          color: previewIsDark ? const Color(0x55A78BFA) : const Color(0x358B5CF6),
+                                          color: previewIsDark ? palette.primaryDark.withValues(alpha: 0.38) : palette.primary.withValues(alpha: 0.28),
                                           width: 1,
                                         ),
                                       ),
-                                      child: const Text(
-                                        'Şimdi aktif',
-                                        style: TextStyle(
+                                      child: Text(
+                                        loc('Şimdi aktif', 'Active now'),
+                                        style: const TextStyle(
                                           color: Color(0xFF10B981),
                                           fontSize: 10,
                                           fontWeight: FontWeight.bold,
@@ -484,10 +486,10 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                                       child: Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                                         decoration: BoxDecoration(
-                                          color: previewIsDark ? const Color(0xD018132A) : const Color(0xF0FFFFFF),
+                                          color: previewIsDark ? palette.darkSurface.withValues(alpha: 0.85) : palette.lightSurface.withValues(alpha: 0.94),
                                           borderRadius: BorderRadius.circular(18),
                                           border: Border.all(
-                                            color: previewIsDark ? const Color(0x55A78BFA) : const Color(0x358B5CF6),
+                                            color: previewIsDark ? palette.primaryDark.withValues(alpha: 0.38) : palette.primary.withValues(alpha: 0.28),
                                             width: 1.2,
                                           ),
                                         ),
@@ -499,7 +501,7 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                                               height: 16,
                                               decoration: BoxDecoration(
                                                 border: Border.all(
-                                                  color: previewIsDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                                                  color: previewIsDark ? palette.darkTextMuted : palette.textMuted,
                                                   width: 1.2,
                                                 ),
                                                 borderRadius: BorderRadius.circular(2.5),
@@ -540,10 +542,10 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                                       child: Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                                         decoration: BoxDecoration(
-                                          color: previewIsDark ? const Color(0xD018132A) : const Color(0xF0FFFFFF),
+                                          color: previewIsDark ? palette.darkSurface.withValues(alpha: 0.85) : palette.lightSurface.withValues(alpha: 0.94),
                                           borderRadius: BorderRadius.circular(18),
                                           border: Border.all(
-                                            color: previewIsDark ? const Color(0x55A78BFA) : const Color(0x358B5CF6),
+                                            color: previewIsDark ? palette.primaryDark.withValues(alpha: 0.38) : palette.primary.withValues(alpha: 0.28),
                                             width: 1.2,
                                           ),
                                         ),
@@ -552,10 +554,9 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                                           children: [
                                             const Text('🏠', style: TextStyle(fontSize: 12)),
                                             const SizedBox(width: 4),
-                                            Text(
-                                              'Evim',
+                                            Text(loc('Evim', 'Home'),
                                               style: TextStyle(
-                                                color: previewIsDark ? const Color(0xFFF3F4F6) : const Color(0xFF1E1B4B),
+                                                color: previewIsDark ? palette.darkText : palette.textDark,
                                                 fontSize: 12,
                                                 fontWeight: FontWeight.bold,
                                               ),
@@ -581,10 +582,10 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF1A162B) : Colors.white,
+                    color: isDark ? palette.darkSurface : palette.lightSurface,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: isDark ? const Color(0x25A78BFA) : const Color(0x208B5CF6),
+                      color: isDark ? LoveraColors.primaryDark.withValues(alpha: 0.15) : LoveraColors.primary.withValues(alpha: 0.13),
                       width: 1.2,
                     ),
                     boxShadow: [
@@ -607,7 +608,7 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            'Widget Teması',
+                            loc('Widget Teması', 'Widget Theme'),
                             style: theme.textTheme.titleSmall?.copyWith(
                               fontWeight: FontWeight.w700,
                             ),
@@ -616,7 +617,10 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Ana ekran widget\'larının renk stilini ve görünümünü belirleyin:',
+                        loc(
+                          'Ana ekran widget\'larının renk stilini ve görünümünü belirleyin:',
+                          'Select the color style and appearance of home screen widgets:',
+                        ),
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
                         ),
@@ -626,8 +630,8 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                         children: [
                           _buildThemeOption(
                             context: context,
-                            title: 'Otomatik',
-                            subtitle: 'Uygulama',
+                            title: loc('Otomatik', 'Auto'),
+                            subtitle: loc('Uygulama', 'App'),
                             icon: Icons.sync_rounded,
                             isSelected: _widgetTheme == 'app',
                             onTap: () => _changeWidgetTheme('app'),
@@ -635,8 +639,8 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                           const SizedBox(width: 8),
                           _buildThemeOption(
                             context: context,
-                            title: 'Koyu',
-                            subtitle: 'Gece',
+                            title: loc('Koyu', 'Dark'),
+                            subtitle: loc('Gece', 'Night'),
                             icon: Icons.dark_mode_rounded,
                             isSelected: _widgetTheme == 'dark',
                             onTap: () => _changeWidgetTheme('dark'),
@@ -644,8 +648,8 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                           const SizedBox(width: 8),
                           _buildThemeOption(
                             context: context,
-                            title: 'Açık',
-                            subtitle: 'Ferah',
+                            title: loc('Açık', 'Light'),
+                            subtitle: loc('Ferah', 'Fresh'),
                             icon: Icons.light_mode_rounded,
                             isSelected: _widgetTheme == 'light',
                             onTap: () => _changeWidgetTheme('light'),
@@ -671,7 +675,9 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                     ),
                     icon: const Icon(Icons.add_photo_alternate_rounded, size: 22),
                     label: Text(
-                      _savedImagePath != null ? 'Fotoğrafı Değiştir' : 'Widget Fotoğrafı Seç',
+                      _savedImagePath != null
+                          ? loc('Fotoğrafı Değiştir', 'Change Photo')
+                          : loc('Widget Fotoğrafı Seç', 'Select Widget Photo'),
                       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                     ),
                     onPressed: _pickImage,
@@ -692,9 +698,9 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                         ),
                       ),
                       icon: const Icon(Icons.delete_outline_rounded, size: 20),
-                      label: const Text(
-                        'Fotoğrafı Kaldır (Varsayılan Tema)',
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                      label: Text(
+                        loc('Fotoğrafı Kaldır (Varsayılan Tema)', 'Remove Photo (Default Theme)'),
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
                       ),
                       onPressed: _removeImage,
                     ),
@@ -711,7 +717,7 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFA78BFA).withValues(alpha: 0.15),
+                        color: LoveraColors.primaryDark.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Text('🎨', style: TextStyle(fontSize: 20)),
@@ -722,12 +728,12 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Canlı Çizim & Doodle Widget\'ı',
+                            loc('Canlı Çizim & Doodle Widget\'ı', 'Live Drawing & Doodle Widget'),
                             style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'Partnerinizin ana ekranına anlık çizimler ve notlar yollayın.',
+                            loc('Partnerinizin ana ekranına anlık çizimler ve notlar yollayın.', 'Send instant drawings and notes directly to your partner\'s home screen.'),
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
                             ),
@@ -742,17 +748,17 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
                   width: double.infinity,
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFFA78BFA),
-                      side: const BorderSide(color: Color(0xFFA78BFA), width: 1.4),
+                      foregroundColor: LoveraColors.primaryDark,
+                      side: BorderSide(color: LoveraColors.primaryDark, width: 1.4),
                       padding: const EdgeInsets.symmetric(vertical: 15),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
                       ),
                     ),
                     icon: const Icon(Icons.brush_rounded, size: 20),
-                    label: const Text(
-                      'Hemen Bir Çizim Yap & Gönder',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                    label: Text(
+                      loc('Hemen Bir Çizim Yap & Gönder', 'Create & Send Drawing Now'),
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
                     ),
                     onPressed: () {
                       Navigator.of(context).push(
@@ -788,7 +794,7 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
           decoration: BoxDecoration(
             color: isSelected
                 ? LoveraColors.primary.withValues(alpha: isDark ? 0.25 : 0.12)
-                : (isDark ? const Color(0xFF130F23) : const Color(0xFFF8FAFC)),
+                : (isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: isSelected
@@ -835,4 +841,129 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
       ),
     );
   }
+}
+
+class _WidgetDoodlePreviewPainter extends CustomPainter {
+  final Color primary;
+  final Color secondary;
+  final bool isDark;
+
+  const _WidgetDoodlePreviewPainter({
+    required this.primary,
+    required this.secondary,
+    required this.isDark,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.width / 200.0;
+    canvas.save();
+    canvas.scale(s, s);
+
+    // Sol üst ve sağ alt aurora halesi
+    final glowPaint = Paint()..style = PaintingStyle.fill;
+    glowPaint.shader = RadialGradient(
+      colors: [primary.withValues(alpha: isDark ? 0.24 : 0.18), primary.withValues(alpha: 0)],
+    ).createShader(Rect.fromCircle(center: const Offset(20, 20), radius: 90));
+    canvas.drawRect(const Rect.fromLTWH(0, 0, 200, 200), glowPaint);
+
+    glowPaint.shader = RadialGradient(
+      colors: [secondary.withValues(alpha: isDark ? 0.20 : 0.15), secondary.withValues(alpha: 0)],
+    ).createShader(Rect.fromCircle(center: const Offset(170, 170), radius: 90));
+    canvas.drawRect(const Rect.fromLTWH(0, 0, 200, 200), glowPaint);
+
+    final fillPaint = Paint()
+      ..style = PaintingStyle.fill
+      ..color = primary.withValues(alpha: isDark ? 0.12 : 0.10);
+    final strokePaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.1
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..color = primary.withValues(alpha: isDark ? 0.26 : 0.22);
+
+    // Kalp 1 (Sol Üst)
+    final heart = Path()
+      ..moveTo(46, 62)
+      ..cubicTo(40, 54, 30, 56, 28, 66)
+      ..cubicTo(26, 76, 46, 90, 46, 90)
+      ..cubicTo(46, 90, 66, 76, 64, 66)
+      ..cubicTo(62, 56, 52, 54, 46, 62)
+      ..close();
+    canvas.drawPath(heart, fillPaint);
+    canvas.drawPath(heart, strokePaint);
+
+    // Parlak Yıldız ✦ (Sağ Üst)
+    final star = Path()
+      ..moveTo(152, 48)
+      ..quadraticBezierTo(152, 56, 160, 56)
+      ..quadraticBezierTo(152, 56, 152, 64)
+      ..quadraticBezierTo(152, 56, 144, 56)
+      ..quadraticBezierTo(152, 56, 152, 48)
+      ..close();
+    canvas.drawPath(star, fillPaint..color = secondary.withValues(alpha: isDark ? 0.16 : 0.14));
+    canvas.drawPath(star, strokePaint..color = secondary.withValues(alpha: isDark ? 0.30 : 0.25));
+
+    // Hilal Ay 🌙 (Sol Orta/Alt)
+    final moon = Path()
+      ..moveTo(38, 124)
+      ..cubicTo(44, 124, 50, 129, 50, 136)
+      ..cubicTo(50, 143, 44, 148, 38, 148)
+      ..cubicTo(42, 146, 45, 141, 45, 136)
+      ..cubicTo(45, 131, 42, 126, 38, 124)
+      ..close();
+    fillPaint.color = primary.withValues(alpha: isDark ? 0.12 : 0.10);
+    strokePaint.color = primary.withValues(alpha: isDark ? 0.24 : 0.20);
+    canvas.drawPath(moon, fillPaint);
+    canvas.drawPath(moon, strokePaint);
+
+    // Mektup Zarfı ✉️ (Merkez Sağ)
+    final env = Path()
+      ..addRect(const Rect.fromLTRB(142, 106, 168, 124))
+      ..moveTo(142, 106)
+      ..lineTo(155, 116)
+      ..lineTo(168, 106);
+    canvas.drawPath(env, strokePaint);
+
+    // Sonsuzluk Sembolü ∞ (Sağ Alt)
+    final inf = Path()
+      ..moveTo(132, 156)
+      ..cubicTo(127, 151, 120, 151, 115, 156)
+      ..cubicTo(110, 161, 117, 166, 122, 161)
+      ..cubicTo(127, 156, 134, 151, 139, 156)
+      ..cubicTo(144, 161, 137, 166, 132, 161)
+      ..close();
+    canvas.drawPath(inf, strokePaint..color = secondary.withValues(alpha: isDark ? 0.26 : 0.22));
+
+    // Yörüngeli Gezegen 🪐 (Sol Merkez)
+    strokePaint.color = primary.withValues(alpha: isDark ? 0.22 : 0.18);
+    canvas.drawCircle(const Offset(48, 100), 7, fillPaint);
+    canvas.drawCircle(const Offset(48, 100), 7, strokePaint);
+    final orbit = Path()
+      ..moveTo(36, 102)
+      ..quadraticBezierTo(48, 96, 60, 102)
+      ..quadraticBezierTo(48, 108, 36, 102);
+    canvas.drawPath(orbit, strokePaint);
+
+    // Yıldız tozu noktaları
+    fillPaint.color = primary.withValues(alpha: isDark ? 0.24 : 0.20);
+    for (final pt in const [
+      Offset(98, 46),
+      Offset(106, 146),
+      Offset(86, 112),
+      Offset(122, 82),
+      Offset(166, 142),
+      Offset(32, 86),
+    ]) {
+      canvas.drawCircle(pt, 1.3, fillPaint);
+    }
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _WidgetDoodlePreviewPainter oldDelegate) =>
+      oldDelegate.primary != primary ||
+      oldDelegate.secondary != secondary ||
+      oldDelegate.isDark != isDark;
 }

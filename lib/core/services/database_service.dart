@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/models.dart';
 import 'notification_service.dart';
+import '../localization/app_strings.dart';
 
 class DatabaseService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -42,6 +43,25 @@ class DatabaseService {
     } catch (_) {}
   }
 
+  // Kullanıcının tema paketi ve tema modu tercihini buluta yedekle
+  Future<void> updateUserThemePreferences({
+    String? themePalette,
+    String? themeMode,
+  }) async {
+    if (uid == null) return;
+    try {
+      final data = <String, dynamic>{
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+      if (themePalette != null) data['themePalette'] = themePalette;
+      if (themeMode != null) data['themeMode'] = themeMode;
+      await _db.collection('users').doc(uid).set(
+        data,
+        SetOptions(merge: true),
+      ).timeout(const Duration(seconds: 4));
+    } catch (_) {}
+  }
+
   // Doğum tarihi güncelle ('YYYY-MM-DD')
   Future<void> updateBirthDate(String birthDateStr, {String? coupleId, String? userName}) async {
     if (uid == null) return;
@@ -54,7 +74,7 @@ class DatabaseService {
 
     // Eğer bağlı bir couple varsa, doğum gününü özel günlere otomatik senkronize et
     if (coupleId != null && coupleId.isNotEmpty) {
-      final name = userName ?? _auth.currentUser?.displayName ?? 'Doğum Günü';
+      final name = userName ?? _auth.currentUser?.displayName ?? loc('Doğum Günü', 'Birthday');
       await syncBirthdayMilestone(
         targetUserId: uid!,
         userName: name,
@@ -211,10 +231,10 @@ class DatabaseService {
       final targetDoc = await _db.collection('users').doc(targetUid).get();
       final blockedList = List<String>.from(targetDoc.data()?['blockedUsers'] ?? []);
       if (blockedList.contains(uid)) {
-        throw Exception('Bu kullanıcı sizi engellediği için eşleşme isteği gönderilemiyor.');
+        throw Exception(loc('Bu kullanıcı sizi engellediği için eşleşme isteği gönderilemiyor.', 'Cannot send pairing request because this user has blocked you.'));
       }
     } catch (e) {
-      if (e.toString().contains('engellediği')) rethrow;
+      if (e.toString().contains('engellediği') || e.toString().contains('blocked')) rethrow;
     }
 
     // Hedef kullanıcının gelen isteklerine ve kendi kullanıcımıza yaz
@@ -247,8 +267,12 @@ class DatabaseService {
     try {
       NotificationService().sendPushToPartner(
         partnerUid: targetUid,
-        title: '💕 Yeni Eşleşme İsteği!',
-        body: '$myName seninle eşleşmek istiyor! Bağlantıyı onaylamak için dokun.',
+        title: loc('💕 Yeni Eşleşme İsteği!', '💕 New Pairing Request!'),
+        body: loc('$myName seninle eşleşmek istiyor! Bağlantıyı onaylamak için dokun.', '$myName wants to pair with you! Tap to confirm connection.'),
+        titleTr: '💕 Yeni Eşleşme İsteği!',
+        titleEn: '💕 New Pairing Request!',
+        bodyTr: '$myName seninle eşleşmek istiyor! Bağlantıyı onaylamak için dokun.',
+        bodyEn: '$myName wants to pair with you! Tap to confirm connection.',
         data: {
           'type': 'pair_request',
           'fromUid': uid ?? '',
@@ -263,7 +287,7 @@ class DatabaseService {
     required String requesterUid,
     required DateTime relationshipStartDate,
   }) async {
-    if (uid == null) throw Exception('Giriş yapılmamış');
+    if (uid == null) throw Exception(loc('Giriş yapılmamış', 'Not logged in'));
 
     final coupleRef = _db.collection('couples').doc();
     final coupleId = coupleRef.id;
@@ -656,14 +680,14 @@ class DatabaseService {
           final data = doc.data()!;
           list.add({
             'uid': id,
-            'name': data['name'] ?? 'Kullanıcı',
+            'name': data['name'] ?? loc('Kullanıcı', 'User'),
             'avatarUrl': data['avatarUrl'],
             'email': data['email'] ?? '',
           });
         } else {
           list.add({
             'uid': id,
-            'name': 'Kullanıcı ($id)',
+            'name': '${loc("Kullanıcı", "User")} ($id)',
             'avatarUrl': null,
             'email': '',
           });
@@ -671,7 +695,7 @@ class DatabaseService {
       } catch (_) {
         list.add({
           'uid': id,
-          'name': 'Kullanıcı ($id)',
+          'name': '${loc("Kullanıcı", "User")} ($id)',
           'avatarUrl': null,
           'email': '',
         });
@@ -696,7 +720,7 @@ class DatabaseService {
         'coupleId': coupleId ?? '',
         'contentType': contentType, // 'message', 'memory', 'user'
         'contentId': contentId,
-        'reason': reason ?? 'Sakıncalı veya uygunsuz içerik',
+        'reason': reason ?? loc('Sakıncalı veya uygunsuz içerik', 'Objectionable or inappropriate content'),
         'status': 'pending_review',
         'createdAt': FieldValue.serverTimestamp(),
       });
@@ -1615,7 +1639,7 @@ class DatabaseService {
       if (currentStatus == 'active' || currentStatus == 'waiting_ready' || currentStatus == 'paused') {
         await docRef.update({
           'status': 'ended',
-          'exitReason': exitReason ?? 'Partnerin oyundan çıktı',
+          'exitReason': exitReason ?? loc('Partnerin oyundan çıktı', 'Partner left the game'),
           'exitUid': exitUid,
           'whiteOnline': false,
           'blackOnline': false,
@@ -1638,7 +1662,7 @@ class DatabaseService {
     try {
       await _db.collection('couples').doc(coupleId).collection('games').doc('chess').set({
         'status': 'ended',
-        'exitReason': exitReason ?? 'Partnerin oyundan çıktı',
+        'exitReason': exitReason ?? loc('Partnerin oyundan çıktı', 'Partner left the game'),
         'exitUid': exitUid ?? uid,
         'whiteOnline': false,
         'blackOnline': false,
@@ -1671,15 +1695,15 @@ class DatabaseService {
 
         if (otherWantsRematch) {
           transaction.update(docRef, {
-            'status': 'waiting_ready',
+            'status': 'active',
             'fen': 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
             'turn': 'w',
             'lastMove': null,
             'winnerUid': null,
             'winnerReason': null,
             'moveHistory': [],
-            'whiteReady': false,
-            'blackReady': false,
+            'whiteReady': true,
+            'blackReady': true,
             'whiteRematch': false,
             'blackRematch': false,
             'updatedAt': FieldValue.serverTimestamp(),
@@ -1706,7 +1730,7 @@ class DatabaseService {
       await _db.collection('couples').doc(coupleId).collection('games').doc('chess').update({
         'status': 'resigned',
         'winnerUid': winnerUid,
-        'winnerReason': 'Partner oyundan çekildi',
+        'winnerReason': loc('Partner oyundan çekildi', 'Partner resigned'),
         'whiteRematch': false,
         'blackRematch': false,
         'updatedAt': FieldValue.serverTimestamp(),
@@ -1724,40 +1748,48 @@ class DatabaseService {
   }) async {
     final myUid = uid;
     if (myUid == null) return;
+    final reqId = 'chess_${DateTime.now().millisecondsSinceEpoch}';
+
+    // 1. Önce doğrudan couples/{coupleId}/games/chess dökümanına yaz (her iki partnerin de tam yetkisi var)
+    await _db.collection('couples').doc(coupleId).collection('games').doc('chess').set({
+      'id': reqId,
+      'game': 'chess',
+      'gameTitle': loc('Satranç', 'Chess'),
+      'status': 'invitation_pending',
+      'fromUid': myUid,
+      'fromName': fromName,
+      'toUid': partnerUid,
+      'whitePlayerUid': myUid,
+      'whitePlayerName': fromName,
+      'blackPlayerUid': partnerUid,
+      'whiteReady': true,
+      'blackReady': false,
+      'whiteOnline': true,
+      'blackOnline': false,
+      'fen': 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      'turn': 'w',
+      'lastMove': null,
+      'winnerUid': null,
+      'winnerReason': null,
+      'moveHistory': [],
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    // 2. Opsiyonel olarak users/{partnerUid} dökümanına da yazmayı dene (hata verirse yut)
     try {
-      final reqId = 'chess_${DateTime.now().millisecondsSinceEpoch}';
       await _db.collection('users').doc(partnerUid).set({
         'pendingGameRequest': {
           'id': reqId,
           'game': 'chess',
-          'gameTitle': 'Satranç',
+          'gameTitle': loc('Satranç', 'Chess'),
           'fromUid': myUid,
           'fromName': fromName,
           'status': 'pending',
           'createdAt': FieldValue.serverTimestamp(),
         },
       }, SetOptions(merge: true));
-
-      await _db.collection('couples').doc(coupleId).collection('games').doc('chess').set({
-        'status': 'invitation_pending',
-        'fromUid': myUid,
-        'toUid': partnerUid,
-        'whitePlayerUid': myUid,
-        'whitePlayerName': fromName,
-        'blackPlayerUid': partnerUid,
-        'whiteReady': false,
-        'blackReady': false,
-        'fen': 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-        'turn': 'w',
-        'lastMove': null,
-        'winnerUid': null,
-        'winnerReason': null,
-        'moveHistory': [],
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
     } catch (e) {
-      debugPrint('[CHESS] sendChessRequest error: $e');
-      rethrow;
+      debugPrint('[CHESS] Optional user doc pendingGameRequest write skipped: $e');
     }
   }
 
@@ -1771,10 +1803,35 @@ class DatabaseService {
     final myUid = uid;
     if (myUid == null) return;
     try {
+      if (accepted) {
+        await _db.collection('couples').doc(coupleId).collection('games').doc('chess').update({
+          'status': 'active',
+          'blackPlayerName': responderName,
+          'responderName': responderName,
+          'whiteReady': true,
+          'blackReady': true,
+          'whiteOnline': true,
+          'blackOnline': true,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      } else {
+        await _db.collection('couples').doc(coupleId).collection('games').doc('chess').update({
+          'status': 'rejected',
+          'responderName': responderName,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+    } catch (e) {
+      debugPrint('[CHESS] respondChessRequest error: $e');
+    }
+
+    try {
       await _db.collection('users').doc(myUid).set({
         'pendingGameRequest': FieldValue.delete(),
       }, SetOptions(merge: true));
+    } catch (_) {}
 
+    try {
       await _db.collection('users').doc(fromUid).set({
         'gameResult': {
           'game': 'chess',
@@ -1783,24 +1840,7 @@ class DatabaseService {
           'timestamp': FieldValue.serverTimestamp(),
         },
       }, SetOptions(merge: true));
-
-      if (accepted) {
-        await _db.collection('couples').doc(coupleId).collection('games').doc('chess').update({
-          'status': 'waiting_ready',
-          'blackPlayerName': responderName,
-          'whiteReady': false,
-          'blackReady': false,
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-      } else {
-        await _db.collection('couples').doc(coupleId).collection('games').doc('chess').update({
-          'status': 'rejected',
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-      }
-    } catch (e) {
-      debugPrint('[CHESS] respondChessRequest error: $e');
-    }
+    } catch (_) {}
   }
 
   /// Oyun sonuç bildirimini temizle
@@ -1889,7 +1929,7 @@ class DatabaseService {
       if (currentStatus == 'active' || currentStatus == 'waiting_ready' || currentStatus == 'paused') {
         await docRef.update({
           'status': 'ended',
-          'exitReason': exitReason ?? 'Partnerin oyundan çıktı',
+          'exitReason': exitReason ?? loc('Partnerin oyundan çıktı', 'Partner left the game'),
           'exitUid': exitUid,
           'whiteOnline': false,
           'blackOnline': false,
@@ -1913,7 +1953,7 @@ class DatabaseService {
     try {
       await _db.collection('couples').doc(coupleId).collection('games').doc(gameType).set({
         'status': 'ended',
-        'exitReason': exitReason ?? 'Partnerin oyundan çıktı',
+        'exitReason': exitReason ?? loc('Partnerin oyundan çıktı', 'Partner left the game'),
         'exitUid': exitUid ?? uid,
         'whiteOnline': false,
         'blackOnline': false,
@@ -1937,7 +1977,7 @@ class DatabaseService {
       await _db.collection('couples').doc(coupleId).collection('games').doc(gameType).update({
         'status': 'resigned',
         'winnerUid': winnerUid,
-        'winnerReason': 'Partner oyundan çekildi',
+        'winnerReason': loc('Partner oyundan çekildi', 'Partner resigned'),
         'whiteRematch': false,
         'blackRematch': false,
         'updatedAt': FieldValue.serverTimestamp(),
@@ -1993,8 +2033,32 @@ class DatabaseService {
   }) async {
     final myUid = uid;
     if (myUid == null) return;
+    final reqId = '${gameType}_${DateTime.now().millisecondsSinceEpoch}';
+
+    await _db.collection('couples').doc(coupleId).collection('games').doc(gameType).set({
+      'id': reqId,
+      'game': gameType,
+      'gameTitle': gameTitle,
+      'status': 'invitation_pending',
+      'fromUid': myUid,
+      'fromName': fromName,
+      'toUid': partnerUid,
+      'whitePlayerUid': myUid,
+      'whitePlayerName': fromName,
+      'blackPlayerUid': partnerUid,
+      'whiteReady': true,
+      'blackReady': false,
+      'whiteOnline': true,
+      'blackOnline': false,
+      'whiteRematch': false,
+      'blackRematch': false,
+      'winnerUid': null,
+      'winnerReason': null,
+      ...initialGameData,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
     try {
-      final reqId = '${gameType}_${DateTime.now().millisecondsSinceEpoch}';
       await _db.collection('users').doc(partnerUid).set({
         'pendingGameRequest': {
           'id': reqId,
@@ -2006,28 +2070,8 @@ class DatabaseService {
           'createdAt': FieldValue.serverTimestamp(),
         },
       }, SetOptions(merge: true));
-
-      await _db.collection('couples').doc(coupleId).collection('games').doc(gameType).set({
-        'status': 'invitation_pending',
-        'fromUid': myUid,
-        'toUid': partnerUid,
-        'whitePlayerUid': myUid,
-        'whitePlayerName': fromName,
-        'blackPlayerUid': partnerUid,
-        'whiteReady': false,
-        'blackReady': false,
-        'whiteOnline': true,
-        'blackOnline': false,
-        'whiteRematch': false,
-        'blackRematch': false,
-        'winnerUid': null,
-        'winnerReason': null,
-        ...initialGameData,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
     } catch (e) {
-      debugPrint('[$gameType] sendGameRequest error: $e');
-      rethrow;
+      debugPrint('[$gameType] Optional user doc pendingGameRequest write skipped: $e');
     }
   }
 
@@ -2042,10 +2086,35 @@ class DatabaseService {
     final myUid = uid;
     if (myUid == null) return;
     try {
+      if (accepted) {
+        await _db.collection('couples').doc(coupleId).collection('games').doc(gameType).update({
+          'status': 'active',
+          'blackPlayerName': responderName,
+          'responderName': responderName,
+          'whiteReady': true,
+          'blackReady': true,
+          'whiteOnline': true,
+          'blackOnline': true,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      } else {
+        await _db.collection('couples').doc(coupleId).collection('games').doc(gameType).update({
+          'status': 'rejected',
+          'responderName': responderName,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+    } catch (e) {
+      debugPrint('[$gameType] respondGameRequest error: $e');
+    }
+
+    try {
       await _db.collection('users').doc(myUid).set({
         'pendingGameRequest': FieldValue.delete(),
       }, SetOptions(merge: true));
+    } catch (_) {}
 
+    try {
       await _db.collection('users').doc(fromUid).set({
         'gameResult': {
           'game': gameType,
@@ -2054,25 +2123,7 @@ class DatabaseService {
           'timestamp': FieldValue.serverTimestamp(),
         },
       }, SetOptions(merge: true));
-
-      if (accepted) {
-        await _db.collection('couples').doc(coupleId).collection('games').doc(gameType).update({
-          'status': 'waiting_ready',
-          'blackPlayerName': responderName,
-          'whiteReady': false,
-          'blackReady': false,
-          'blackOnline': true,
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-      } else {
-        await _db.collection('couples').doc(coupleId).collection('games').doc(gameType).update({
-          'status': 'rejected',
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-      }
-    } catch (e) {
-      debugPrint('[$gameType] respondGameRequest error: $e');
-    }
+    } catch (_) {}
   }
 
   /// Oyun bittikten sonra 'Tekrar Oyna' isteği (Genel)
@@ -2096,11 +2147,11 @@ class DatabaseService {
 
         if (otherWantsRematch) {
           transaction.update(docRef, {
-            'status': 'waiting_ready',
+            'status': 'active',
             'winnerUid': null,
             'winnerReason': null,
-            'whiteReady': false,
-            'blackReady': false,
+            'whiteReady': true,
+            'blackReady': true,
             'whiteRematch': false,
             'blackRematch': false,
             ...resetData,

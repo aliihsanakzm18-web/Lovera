@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/localization/app_strings.dart';
 import '../../../core/models/models.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/state/app_state.dart';
@@ -46,6 +47,7 @@ class _MilestonesViewState extends ConsumerState<MilestonesView> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final strings = ref.watch(stringsProvider);
     final coupleId = ref.watch(coupleIdProvider);
 
     // Eğer coupleId değiştiyse stream'i güncelle, yoksa mevcut stream'i koru
@@ -56,19 +58,18 @@ class _MilestonesViewState extends ConsumerState<MilestonesView> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Özel Günler')),
+      appBar: AppBar(title: Text(strings.milestonesTitle)),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openSheet(context),
         backgroundColor: LoveraColors.primary,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add_rounded),
-        label: const Text('Yeni gün ekle'),
+        label: Text(strings.addMilestoneBtn),
       ),
       body: LoveraThemeBackground(
         child: StreamBuilder<List<Milestone>>(
           stream: _milestonesStream,
           builder: (context, snapshot) {
-            // Veri varsa (veya önbellekte veri varsa) doğrudan göster, asla git-gel yapma!
             final items = snapshot.data;
 
             if (snapshot.connectionState == ConnectionState.waiting && items == null) {
@@ -85,13 +86,13 @@ class _MilestonesViewState extends ConsumerState<MilestonesView> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.event_note_rounded, size: 56, color: LoveraColors.secondary),
+                      Icon(Icons.event_note_rounded, size: 56, color: LoveraColors.secondary),
                       const SizedBox(height: 14),
-                      Text('Henüz özel gün yok',
+                      Text(strings.noMilestonesTitle,
                           style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                       const SizedBox(height: 6),
                       Text(
-                        'Yıldönümü, doğum günü ya da ilk tatilinizi ekleyin. Firebase bulutuna anında kaydedilir.',
+                        strings.noMilestonesDesc,
                         textAlign: TextAlign.center,
                         style: theme.textTheme.bodyMedium?.copyWith(color: LoveraColors.textMuted),
                       ),
@@ -107,6 +108,8 @@ class _MilestonesViewState extends ConsumerState<MilestonesView> {
               separatorBuilder: (_, __) => const SizedBox(height: 14),
               itemBuilder: (context, i) {
                 final m = milestoneList[i];
+                final displayTitle = strings.translateMilestoneTitle(m.title);
+
                 return Container(
                   padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
@@ -144,9 +147,9 @@ class _MilestonesViewState extends ConsumerState<MilestonesView> {
                               ),
                             ),
                             const SizedBox(height: 2),
-                            const Text(
-                              'GÜN KALDI',
-                              style: TextStyle(
+                            Text(
+                              strings.daysLeftTag,
+                              style: const TextStyle(
                                 fontSize: 8,
                                 fontWeight: FontWeight.w800,
                                 color: Colors.white,
@@ -165,7 +168,7 @@ class _MilestonesViewState extends ConsumerState<MilestonesView> {
                               children: [
                                 Flexible(
                                   child: Text(
-                                    m.title,
+                                    displayTitle,
                                     style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -178,8 +181,8 @@ class _MilestonesViewState extends ConsumerState<MilestonesView> {
                                       color: LoveraColors.primary.withValues(alpha: 0.12),
                                       borderRadius: BorderRadius.circular(6),
                                     ),
-                                    child: const Text(
-                                      'Özel',
+                                    child: Text(
+                                      strings.specialTag,
                                       style: TextStyle(
                                         fontSize: 10,
                                         fontWeight: FontWeight.w700,
@@ -202,7 +205,7 @@ class _MilestonesViewState extends ConsumerState<MilestonesView> {
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 10),
                           child: Tooltip(
-                            message: 'Bu özel gün sabittir, silinemez veya düzenlenemez.',
+                            message: strings.systemMilestoneTooltip,
                             child: Icon(
                               Icons.lock_outline_rounded,
                               size: 20,
@@ -214,31 +217,31 @@ class _MilestonesViewState extends ConsumerState<MilestonesView> {
                         IconButton(
                           icon: const Icon(Icons.edit_outlined, size: 20),
                           color: LoveraColors.textMuted,
-                          tooltip: 'Düzenle',
+                          tooltip: strings.edit,
                           onPressed: () => _openSheet(context, editing: m),
                         ),
                         IconButton(
                           icon: const Icon(Icons.delete_outline_rounded, size: 20),
                           color: LoveraColors.textMuted,
-                          tooltip: 'Sil',
+                          tooltip: strings.delete,
                           onPressed: () async {
                             final confirm = await showDialog<bool>(
                               context: context,
                               builder: (ctx) => AlertDialog(
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                title: const Text('Özel Günü Sil'),
-                                content: Text('"${m.title}" özel gününü silmek istediğinize emin misiniz?'),
+                                title: Text(strings.deleteMilestoneTitle),
+                                content: Text(strings.deleteMilestoneDesc(displayTitle)),
                                 actions: [
                                   TextButton(
                                     onPressed: () => Navigator.pop(ctx, false),
-                                    child: const Text('Vazgeç'),
+                                    child: Text(strings.cancel),
                                   ),
                                   FilledButton(
                                     onPressed: () => Navigator.pop(ctx, true),
                                     style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
-                                    child: const Text(
-                                      'Sil',
-                                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                    child: Text(
+                                      strings.delete,
+                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                                     ),
                                   ),
                                 ],
@@ -284,7 +287,9 @@ class _MilestoneFormSheetState extends ConsumerState<_MilestoneFormSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final strings = ref.watch(stringsProvider);
     final isEditing = widget.editing != null;
+
     return Padding(
       padding: EdgeInsets.fromLTRB(24, 8, 24, MediaQuery.of(context).viewInsets.bottom + 28),
       child: Form(
@@ -293,20 +298,20 @@ class _MilestoneFormSheetState extends ConsumerState<_MilestoneFormSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(isEditing ? 'Özel Günü Düzenle' : 'Yeni Özel Gün',
+            Text(isEditing ? strings.editMilestoneTitle : strings.newMilestoneTitle,
                 style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
             const SizedBox(height: 18),
             TextFormField(
               controller: _title,
-              decoration: const InputDecoration(labelText: 'Başlık (ör: Yıldönümümüz, İlk Tatil)'),
-              validator: (v) => v == null || v.trim().isEmpty ? 'Başlık zorunludur' : null,
+              decoration: InputDecoration(labelText: strings.milestoneTitleLabel),
+              validator: (v) => v == null || v.trim().isEmpty ? strings.milestoneTitleRequired : null,
             ),
             const SizedBox(height: 14),
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.event_available_rounded, color: LoveraColors.primary),
+              leading: Icon(Icons.event_available_rounded, color: LoveraColors.primary),
               title: Text('${_date.day}.${_date.month}.${_date.year}'),
-              subtitle: const Text('Tarihi değiştirmek için dokunun'),
+              subtitle: Text(strings.tapToChangeDate),
               onTap: () async {
                 final picked = await showDatePicker(
                   context: context,
@@ -326,7 +331,7 @@ class _MilestoneFormSheetState extends ConsumerState<_MilestoneFormSheet> {
                   final coupleId = ref.read(coupleIdProvider);
                   if (isEditing) {
                     await DatabaseService().updateMilestone(
-                      milestoneId: widget.editing!.id,
+                       milestoneId: widget.editing!.id,
                       title: _title.text.trim(),
                       date: _date,
                       coupleId: coupleId,
@@ -340,7 +345,7 @@ class _MilestoneFormSheetState extends ConsumerState<_MilestoneFormSheet> {
                   }
                   if (context.mounted) Navigator.pop(context);
                 },
-                child: Text(isEditing ? 'Kaydet' : 'Oluştur'),
+                child: Text(isEditing ? strings.save : strings.create),
               ),
             ),
           ],

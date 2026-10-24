@@ -1,3 +1,4 @@
+import '../../../core/localization/app_strings.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -108,8 +109,8 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
     final coupleId = ref.read(coupleIdProvider);
     if (coupleId == null || coupleId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Anı eklemek için önce partnerinle eşleşmelisin! 💕'),
+        SnackBar(
+          content: Text(ref.read(stringsProvider).pairForMemories),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -125,7 +126,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
       builder: (ctx) => Container(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E212B) : Colors.white,
+          color: isDark ? LoveraColors.darkSurfaceAlt : Colors.white,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
         ),
         child: Column(
@@ -144,13 +145,13 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
             ),
             const SizedBox(height: 18),
             Text(
-              'Albüme Fotoğraf Ekle 💕',
+              ref.watch(stringsProvider).addMemoryDialogTitle,
               textAlign: TextAlign.center,
               style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 6),
             Text(
-              'Nasıl fotoğraf eklemek istersiniz?',
+              ref.watch(stringsProvider).addMemoryDialogDesc,
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(color: LoveraColors.textMuted),
             ),
@@ -166,11 +167,11 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                   color: LoveraColors.primary.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.add_photo_alternate_rounded, color: LoveraColors.primary),
+                child: Icon(Icons.add_photo_alternate_rounded, color: LoveraColors.primary),
               ),
-              title: const Text('Fotoğraf Ekle 📸', style: TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: const Text('Galeriden bir veya birden fazla fotoğraf seçin', style: TextStyle(fontSize: 12)),
-              trailing: const Icon(Icons.chevron_right_rounded, color: LoveraColors.textMuted),
+              title: Text(ref.watch(stringsProvider).addPhotoOption, style: const TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: Text(ref.watch(stringsProvider).addPhotoOptionSub, style: const TextStyle(fontSize: 12)),
+              trailing: Icon(Icons.chevron_right_rounded, color: LoveraColors.textMuted),
               onTap: () {
                 Navigator.pop(ctx);
                 _openUnifiedPhotoPicker();
@@ -190,9 +191,9 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                 ),
                 child: const Icon(Icons.create_new_folder_rounded, color: Colors.white),
               ),
-              title: const Text('Yeni Klasör Ekle 📁', style: TextStyle(fontWeight: FontWeight.w800)),
-              subtitle: const Text('Yeni bir anı klasörü oluşturun (İsim, hikaye, mekan, tarih)', style: TextStyle(fontSize: 12)),
-              trailing: const Icon(Icons.chevron_right_rounded, color: LoveraColors.textMuted),
+              title: Text(ref.watch(stringsProvider).newAlbumOption, style: const TextStyle(fontWeight: FontWeight.w800)),
+              subtitle: Text(ref.watch(stringsProvider).newAlbumOptionSub, style: const TextStyle(fontSize: 12)),
+              trailing: Icon(Icons.chevron_right_rounded, color: LoveraColors.textMuted),
               onTap: () {
                 Navigator.pop(ctx);
                 _openCreateFolderDialog();
@@ -229,7 +230,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fotoğraf seçilemedi: $e')),
+          SnackBar(content: Text(loc('Fotoğraf seçilemedi: $e', 'Could not select photo: $e'))),
         );
       }
     }
@@ -263,7 +264,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
             return Container(
               padding: EdgeInsets.fromLTRB(22, 16, 22, MediaQuery.of(context).viewInsets.bottom + 24),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E212B) : Colors.white,
+                color: isDark ? LoveraColors.darkSurfaceAlt : Colors.white,
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
                 boxShadow: [
                   BoxShadow(
@@ -290,7 +291,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      'Yeni Anı Ekle ✨',
+                      loc('Yeni Anı Ekle ✨', 'Add New Memory ✨'),
                       textAlign: TextAlign.center,
                       style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
                     ),
@@ -311,8 +312,8 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                       controller: captionController,
                       maxLines: 2,
                       decoration: InputDecoration(
-                        labelText: 'Bu anının hikayesi / notunuz 💕',
-                        hintText: 'Örn: Birlikte gittiğimiz ilk tatil...',
+                        labelText: loc('Bu anının hikayesi / notunuz 💕', 'Story / note for this memory 💕'),
+                        hintText: loc('Örn: Birlikte gittiğimiz ilk tatil...', 'Ex: Our first vacation together...'),
                         filled: true,
                         fillColor: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt,
                         border: OutlineInputBorder(
@@ -325,9 +326,9 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                     TextField(
                       controller: locationController,
                       decoration: InputDecoration(
-                        labelText: 'Mekan / Şehir (İsteğe bağlı)',
-                        hintText: 'Örn: Antalya, Kaş',
-                        prefixIcon: const Icon(Icons.location_on_rounded, color: LoveraColors.primary, size: 20),
+                        labelText: loc('Mekan / Şehir (İsteğe bağlı)', 'Place / City (Optional)'),
+                        hintText: loc('Örn: Antalya, Kaş', 'Ex: Antalya, Kaş'),
+                        prefixIcon: Icon(Icons.location_on_rounded, color: LoveraColors.primary, size: 20),
                         filled: true,
                         fillColor: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt,
                         border: OutlineInputBorder(
@@ -345,7 +346,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                           initialDate: selectedDate,
                           firstDate: DateTime(2000),
                           lastDate: DateTime.now(),
-                          helpText: 'Anının Gerçekleştiği Tarih',
+                          helpText: loc('Anının Gerçekleştiği Tarih', 'Date of Memory'),
                         );
                         if (pickedDate != null) {
                           setSheetState(() => selectedDate = pickedDate);
@@ -374,13 +375,13 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Text(
-                                    'Tarih: ${selectedDate.day}.${selectedDate.month}.${selectedDate.year}',
+                                    '${loc("Tarih:", "Date:")} ${selectedDate.day}.${selectedDate.month}.${selectedDate.year}',
                                     style: const TextStyle(fontWeight: FontWeight.w600),
                                   ),
                                   if (wasAutoDetected) ...[
                                     const SizedBox(height: 2),
                                     Text(
-                                      '📸 Fotoğrafın çekildiği tarihten otomatik alındı',
+                                      loc('📸 Fotoğrafın çekildiği tarihten otomatik alındı', '📸 Automatically set from photo capture date'),
                                       style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w500,
@@ -391,7 +392,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                                 ],
                               ),
                             ),
-                            const Icon(Icons.edit_calendar_rounded, size: 18, color: LoveraColors.textMuted),
+                            Icon(Icons.edit_calendar_rounded, size: 18, color: LoveraColors.textMuted),
                           ],
                         ),
                       ),
@@ -417,8 +418,8 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                           );
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Anınız ortak albüme başarıyla kaydedildi! 💕📸'),
+                              SnackBar(
+                                content: Text(loc('Anınız ortak albüme başarıyla kaydedildi! 💕📸', 'Memory saved to shared album! 💕📸')),
                                 backgroundColor: LoveraColors.primary,
                                 behavior: SnackBarBehavior.floating,
                               ),
@@ -427,14 +428,14 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                         } catch (e) {
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Anı eklenirken hata: $e')),
+                              SnackBar(content: Text(loc('Anı eklenirken hata: $e', 'Error adding memory: $e'))),
                             );
                           }
                         } finally {
                           if (mounted) setState(() => _isUploading = false);
                         }
                       },
-                      child: const Text('Anıyı Albüme Ekle', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                      child: Text(loc('Anıyı Albüme Ekle', 'Add Memory to Album'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                     ),
                   ],
                 ),
@@ -446,7 +447,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fotoğraf seçilemedi: $e')),
+          SnackBar(content: Text(loc('Fotoğraf seçilemedi: $e', 'Could not select photo: $e'))),
         );
       }
     }
@@ -464,7 +465,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
       builder: (ctx) => Container(
         padding: const EdgeInsets.fromLTRB(22, 16, 22, 32),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E212B) : Colors.white,
+          color: isDark ? LoveraColors.darkSurfaceAlt : Colors.white,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
         ),
         child: Column(
@@ -485,17 +486,17 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.photo_library_rounded, color: LoveraColors.primary),
+                Icon(Icons.photo_library_rounded, color: LoveraColors.primary),
                 const SizedBox(width: 8),
                 Text(
-                  '${files.length} Fotoğraf Seçildi',
+                  loc('${files.length} Fotoğraf Seçildi', '${files.length} Photos Selected'),
                   style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
                 ),
               ],
             ),
             const SizedBox(height: 8),
             Text(
-              'Bu fotoğrafları ortak anılarınıza nasıl eklemek istersiniz?',
+              loc('Bu fotoğrafları ortak anılarınıza nasıl eklemek istersiniz?', 'How would you like to add these photos to your shared memories?'),
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(color: LoveraColors.textMuted),
             ),
@@ -525,23 +526,23 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                       child: const Icon(Icons.folder_special_rounded, color: Colors.white, size: 24),
                     ),
                     const SizedBox(width: 14),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Anı Grubu / Klasör Oluştur ✨',
+                            loc('Anı Grubu / Klasör Oluştur ✨', 'Create Memory Group / Folder ✨'),
                             style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
                           ),
                           SizedBox(height: 3),
                           Text(
-                            'Bir grup oluşturun: İsim, mekan, ortak hikaye ve tarih belirleyip hepsini bu klasöre toplayın.',
+                            loc('Bir grup oluşturun: İsim, mekan, ortak hikaye ve tarih belirleyip hepsini bu klasöre toplayın.', 'Create a group: Specify name, place, shared story and date to collect them in this folder.'),
                             style: TextStyle(fontSize: 12, color: LoveraColors.textMuted),
                           ),
                         ],
                       ),
                     ),
-                    const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: LoveraColors.primary),
+                    Icon(Icons.arrow_forward_ios_rounded, size: 16, color: LoveraColors.primary),
                   ],
                 ),
               ),
@@ -572,23 +573,23 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                       child: const Icon(Icons.library_add_check_rounded, color: Color(0xFF10B981), size: 24),
                     ),
                     const SizedBox(width: 14),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Direkt Anı Albümüne Ekle 📸',
+                            loc('Direkt Anı Albümüne Ekle 📸', 'Add Directly to Memory Album 📸'),
                             style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
                           ),
                           SizedBox(height: 3),
                           Text(
-                            'Teker teker bilgi girmeden hızlıca albüme aktarır. İstediğiniz zaman fotoğrafa dokunup notunu veya konumunu düzenleyebilirsiniz.',
+                            loc('Teker teker bilgi girmeden hızlıca albüme aktarır. İstediğiniz zaman fotoğrafa dokunup notunu veya konumunu düzenleyebilirsiniz.', 'Quickly imports to album. You can tap any photo anytime to edit its note or location.'),
                             style: TextStyle(fontSize: 12, color: LoveraColors.textMuted),
                           ),
                         ],
                       ),
                     ),
-                    const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: LoveraColors.textMuted),
+                    Icon(Icons.arrow_forward_ios_rounded, size: 16, color: LoveraColors.textMuted),
                   ],
                 ),
               ),
@@ -630,7 +631,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${files.length} fotoğraf ortak albümünüze başarıyla eklendi! 💕'),
+            content: Text(loc('${files.length} fotoğraf ortak albümünüze başarıyla eklendi! 💕', '${files.length} photos added to shared album! 💕')),
             backgroundColor: LoveraColors.primary,
             behavior: SnackBarBehavior.floating,
           ),
@@ -639,7 +640,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Yükleme sırasında hata: $e')),
+          SnackBar(content: Text(loc('Yükleme sırasında hata: $e', 'Error during upload: $e'))),
         );
       }
     } finally {
@@ -674,7 +675,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
           return Container(
             padding: EdgeInsets.fromLTRB(22, 16, 22, MediaQuery.of(context).viewInsets.bottom + 24),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E212B) : Colors.white,
+              color: isDark ? LoveraColors.darkSurfaceAlt : Colors.white,
               borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
             ),
             child: SingleChildScrollView(
@@ -694,13 +695,13 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'Yeni Klasör Ekle 📁',
+                    loc('Yeni Klasör Ekle 📁', 'Add New Folder 📁'),
                     textAlign: TextAlign.center,
                     style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 6),
-                  const Text(
-                    'Klasör bilgilerini belirleyin (Fotoğrafları klasörün içinden ekleyebilirsiniz):',
+                  Text(
+                    loc('Klasör bilgilerini belirleyin (Fotoğrafları klasörün içinden ekleyebilirsiniz):', 'Set folder details (You can add photos from inside the folder):'),
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 13, color: LoveraColors.textMuted),
                   ),
@@ -709,9 +710,9 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                   TextField(
                     controller: titleController,
                     decoration: InputDecoration(
-                      labelText: 'Klasör İsmi *',
-                      hintText: 'Örn: Kapadokya Tatili, Yıldönümümüz',
-                      prefixIcon: const Icon(Icons.folder_special_rounded, color: LoveraColors.primary),
+                      labelText: loc('Klasör İsmi *', 'Folder Name *'),
+                      hintText: loc('Örn: Kapadokya Tatili, Yıldönümümüz', 'Ex: Cappadocia Trip, Our Anniversary'),
+                      prefixIcon: Icon(Icons.folder_special_rounded, color: LoveraColors.primary),
                       filled: true,
                       fillColor: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
@@ -723,9 +724,9 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                     controller: descController,
                     maxLines: 2,
                     decoration: InputDecoration(
-                      labelText: 'Hikaye / Açıklama (İsteğe bağlı)',
-                      hintText: 'Bu tatil veya gün hakkında özel bir not...',
-                      prefixIcon: const Icon(Icons.edit_note_rounded, color: LoveraColors.primary),
+                      labelText: loc('Hikaye / Açıklama (İsteğe bağlı)', 'Story / Description (Optional)'),
+                      hintText: loc('Bu tatil veya gün hakkında özel bir not...', 'A special note about this day or trip...'),
+                      prefixIcon: Icon(Icons.edit_note_rounded, color: LoveraColors.primary),
                       filled: true,
                       fillColor: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
@@ -736,9 +737,9 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                   TextField(
                     controller: locationController,
                     decoration: InputDecoration(
-                      labelText: 'Mekan / Şehir (İsteğe bağlı)',
-                      hintText: 'Örn: Nevşehir, Göreme',
-                      prefixIcon: const Icon(Icons.location_on_rounded, color: LoveraColors.primary),
+                      labelText: loc('Mekan / Şehir (İsteğe bağlı)', 'Place / City (Optional)'),
+                      hintText: loc('Örn: Nevşehir, Göreme', 'Ex: Cappadocia, Göreme'),
+                      prefixIcon: Icon(Icons.location_on_rounded, color: LoveraColors.primary),
                       filled: true,
                       fillColor: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
@@ -768,14 +769,14 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.calendar_month_rounded, color: LoveraColors.primary, size: 20),
+                          Icon(Icons.calendar_month_rounded, color: LoveraColors.primary, size: 20),
                           const SizedBox(width: 12),
                           Text(
-                            'Tarih: ${albumDate.day}.${albumDate.month}.${albumDate.year}',
+                            '${loc("Tarih:", "Date:")} ${albumDate.day}.${albumDate.month}.${albumDate.year}',
                             style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
                           const Spacer(),
-                          const Icon(Icons.edit_calendar_rounded, size: 18, color: LoveraColors.textMuted),
+                          Icon(Icons.edit_calendar_rounded, size: 18, color: LoveraColors.textMuted),
                         ],
                       ),
                     ),
@@ -790,7 +791,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                       final title = titleController.text.trim();
                       if (title.isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Lütfen klasör için bir isim girin!')),
+                          SnackBar(content: Text(loc('Lütfen klasör için bir isim girin!', 'Please enter a name for the folder!'))),
                         );
                         return;
                       }
@@ -814,7 +815,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('"$title" klasörü başarıyla oluşturuldu! 📁✨'),
+                              content: Text(loc('"$title" klasörü başarıyla oluşturuldu! 📁✨', '"$title" folder created successfully! 📁✨')),
                               backgroundColor: LoveraColors.primary,
                               behavior: SnackBarBehavior.floating,
                             ),
@@ -823,14 +824,14 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                       } catch (e) {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Klasör oluşturulurken hata: $e')),
+                            SnackBar(content: Text(loc('Klasör oluşturulurken hata: $e', 'Error creating folder: $e'))),
                           );
                         }
                       } finally {
                         if (mounted) setState(() => _isUploading = false);
                       }
                     },
-                    child: const Text('Klasörü Oluştur', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                    child: Text(loc('Klasörü Oluştur', 'Create Folder'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                   ),
                 ],
               ),
@@ -871,7 +872,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
           return Container(
             padding: EdgeInsets.fromLTRB(22, 16, 22, MediaQuery.of(context).viewInsets.bottom + 24),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E212B) : Colors.white,
+              color: isDark ? LoveraColors.darkSurfaceAlt : Colors.white,
               borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
             ),
             child: SingleChildScrollView(
@@ -891,24 +892,24 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'Yeni Klasör Ekle 📁',
+                    loc('Yeni Klasör Ekle 📁', 'Add New Folder 📁'),
                     textAlign: TextAlign.center,
                     style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Seçtiğiniz ${files.length} fotoğraf bu klasör altında toplanacak.',
+                    loc('Seçtiğiniz ${files.length} fotoğraf bu klasör altında toplanacak.', 'The ${files.length} selected photos will be collected in this folder.'),
                     textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 13, color: LoveraColors.textMuted),
+                    style: TextStyle(fontSize: 13, color: LoveraColors.textMuted),
                   ),
                   const SizedBox(height: 18),
                   // Grup İsmi
                   TextField(
                     controller: titleController,
                     decoration: InputDecoration(
-                      labelText: 'Klasör İsmi *',
-                      hintText: 'Örn: Kapadokya Tatili, Yıldönümü Yemeği',
-                      prefixIcon: const Icon(Icons.folder_special_rounded, color: LoveraColors.primary),
+                      labelText: loc('Klasör İsmi *', 'Folder Name *'),
+                      hintText: loc('Örn: Kapadokya Tatili, Yıldönümü Yemeği', 'Ex: Cappadocia Trip, Anniversary Dinner'),
+                      prefixIcon: Icon(Icons.folder_special_rounded, color: LoveraColors.primary),
                       filled: true,
                       fillColor: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
@@ -920,9 +921,9 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                     controller: descController,
                     maxLines: 2,
                     decoration: InputDecoration(
-                      labelText: 'Hikaye / Açıklama (İsteğe bağlı)',
-                      hintText: 'Bu tatil / gün hakkında bir not...',
-                      prefixIcon: const Icon(Icons.edit_note_rounded, color: LoveraColors.primary),
+                      labelText: loc('Hikaye / Açıklama (İsteğe bağlı)', 'Story / Description (Optional)'),
+                      hintText: loc('Bu tatil / gün hakkında bir not...', 'A note about this vacation / day...'),
+                      prefixIcon: Icon(Icons.edit_note_rounded, color: LoveraColors.primary),
                       filled: true,
                       fillColor: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
@@ -933,9 +934,9 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                   TextField(
                     controller: locationController,
                     decoration: InputDecoration(
-                      labelText: 'Mekan / Şehir (İsteğe bağlı)',
-                      hintText: 'Örn: Nevşehir, Göreme',
-                      prefixIcon: const Icon(Icons.location_on_rounded, color: LoveraColors.primary),
+                      labelText: loc('Mekan / Şehir (İsteğe bağlı)', 'Place / City (Optional)'),
+                      hintText: loc('Örn: Nevşehir, Göreme', 'Ex: Cappadocia, Göreme'),
+                      prefixIcon: Icon(Icons.location_on_rounded, color: LoveraColors.primary),
                       filled: true,
                       fillColor: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
@@ -965,14 +966,14 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.calendar_month_rounded, color: LoveraColors.primary, size: 20),
+                          Icon(Icons.calendar_month_rounded, color: LoveraColors.primary, size: 20),
                           const SizedBox(width: 12),
                           Text(
-                            'Tarih: ${albumDate.day}.${albumDate.month}.${albumDate.year}',
+                            '${loc("Tarih:", "Date:")} ${albumDate.day}.${albumDate.month}.${albumDate.year}',
                             style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
                           const Spacer(),
-                          const Icon(Icons.edit_calendar_rounded, size: 18, color: LoveraColors.textMuted),
+                          Icon(Icons.edit_calendar_rounded, size: 18, color: LoveraColors.textMuted),
                         ],
                       ),
                     ),
@@ -987,7 +988,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                       final title = titleController.text.trim();
                       if (title.isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Lütfen klasör için bir isim girin!')),
+                          SnackBar(content: Text(loc('Lütfen klasör için bir isim girin!', 'Please enter a name for the folder!'))),
                         );
                         return;
                       }
@@ -1025,7 +1026,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('"$title" klasörü başarıyla oluşturuldu! ✨📁'),
+                              content: Text(loc('"$title" klasörü başarıyla oluşturuldu! ✨📁', '"$title" folder created successfully! ✨📁')),
                               backgroundColor: LoveraColors.primary,
                               behavior: SnackBarBehavior.floating,
                             ),
@@ -1034,7 +1035,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                       } catch (e) {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Klasör oluşturulurken hata: $e')),
+                            SnackBar(content: Text(loc('Klasör oluşturulurken hata: $e', 'Error creating folder: $e'))),
                           );
                         }
                       } finally {
@@ -1046,7 +1047,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                         }
                       }
                     },
-                    child: const Text('Klasörü Oluştur ve Kaydet', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                    child: Text(loc('Klasörü Oluştur ve Kaydet', 'Create and Save Folder'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                   ),
                 ],
               ),
@@ -1073,7 +1074,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
       builder: (bCtx) => Container(
         padding: EdgeInsets.fromLTRB(22, 16, 22, MediaQuery.of(context).viewInsets.bottom + 28),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E212B) : Colors.white,
+          color: isDark ? LoveraColors.darkSurfaceAlt : Colors.white,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
         ),
         child: Column(
@@ -1092,13 +1093,13 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
             ),
             const SizedBox(height: 16),
             Text(
-              '${_selectedMemoryIds.length} Fotoğrafı Klasöre Ekle 📁',
+              loc('${_selectedMemoryIds.length} Fotoğrafı Klasöre Ekle 📁', 'Add ${_selectedMemoryIds.length} Photos to Folder 📁'),
               textAlign: TextAlign.center,
               style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Mevcut bir klasöre ekleyebilir veya yeni bir klasör oluşturabilirsiniz:',
+            Text(
+              loc('Mevcut bir klasöre ekleyebilir veya yeni bir klasör oluşturabilirsiniz:', 'You can add to an existing folder or create a new one:'),
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13, color: LoveraColors.textMuted),
             ),
@@ -1115,9 +1116,9 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                 ),
                 child: const Icon(Icons.create_new_folder_rounded, color: Colors.white, size: 20),
               ),
-              title: const Text('Yeni Klasör Oluştur', style: TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: const Text('Seçilenlerle sıfırdan yeni anı grubu oluşturun', style: TextStyle(fontSize: 12)),
-              trailing: const Icon(Icons.chevron_right_rounded, color: LoveraColors.textMuted),
+              title: Text(loc('Yeni Klasör Oluştur', 'Create New Folder'), style: const TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: Text(loc('Seçilenlerle sıfırdan yeni anı grubu oluşturun', 'Create new group from selected photos'), style: const TextStyle(fontSize: 12)),
+              trailing: Icon(Icons.chevron_right_rounded, color: LoveraColors.textMuted),
               onTap: () {
                 Navigator.pop(bCtx);
                 _showCreateFolderWithSelectedMemoriesDialog(selectedItems);
@@ -1131,19 +1132,19 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
               leading: Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                  color: LoveraColors.primary.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.folder_shared_rounded, color: Color(0xFF8B5CF6), size: 20),
+                child: Icon(Icons.folder_shared_rounded, color: LoveraColors.primary, size: 20),
               ),
-              title: const Text('Mevcut Bir Klasöre Ekle', style: TextStyle(fontWeight: FontWeight.w700)),
+              title: Text(loc('Mevcut Bir Klasöre Ekle', 'Add to Existing Folder'), style: const TextStyle(fontWeight: FontWeight.w700)),
               subtitle: Text(
                 existingAlbums.isEmpty
-                    ? 'Henüz oluşturulmuş klasörünüz yok'
-                    : '${existingAlbums.length} mevcut klasörden birini seçin',
+                    ? loc('Henüz oluşturulmuş klasörünüz yok', 'No folders created yet')
+                    : loc('${existingAlbums.length} mevcut klasörden birini seçin', 'Select from ${existingAlbums.length} existing folders'),
                 style: const TextStyle(fontSize: 12),
               ),
-              trailing: const Icon(Icons.chevron_right_rounded, color: LoveraColors.textMuted),
+              trailing: Icon(Icons.chevron_right_rounded, color: LoveraColors.textMuted),
               onTap: existingAlbums.isEmpty
                   ? null
                   : () {
@@ -1176,7 +1177,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
       builder: (bCtx) => Container(
         padding: EdgeInsets.fromLTRB(22, 16, 22, MediaQuery.of(context).viewInsets.bottom + 24),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E212B) : Colors.white,
+          color: isDark ? LoveraColors.darkSurfaceAlt : Colors.white,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
         ),
         child: Column(
@@ -1195,13 +1196,13 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
             ),
             const SizedBox(height: 16),
             Text(
-              'Yeni Klasör İsmi 📁',
+              loc('Yeni Klasör İsmi 📁', 'New Folder Name 📁'),
               textAlign: TextAlign.center,
               style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Seçtiğiniz fotoğraflar bu yeni klasöre eklenecek:',
+            Text(
+              loc('Seçtiğiniz fotoğraflar bu yeni klasöre eklenecek:', 'Selected photos will be added to this new folder:'),
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13, color: LoveraColors.textMuted),
             ),
@@ -1210,9 +1211,9 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
               controller: titleController,
               autofocus: true,
               decoration: InputDecoration(
-                labelText: 'Klasör Adı',
-                hintText: 'Örn: Roma Gezisi, Doğum Günü...',
-                prefixIcon: const Icon(Icons.folder_special_rounded, color: LoveraColors.primary),
+                labelText: loc('Klasör Adı', 'Folder Name'),
+                hintText: loc('Örn: Roma Gezisi, Doğum Günü...', 'Ex: Rome Trip, Birthday...'),
+                prefixIcon: Icon(Icons.folder_special_rounded, color: LoveraColors.primary),
                 filled: true,
                 fillColor: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
@@ -1256,20 +1257,20 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                       _selectedMemoryIds.clear();
                     });
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Fotoğraflar "$title" klasörüne taşındı! ✨')),
+                      SnackBar(content: Text(loc('Fotoğraflar "$title" klasörüne taşındı! ✨', 'Photos moved to "$title" folder! ✨'))),
                     );
                   }
                 } catch (e) {
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Klasör oluşturma hatası: $e')),
+                      SnackBar(content: Text(loc('Klasör oluşturma hatası: $e', 'Folder creation error: $e'))),
                     );
                   }
                 } finally {
                   if (mounted) setState(() => _isUploading = false);
                 }
               },
-              child: const Text('Klasörü Oluştur ve Fotoğrafları Ekle', style: TextStyle(fontWeight: FontWeight.w700)),
+              child: Text(loc('Klasörü Oluştur ve Fotoğrafları Ekle', 'Create Folder and Add Photos'), style: const TextStyle(fontWeight: FontWeight.w700)),
             ),
           ],
         ),
@@ -1297,7 +1298,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
         constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.7),
         padding: const EdgeInsets.fromLTRB(22, 16, 22, 28),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E212B) : Colors.white,
+          color: isDark ? LoveraColors.darkSurfaceAlt : Colors.white,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
         ),
         child: Column(
@@ -1316,15 +1317,15 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
             ),
             const SizedBox(height: 16),
             Text(
-              'Klasör Seçin 📁',
+              loc('Klasör Seçin 📁', 'Select Folder 📁'),
               textAlign: TextAlign.center,
               style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 6),
             Text(
-              '${memoryIds.length} fotoğraf hangi klasöre eklensin?',
+              loc('${memoryIds.length} fotoğraf hangi klasöre eklensin?', 'Which folder should ${memoryIds.length} photos be added to?'),
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13, color: LoveraColors.textMuted),
+              style: TextStyle(fontSize: 13, color: LoveraColors.textMuted),
             ),
             const SizedBox(height: 16),
             Flexible(
@@ -1348,12 +1349,12 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                         borderRadius: BorderRadius.circular(12),
                         child: album.coverImageUrl.isNotEmpty
                             ? _buildThumbnail(album.coverImageUrl)
-                            : const Icon(Icons.folder_rounded, color: LoveraColors.primary),
+                            : Icon(Icons.folder_rounded, color: LoveraColors.primary),
                       ),
                     ),
                     title: Text(album.title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: Text('${album.photoCount} fotoğraf • ${album.date.day}.${album.date.month}.${album.date.year}', style: const TextStyle(fontSize: 12)),
-                    trailing: const Icon(Icons.add_circle_outline_rounded, color: LoveraColors.primary),
+                    subtitle: Text(loc('${album.photoCount} fotoğraf', '${album.photoCount} photos') + ' • ${album.date.day}.${album.date.month}.${album.date.year}', style: const TextStyle(fontSize: 12)),
+                    trailing: Icon(Icons.add_circle_outline_rounded, color: LoveraColors.primary),
                     onTap: () async {
                       Navigator.pop(bCtx);
                       setState(() => _isUploading = true);
@@ -1371,7 +1372,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                           });
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('Fotoğraflar "${album.title}" klasörüne başarıyla eklendi! 💕'),
+                              content: Text(loc('Fotoğraflar "${album.title}" klasörüne başarıyla eklendi! 💕', 'Photos added to "${album.title}" folder! 💕')),
                               backgroundColor: LoveraColors.primary,
                             ),
                           );
@@ -1380,7 +1381,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                       } catch (e) {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Klasöre ekleme hatası: $e')),
+                            SnackBar(content: Text(loc('Klasöre ekleme hatası: $e', 'Error adding to folder: $e'))),
                           );
                         }
                       } finally {
@@ -1406,14 +1407,14 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
     final confirm = await showDialog<bool>(
       context: context,
       builder: (dCtx) => AlertDialog(
-        title: Text('$count Fotoğrafı Sil'),
-        content: Text('Seçtiğiniz $count fotoğraf ortak albümünüzden kalıcı olarak silinecek. Bu işlemi onaylıyor musunuz?'),
+        title: Text(loc('$count Fotoğrafı Sil', 'Delete $count Photos')),
+        content: Text(loc('Seçtiğiniz $count fotoğraf ortak albümünüzden kalıcı olarak silinecek. Bu işlemi onaylıyor musunuz?', 'Selected $count photos will be permanently deleted from your album. Confirm?')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('Vazgeç')),
+          TextButton(onPressed: () => Navigator.pop(dCtx, false), child: Text(loc('Vazgeç', 'Cancel'))),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
             onPressed: () => Navigator.pop(dCtx, true),
-            child: const Text('Tümünü Sil'),
+            child: Text(loc('Tümünü Sil', 'Delete All')),
           ),
         ],
       ),
@@ -1433,13 +1434,13 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
             _selectedMemoryIds.clear();
           });
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('$count fotoğraf albümden silindi.')),
+            SnackBar(content: Text(loc('$count fotoğraf albümden silindi.', '$count photos deleted from album.'))),
           );
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Silme işlemi başarısız: $e')),
+            SnackBar(content: Text(loc('Silme işlemi başarısız: $e', 'Delete failed: $e'))),
           );
         }
       } finally {
@@ -1465,7 +1466,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
       }
 
       if (bytes == null || bytes.isEmpty) {
-        throw Exception('Görsel verisi çözülemedi.');
+        throw Exception(loc('Görsel verisi çözülemedi.', 'Failed to decode image data.'));
       }
 
       final hasAccess = await Gal.hasAccess();
@@ -1499,7 +1500,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
 
     try {
       final partnerUid = ref.read(partnerUidProvider) ?? ref.read(partnerProvider)?.id;
-      final caption = memory.caption.isNotEmpty ? memory.caption : 'Anı albümünden bir hatıra 💕';
+      final caption = memory.caption.isNotEmpty ? memory.caption : loc('Anı albümünden bir hatıra 💕', 'A special memory from shared album 💕');
 
       final msgId = await DatabaseService().sendMessage(
         coupleId: coupleId,
@@ -1511,10 +1512,18 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
       // Partner bildirimi
       if (partnerUid != null && partnerUid.isNotEmpty) {
         final myName = ref.read(userNameProvider);
+        final titleTr = myName.isNotEmpty ? myName : 'Partnerin';
+        final titleEn = myName.isNotEmpty ? myName : 'Partner';
+        final bodyTr = 'Albümden bir anı paylaştı 📸: $caption';
+        final bodyEn = 'Shared a memory from album 📸: $caption';
         NotificationService().sendPushToPartner(
           partnerUid: partnerUid,
-          title: myName.isNotEmpty ? myName : 'Partnerin',
-          body: 'Albümden bir anı paylaştı 📸: $caption',
+          title: loc(titleTr, titleEn),
+          body: loc(bodyTr, bodyEn),
+          titleTr: titleTr,
+          titleEn: titleEn,
+          bodyTr: bodyTr,
+          bodyEn: bodyEn,
           data: {
             'type': 'chat_message',
             'coupleId': coupleId,
@@ -1556,7 +1565,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
           return Container(
             height: MediaQuery.of(context).size.height * 0.90,
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF161922) : Colors.white,
+              color: isDark ? LoveraColors.darkSurface : Colors.white,
               borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
               boxShadow: [
                 BoxShadow(
@@ -1576,7 +1585,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.favorite_rounded, color: LoveraColors.primary, size: 20),
+                          Icon(Icons.favorite_rounded, color: LoveraColors.primary, size: 20),
                           const SizedBox(width: 8),
                           Text(
                             '${memory.date.day}.${memory.date.month}.${memory.date.year}',
@@ -1592,7 +1601,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                               ),
                               child: Text(
                                 '📁 ${memory.albumTitle}',
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: LoveraColors.primary),
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: LoveraColors.primary),
                               ),
                             ),
                           ],
@@ -1602,8 +1611,8 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                         children: [
                           // Bilgileri Düzenle (Tarih, Not, Mekan)
                           IconButton(
-                            icon: const Icon(Icons.edit_note_rounded, color: LoveraColors.primary),
-                            tooltip: 'Bilgileri Düzenle',
+                            icon: Icon(Icons.edit_note_rounded, color: LoveraColors.primary),
+                            tooltip: loc('Bilgileri Düzenle', 'Edit Info'),
                             onPressed: () {
                               Navigator.pop(ctx);
                               _editMemoryDialog(memory);
@@ -1612,24 +1621,24 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                           // Uygunsuz İçerik Bildir (UGC Moderation - Apple Guideline 1.2)
                           IconButton(
                             icon: const Icon(Icons.flag_outlined, color: Color(0xFFF59E0B)),
-                            tooltip: 'İçeriği Şikayet Et',
+                            tooltip: loc('İçeriği Şikayet Et', 'Report Content'),
                             onPressed: () async {
                               final confirm = await showDialog<bool>(
                                 context: context,
                                 builder: (dCtx) => AlertDialog(
-                                  title: const Text('Fotoğrafı Şikayet Et'),
-                                  content: const Text(
-                                    'Bu fotoğrafın veya notun uygunsuz içerik barındırdığını düşünüyorsanız inceleme ekibimize bildirebilirsiniz. Bildirilen içerikler 24 saat içinde incelenir.',
+                                  title: Text(loc('Fotoğrafı Şikayet Et', 'Report Photo')),
+                                  content: Text(
+                                    loc('Bu fotoğrafın veya notun uygunsuz içerik barındırdığını düşünüyorsanız inceleme ekibimize bildirebilirsiniz. Bildirilen içerikler 24 saat içinde incelenir.', 'If you believe this photo or note contains inappropriate content, you can report it to our team. It will be reviewed within 24 hours.'),
                                   ),
                                   actions: [
                                     TextButton(
                                       onPressed: () => Navigator.pop(dCtx, false),
-                                      child: const Text('İptal'),
+                                      child: Text(loc('İptal', 'Cancel')),
                                     ),
                                     FilledButton(
                                       style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
                                       onPressed: () => Navigator.pop(dCtx, true),
-                                      child: const Text('Şikayet Et'),
+                                      child: Text(loc('Şikayet Et', 'Report')),
                                     ),
                                   ],
                                 ),
@@ -1639,12 +1648,12 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                                   contentType: 'memory_photo',
                                   contentId: memory.id,
                                   coupleId: coupleId,
-                                  reason: 'Anı galerisi üzerinden uygunsuz fotoğraf bildirimi',
+                                  reason: loc('Anı galerisi üzerinden uygunsuz fotoğraf bildirimi', 'Inappropriate photo report from memories gallery'),
                                 );
                                 if (mounted) {
                                   ScaffoldMessenger.of(this.context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Şikayetiniz güvenlik ekibimize iletildi. En geç 24 saat içinde incelenecektir.'),
+                                    SnackBar(
+                                      content: Text(loc('Şikayetiniz güvenlik ekibimize iletildi. En geç 24 saat içinde incelenecektir.', 'Your report was sent to our safety team and will be reviewed within 24 hours.')),
                                     ),
                                   );
                                 }
@@ -1658,14 +1667,14 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                               final confirm = await showDialog<bool>(
                                 context: context,
                                 builder: (dCtx) => AlertDialog(
-                                  title: const Text('Anıyı Sil'),
-                                  content: const Text('Bu fotoğraf ortak anı albümünüzden kalıcı olarak silinecek. Emin misiniz?'),
+                                  title: Text(ref.watch(stringsProvider).deleteMemoryTitle),
+                                  content: Text(ref.watch(stringsProvider).deleteMemoryDesc),
                                   actions: [
-                                    TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('Vazgeç')),
+                                    TextButton(onPressed: () => Navigator.pop(dCtx, false), child: Text(loc('Vazgeç', 'Cancel'))),
                                     FilledButton(
                                       style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
                                       onPressed: () => Navigator.pop(dCtx, true),
-                                      child: const Text('Sil'),
+                                      child: Text(loc('Sil', 'Delete')),
                                     ),
                                   ],
                                 ),
@@ -1679,7 +1688,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                                 );
                                 if (mounted) {
                                   ScaffoldMessenger.of(this.context).showSnackBar(
-                                    const SnackBar(content: Text('Anı albümden silindi.')),
+                                    SnackBar(content: Text(ref.read(stringsProvider).memoryDeletedMsg)),
                                   );
                                 }
                               }
@@ -1708,7 +1717,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF1E212B) : LoveraColors.lightSurfaceAlt,
+                    color: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt,
                     borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
                   ),
                   child: SafeArea(
@@ -1774,11 +1783,11 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    const Icon(Icons.location_on_rounded, size: 14, color: LoveraColors.primary),
+                                    Icon(Icons.location_on_rounded, size: 14, color: LoveraColors.primary),
                                     const SizedBox(width: 4),
                                     Text(
                                       memory.locationTitle,
-                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: LoveraColors.primary),
+                                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: LoveraColors.primary),
                                     ),
                                   ],
                                 ),
@@ -1786,7 +1795,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                               const SizedBox(width: 8),
                             ],
                             Text(
-                              'Ekleyen: ${memory.createdByName}',
+                              '${loc("Ekleyen:", "Added by:")} ${memory.createdByName}',
                               style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted),
                             ),
                             const Spacer(),
@@ -1836,7 +1845,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                                   ),
                                 ),
                                 icon: isSendingToChat
-                                    ? const SizedBox(
+                                    ? SizedBox(
                                         width: 16,
                                         height: 16,
                                         child: CircularProgressIndicator(strokeWidth: 2, color: LoveraColors.primary),
@@ -1848,9 +1857,9 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                                       ),
                                 label: Text(
                                   isSendingToChat
-                                      ? 'Atılıyor...'
-                                      : (isSentToChat ? 'Sohbete Atıldı' : 'Sohbete At'),
-                                  style: const TextStyle(
+                                      ? loc('Atılıyor...', 'Sending...')
+                                      : (isSentToChat ? ref.watch(stringsProvider).sentToChatBtn : ref.watch(stringsProvider).sendToChatBtn),
+                                  style: TextStyle(
                                     fontWeight: FontWeight.w800,
                                     fontSize: 12.5,
                                     color: LoveraColors.primary,
@@ -1862,7 +1871,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                                         HapticFeedback.selectionClick();
                                         setDetailState(() {
                                           isSendingToChat = true;
-                                          inlineBannerText = 'Sohbete gönderiliyor...';
+                                          inlineBannerText = loc('Sohbete gönderiliyor...', 'Sending to chat...');
                                           inlineBannerColor = LoveraColors.primary;
                                           inlineBannerIcon = Icons.hourglass_top_rounded;
                                         });
@@ -1872,8 +1881,8 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                                             isSendingToChat = false;
                                             isSentToChat = ok;
                                             inlineBannerText = ok
-                                                ? 'Sohbete atıldı 💕'
-                                                : 'Sohbete gönderilemedi!';
+                                                ? loc('Sohbete atıldı 💕', 'Sent to chat 💕')
+                                                : loc('Sohbete gönderilemedi!', 'Could not send to chat!');
                                             inlineBannerColor = ok
                                                 ? LoveraColors.primary
                                                 : const Color(0xFFEF4444);
@@ -1915,8 +1924,8 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                                       ),
                                 label: Text(
                                   isDownloading
-                                      ? 'İndiriliyor...'
-                                      : (isDownloaded ? 'İndirildi ✓' : 'İndir'),
+                                      ? loc('İndiriliyor...', 'Downloading...')
+                                      : (isDownloaded ? ref.watch(stringsProvider).downloadedBtn : ref.watch(stringsProvider).downloadBtn),
                                   style: TextStyle(
                                     fontWeight: FontWeight.w800,
                                     fontSize: 12.5,
@@ -1929,7 +1938,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                                         HapticFeedback.selectionClick();
                                         setDetailState(() {
                                           isDownloading = true;
-                                          inlineBannerText = 'Fotoğraf telefona indiriliyor...';
+                                          inlineBannerText = loc('Fotoğraf telefona indiriliyor...', 'Downloading photo to phone...');
                                           inlineBannerColor = Colors.blue;
                                           inlineBannerIcon = Icons.downloading_rounded;
                                         });
@@ -1939,8 +1948,8 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                                             isDownloading = false;
                                             isDownloaded = ok;
                                             inlineBannerText = ok
-                                                ? 'Fotoğraf galeriye kaydedildi! 📲✨'
-                                                : 'Fotoğraf kaydedilemedi (İzin kontrol edin)';
+                                                ? loc('Fotoğraf galeriye kaydedildi! 📲✨', 'Photo saved to gallery! 📲✨')
+                                                : loc('Fotoğraf kaydedilemedi (İzin kontrol edin)', 'Could not save photo (check permissions)');
                                             inlineBannerColor = ok
                                                 ? const Color(0xFF10B981)
                                                 : const Color(0xFFEF4444);
@@ -1966,10 +1975,10 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                                     style: OutlinedButton.styleFrom(
                                       padding: const EdgeInsets.symmetric(vertical: 12),
                                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                      side: BorderSide(color: const Color(0xFF8B5CF6).withValues(alpha: 0.3)),
+                                      side: BorderSide(color: LoveraColors.primary.withValues(alpha: 0.3)),
                                     ),
-                                    icon: const Icon(Icons.folder_open_rounded, size: 18, color: Color(0xFF8B5CF6)),
-                                    label: const Text('Klasöre', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF8B5CF6))),
+                                    icon: Icon(Icons.folder_open_rounded, size: 18, color: LoveraColors.primary),
+                                    label: Text(loc('Klasöre', 'To Folder'), style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: LoveraColors.primary)),
                                     onPressed: () {
                                       _showChooseExistingFolderSheet(
                                         existingAlbums: existingAlbums,
@@ -2016,7 +2025,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
           return Container(
             padding: EdgeInsets.fromLTRB(22, 16, 22, MediaQuery.of(context).viewInsets.bottom + 24),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E212B) : Colors.white,
+              color: isDark ? LoveraColors.darkSurfaceAlt : Colors.white,
               borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
             ),
             child: Column(
@@ -2035,7 +2044,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Anı Bilgilerini Düzenle ✏️',
+                  ref.watch(stringsProvider).editMemoryTitle,
                   textAlign: TextAlign.center,
                   style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
                 ),
@@ -2044,7 +2053,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                   controller: captionController,
                   maxLines: 2,
                   decoration: InputDecoration(
-                    labelText: 'Anının Hikayesi / Notu',
+                    labelText: loc('Anının Hikayesi / Notu', 'Story / Note of Memory'),
                     filled: true,
                     fillColor: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
@@ -2054,8 +2063,8 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                 TextField(
                   controller: locationController,
                   decoration: InputDecoration(
-                    labelText: 'Mekan / Şehir',
-                    prefixIcon: const Icon(Icons.location_on_rounded, color: LoveraColors.primary),
+                    labelText: loc('Mekan / Şehir', 'Place / City'),
+                    prefixIcon: Icon(Icons.location_on_rounded, color: LoveraColors.primary),
                     filled: true,
                     fillColor: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
@@ -2084,11 +2093,11 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.calendar_month_rounded, color: LoveraColors.primary, size: 20),
+                        Icon(Icons.calendar_month_rounded, color: LoveraColors.primary, size: 20),
                         const SizedBox(width: 12),
-                        Text('Tarih: ${editDate.day}.${editDate.month}.${editDate.year}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                        Text('${loc("Tarih:", "Date:")} ${editDate.day}.${editDate.month}.${editDate.year}', style: const TextStyle(fontWeight: FontWeight.w600)),
                         const Spacer(),
-                        const Icon(Icons.edit_calendar_rounded, size: 18, color: LoveraColors.textMuted),
+                        Icon(Icons.edit_calendar_rounded, size: 18, color: LoveraColors.textMuted),
                       ],
                     ),
                   ),
@@ -2107,11 +2116,11 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                     );
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Anı bilgileri güncellendi! ✨')),
+                        SnackBar(content: Text(loc('Anı bilgileri güncellendi! ✨', 'Memory details updated! ✨'))),
                       );
                     }
                   },
-                  child: const Text('Değişiklikleri Kaydet', style: TextStyle(fontWeight: FontWeight.w700)),
+                  child: Text(loc('Değişiklikleri Kaydet', 'Save Changes'), style: const TextStyle(fontWeight: FontWeight.w700)),
                 ),
               ],
             ),
@@ -2125,7 +2134,6 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
   void _openAlbumDetail(MemoryAlbum album, List<MemoryItem> _) {
     final theme = Theme.of(context);
     final coupleId = ref.read(coupleIdProvider) ?? '';
-    final isDark = theme.brightness == Brightness.dark;
 
     final selectedInAlbum = <String>{};
     bool isAlbumSelectionMode = false;
@@ -2138,7 +2146,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
             return Scaffold(
               appBar: AppBar(
                 title: isAlbumSelectionMode
-                    ? Text('${selectedInAlbum.length} Seçildi')
+                    ? Text(loc('${selectedInAlbum.length} Seçildi', '${selectedInAlbum.length} Selected'))
                     : Text(album.title),
                 leading: isAlbumSelectionMode
                     ? IconButton(
@@ -2154,7 +2162,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                 actions: [
                   if (isAlbumSelectionMode) ...[
                     IconButton(
-                      tooltip: 'Seçilenleri Sil',
+                      tooltip: loc('Seçilenleri Sil', 'Delete Selected'),
                       icon: const Icon(Icons.delete_sweep_rounded, color: Color(0xFFEF4444)),
                       onPressed: selectedInAlbum.isEmpty
                           ? null
@@ -2164,16 +2172,16 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                               final confirm = await showDialog<bool>(
                                 context: context,
                                 builder: (dCtx) => AlertDialog(
-                                  title: const Text('Fotoğrafları Sil'),
+                                  title: Text(loc('Fotoğrafları Sil', 'Delete Photos')),
                                   content: Text(
-                                    'Seçtiğiniz ${selectedItems.length} adet fotoğrafı silmek istediğinize emin misiniz?',
+                                    loc('Seçtiğiniz ${selectedItems.length} adet fotoğrafı silmek istediğinize emin misiniz?', 'Are you sure you want to delete ${selectedItems.length} selected photos?'),
                                   ),
                                   actions: [
-                                    TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('Vazgeç')),
+                                    TextButton(onPressed: () => Navigator.pop(dCtx, false), child: Text(loc('Vazgeç', 'Cancel'))),
                                     FilledButton(
                                       style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
                                       onPressed: () => Navigator.pop(dCtx, true),
-                                      child: const Text('Sil'),
+                                      child: Text(loc('Sil', 'Delete')),
                                     ),
                                   ],
                                 ),
@@ -2194,7 +2202,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                     ),
                   ] else ...[
                     IconButton(
-                      tooltip: 'Çoklu Seç / Düzenle',
+                      tooltip: loc('Çoklu Seç / Düzenle', 'Multi-Select / Edit'),
                       icon: const Icon(Icons.checklist_rounded),
                       onPressed: () {
                         setDetailState(() => isAlbumSelectionMode = true);
@@ -2202,21 +2210,21 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                     ),
                     IconButton(
                       icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444)),
-                      tooltip: 'Klasörü Sil',
+                      tooltip: loc('Klasörü Sil', 'Delete Folder'),
                       onPressed: () async {
                         final confirm = await showDialog<bool>(
                           context: context,
                           builder: (dCtx) => AlertDialog(
-                            title: const Text('Klasörü Sil'),
-                            content: const Text(
-                              'Bu klasörü sildiğinizde içindeki fotoğraflar albümünüzden silinmez, yalnızca klasör bağı kaldırılır. Onaylıyor musunuz?',
+                            title: Text(loc('Klasörü Sil', 'Delete Folder')),
+                            content: Text(
+                              loc('Bu klasörü sildiğinizde içindeki fotoğraflar albümünüzden silinmez, yalnızca klasör bağı kaldırılır. Onaylıyor musunuz?', 'Deleting this folder will not delete its photos from your album; only the folder association is removed. Confirm?'),
                             ),
                             actions: [
-                              TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('Vazgeç')),
+                              TextButton(onPressed: () => Navigator.pop(dCtx, false), child: Text(loc('Vazgeç', 'Cancel'))),
                               FilledButton(
                                 style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
                                 onPressed: () => Navigator.pop(dCtx, true),
-                                child: const Text('Klasörü Kaldır'),
+                                child: Text(loc('Klasörü Kaldır', 'Remove Folder')),
                               ),
                             ],
                           ),
@@ -2264,11 +2272,11 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                                         child: Row(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            const Icon(Icons.location_on_rounded, size: 14, color: LoveraColors.primary),
+                                            Icon(Icons.location_on_rounded, size: 14, color: LoveraColors.primary),
                                             const SizedBox(width: 4),
                                             Text(
                                               album.locationTitle,
-                                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: LoveraColors.primary),
+                                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: LoveraColors.primary),
                                             ),
                                           ],
                                         ),
@@ -2284,7 +2292,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          const Icon(Icons.calendar_month_rounded, size: 14, color: LoveraColors.textMuted),
+                                          Icon(Icons.calendar_month_rounded, size: 14, color: LoveraColors.textMuted),
                                           const SizedBox(width: 4),
                                           Text(
                                             '${album.date.day}.${album.date.month}.${album.date.year}',
@@ -2297,7 +2305,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                                 ),
                                 const SizedBox(height: 16),
                                 Text(
-                                  '${albumMemories.length} Fotoğraf',
+                                  loc('${albumMemories.length} Fotoğraf', '${albumMemories.length} Photos'),
                                   style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
                                 ),
                               ],
@@ -2305,10 +2313,10 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                           ),
                         ),
                         if (albumMemories.isEmpty)
-                          const SliverFillRemaining(
+                          SliverFillRemaining(
                             hasScrollBody: false,
                             child: Center(
-                              child: Text('Bu klasörde henüz fotoğraf yok.', style: TextStyle(color: LoveraColors.textMuted)),
+                              child: Text(loc('Bu klasörde henüz fotoğraf yok.', 'No photos in this folder yet.'), style: TextStyle(color: LoveraColors.textMuted)),
                             ),
                           )
                         else
@@ -2411,7 +2419,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                     return Container(
                       padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
                       decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF1E212B) : Colors.white,
+                        color: isDark ? LoveraColors.darkSurfaceAlt : Colors.white,
                         borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
                       ),
                       child: Column(
@@ -2427,7 +2435,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                           ),
                           const SizedBox(height: 18),
                           Text(
-                            '"${album.title}" Klasörü',
+                            loc('"${album.title}" Klasörü', '"${album.title}" Folder'),
                             style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
                           ),
                           const SizedBox(height: 18),
@@ -2440,10 +2448,10 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                                 color: LoveraColors.primary.withValues(alpha: 0.15),
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(Icons.add_photo_alternate_rounded, color: LoveraColors.primary),
+                              child: Icon(Icons.add_photo_alternate_rounded, color: LoveraColors.primary),
                             ),
-                            title: const Text('Bu Klasöre Fotoğraf Ekle 📸', style: TextStyle(fontWeight: FontWeight.w700)),
-                            subtitle: const Text('Klasörün içine yeni fotoğraflar yükleyin', style: TextStyle(fontSize: 12)),
+                            title: Text(loc('Bu Klasöre Fotoğraf Ekle 📸', 'Add Photo to This Folder 📸'), style: const TextStyle(fontWeight: FontWeight.w700)),
+                            subtitle: Text(loc('Klasörün içine yeni fotoğraflar yükleyin', 'Upload new photos into folder'), style: const TextStyle(fontSize: 12)),
                             onTap: () async {
                               Navigator.pop(sheetCtx);
                               final pickedFiles = await _picker.pickMultiImage(
@@ -2476,13 +2484,13 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                                   );
                                   if (mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('${encodedImages.length} fotoğraf "${album.title}" klasörüne eklendi! 💕')),
+                                      SnackBar(content: Text(loc('${encodedImages.length} fotoğraf "${album.title}" klasörüne eklendi! 💕', '${encodedImages.length} photos added to "${album.title}" folder! 💕'))),
                                     );
                                   }
                                 } catch (e) {
                                   if (mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('Yükleme hatası: $e')),
+                                      SnackBar(content: Text(loc('Yükleme hatası: $e', 'Upload error: $e'))),
                                     );
                                   }
                                 } finally {
@@ -2508,8 +2516,8 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                               ),
                               child: const Icon(Icons.create_new_folder_rounded, color: Colors.white),
                             ),
-                            title: const Text('Yeni Klasör Ekle 📁', style: TextStyle(fontWeight: FontWeight.w700)),
-                            subtitle: const Text('Yeni bir anı klasörü oluşturun', style: TextStyle(fontSize: 12)),
+                            title: Text(loc('Yeni Klasör Ekle 📁', 'Add New Folder 📁'), style: TextStyle(fontWeight: FontWeight.w700)),
+                            subtitle: Text(loc('Yeni bir anı klasörü oluşturun', 'Create a new memory folder'), style: const TextStyle(fontSize: 12)),
                             onTap: () {
                               Navigator.pop(sheetCtx);
                               _openCreateFolderDialog();
@@ -2524,7 +2532,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
               backgroundColor: LoveraColors.primary,
               foregroundColor: Colors.white,
               icon: const Icon(Icons.add_rounded),
-              label: const Text('Ekle', style: TextStyle(fontWeight: FontWeight.w700)),
+              label: Text(loc('Ekle', 'Add'), style: const TextStyle(fontWeight: FontWeight.w700)),
             ),
           );
         },
@@ -2581,7 +2589,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
     if (imgUrl.isEmpty) {
       return Container(
         color: Colors.grey.withValues(alpha: 0.1),
-        child: const Icon(Icons.photo_outlined, color: LoveraColors.textMuted, size: 24),
+        child: Icon(Icons.photo_outlined, color: LoveraColors.textMuted, size: 24),
       );
     }
     if (imgUrl.startsWith('data:image')) {
@@ -2589,7 +2597,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
       if (bytes == null) {
         return Container(
           color: Colors.grey.withValues(alpha: 0.1),
-          child: const Icon(Icons.broken_image_rounded, color: LoveraColors.textMuted, size: 24),
+          child: Icon(Icons.broken_image_rounded, color: LoveraColors.textMuted, size: 24),
         );
       }
       return Image.memory(
@@ -2640,8 +2648,8 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
       child: Scaffold(
         appBar: AppBar(
           title: _isSelectionMode
-              ? Text('${_selectedMemoryIds.length} Seçildi')
-              : const Text('Ortak Anı Albümü'),
+              ? Text(loc('${_selectedMemoryIds.length} Seçildi', '${_selectedMemoryIds.length} Selected'))
+              : Text(ref.watch(stringsProvider).memoriesTitle),
           leading: _isSelectionMode
               ? IconButton(
                   icon: const Icon(Icons.close_rounded),
@@ -2659,17 +2667,17 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
             unselectedLabelColor: LoveraColors.textMuted,
             indicatorColor: LoveraColors.primary,
           indicatorWeight: 3,
-          tabs: const [
-            Tab(icon: Icon(Icons.photo_library_rounded, size: 20), text: 'Tüm Anılar'),
-            Tab(icon: Icon(Icons.folder_special_rounded, size: 20), text: 'Anı Grupları (Klasörler)'),
+          tabs: [
+            Tab(icon: const Icon(Icons.photo_library_rounded, size: 20), text: ref.watch(stringsProvider).allMemoriesTab),
+            Tab(icon: const Icon(Icons.folder_special_rounded, size: 20), text: ref.watch(stringsProvider).albumsTab),
           ],
         ),
         actions: [
           if (_isSelectionMode) ...[
             // Seçilenleri Klasöre Ekle
             IconButton(
-              tooltip: 'Klasöre Ekle',
-              icon: const Icon(Icons.drive_file_move_rounded, color: LoveraColors.primary),
+              tooltip: loc('Klasöre Ekle', 'Add to Folder'),
+              icon: Icon(Icons.drive_file_move_rounded, color: LoveraColors.primary),
               onPressed: _selectedMemoryIds.isEmpty
                   ? null
                   : () {
@@ -2678,7 +2686,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
             ),
             // Seçilenleri Toplu Sil
             IconButton(
-              tooltip: 'Seçilenleri Sil',
+              tooltip: loc('Seçilenleri Sil', 'Delete Selected'),
               icon: const Icon(Icons.delete_sweep_rounded, color: Color(0xFFEF4444)),
               onPressed: _selectedMemoryIds.isEmpty
                   ? null
@@ -2689,7 +2697,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
           ] else ...[
             // Çoklu Seçim Modunu Açma Butonu
             IconButton(
-              tooltip: 'Çoklu Seç / Düzenle',
+              tooltip: loc('Çoklu Seç / Düzenle', 'Multi-Select / Edit'),
               icon: const Icon(Icons.checklist_rounded),
               onPressed: () {
                 setState(() => _isSelectionMode = true);
@@ -2697,7 +2705,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
             ),
             // Galeri Izgara / Zaman Tüneli Geçiş Butonu
             IconButton(
-              tooltip: _isGridView ? 'Zaman Tüneli Görünümü' : 'Izgara Galeri Görünümü',
+              tooltip: _isGridView ? loc('Zaman Tüneli Görünümü', 'Timeline View') : loc('Izgara Galeri Görünümü', 'Grid Gallery View'),
               icon: Icon(_isGridView ? Icons.view_timeline_rounded : Icons.grid_view_rounded),
               onPressed: () {
                 HapticFeedback.selectionClick();
@@ -2721,14 +2729,14 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                         backgroundColor: LoveraColors.primary,
                         foregroundColor: Colors.white,
                         icon: const Icon(Icons.create_new_folder_rounded),
-                        label: const Text('Yeni Klasör Ekle', style: TextStyle(fontWeight: FontWeight.w700)),
+                        label: Text(ref.watch(stringsProvider).newAlbumOption, style: const TextStyle(fontWeight: FontWeight.w700)),
                       )
                     : FloatingActionButton.extended(
                         onPressed: _showAddActionSheet,
                         backgroundColor: LoveraColors.primary,
                         foregroundColor: Colors.white,
                         icon: const Icon(Icons.add_photo_alternate_rounded),
-                        label: const Text('Anı Ekle', style: TextStyle(fontWeight: FontWeight.w700)),
+                        label: Text(ref.watch(stringsProvider).addMemoryBtn, style: const TextStyle(fontWeight: FontWeight.w700)),
                       );
               },
             ),
@@ -2749,16 +2757,16 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                               color: LoveraColors.primary.withValues(alpha: 0.14),
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(Icons.favorite_border_rounded, size: 40, color: LoveraColors.primary),
+                            child: Icon(Icons.favorite_border_rounded, size: 40, color: LoveraColors.primary),
                           ),
                           const SizedBox(height: 18),
                           Text(
-                            'Henüz Eşleşmediniz',
+                            loc('Henüz Eşleşmediniz', 'Not Paired Yet'),
                             style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Ortak anı albümünüzü kullanabilmek için önce partnerinizle eşleşmeniz gerekir.',
+                            loc('Ortak anı albümünüzü kullanabilmek için önce partnerinizle eşleşmeniz gerekir.', 'You must pair with your partner before using the shared memory album.'),
                             textAlign: TextAlign.center,
                             style: theme.textTheme.bodyMedium?.copyWith(color: LoveraColors.textMuted),
                           ),
@@ -2775,7 +2783,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                       // TAB 1: TÜM ANILAR (Klasik Galeri & Zaman Tüneli)
                       _KeepAliveTab(
                         child: memoriesAsync.isLoading && !memoriesAsync.hasValue
-                            ? const Center(child: CircularProgressIndicator(color: LoveraColors.primary))
+                            ? Center(child: CircularProgressIndicator(color: LoveraColors.primary))
                             : (memories.isEmpty
                                 ? _buildEmptyMemoriesView(theme)
                                 : (_isGridView ? _buildGridView(memories) : _buildTimelineView(memories))),
@@ -2784,7 +2792,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                       _KeepAliveTab(
                         child: (albumsAsync.isLoading && !albumsAsync.hasValue) ||
                                 (memoriesAsync.isLoading && !memoriesAsync.hasValue)
-                            ? const Center(child: CircularProgressIndicator(color: LoveraColors.primary))
+                            ? Center(child: CircularProgressIndicator(color: LoveraColors.primary))
                             : (albums.isEmpty
                                 ? _buildEmptyAlbumsView(theme)
                                 : _buildAlbumsGridView(albums, memories)),
@@ -2801,7 +2809,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                   padding: const EdgeInsets.all(28),
                   margin: const EdgeInsets.symmetric(horizontal: 40),
                   decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF1E212B) : Colors.white,
+                    color: isDark ? LoveraColors.darkSurfaceAlt : Colors.white,
                     borderRadius: BorderRadius.circular(24),
                     boxShadow: [
                       BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 30),
@@ -2810,10 +2818,10 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const CircularProgressIndicator(color: LoveraColors.primary),
+                      CircularProgressIndicator(color: LoveraColors.primary),
                       const SizedBox(height: 20),
-                      const Text(
-                        'Fotoğraflar Yükleniyor...',
+                      Text(
+                        loc('Fotoğraflar Yükleniyor...', 'Uploading Photos...'),
                         style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
                       ),
                       if (_uploadProgress > 0.0) ...[
@@ -2825,8 +2833,8 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          '%${(_uploadProgress * 100).toInt()} Tamamlandı',
-                          style: const TextStyle(fontSize: 12, color: LoveraColors.textMuted),
+                          loc('%${(_uploadProgress * 100).toInt()} Tamamlandı', '%${(_uploadProgress * 100).toInt()} Completed'),
+                          style: TextStyle(fontSize: 12, color: LoveraColors.textMuted),
                         ),
                       ],
                     ],
@@ -2974,7 +2982,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                         color: LoveraColors.primary.withValues(alpha: 0.12),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.calendar_month_rounded, color: LoveraColors.primary, size: 18),
+                      child: Icon(Icons.calendar_month_rounded, color: LoveraColors.primary, size: 18),
                     ),
                     const SizedBox(width: 10),
                     Column(
@@ -2987,11 +2995,11 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                         if (item.locationTitle.isNotEmpty)
                           Row(
                             children: [
-                              const Icon(Icons.location_on_rounded, size: 12, color: LoveraColors.textMuted),
+                              Icon(Icons.location_on_rounded, size: 12, color: LoveraColors.textMuted),
                               const SizedBox(width: 2),
                               Text(
                                 item.locationTitle,
-                                style: const TextStyle(fontSize: 12, color: LoveraColors.textMuted, fontWeight: FontWeight.w500),
+                                style: TextStyle(fontSize: 12, color: LoveraColors.textMuted, fontWeight: FontWeight.w500),
                               ),
                             ],
                           ),
@@ -3006,7 +3014,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                       ),
                       child: Text(
                         item.createdByName,
-                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: LoveraColors.primary),
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: LoveraColors.primary),
                       ),
                     ),
                   ],
@@ -3034,7 +3042,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                               ),
                             )
                           : Text(
-                              'Özel bir hatıra 💕',
+                              loc('Özel bir hatıra 💕', 'A special memory 💕'),
                               style: TextStyle(fontStyle: FontStyle.italic, color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted),
                             ),
                     ),
@@ -3110,7 +3118,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                             ? _buildThumbnail(album.coverImageUrl)
                             : Container(
                                 color: LoveraColors.primary.withValues(alpha: 0.1),
-                                child: const Icon(Icons.folder_special_rounded, size: 48, color: LoveraColors.primary),
+                                child: Icon(Icons.folder_special_rounded, size: 48, color: LoveraColors.primary),
                               ),
                         Positioned(
                           top: 8,
@@ -3152,7 +3160,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                       const SizedBox(height: 3),
                       Text(
                         '${album.date.day}.${album.date.month}.${album.date.year}',
-                        style: const TextStyle(fontSize: 11, color: LoveraColors.textMuted),
+                        style: TextStyle(fontSize: 11, color: LoveraColors.textMuted),
                       ),
                     ],
                   ),
@@ -3190,12 +3198,12 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
             ).animate().scale(duration: 600.ms, curve: Curves.easeOutBack),
             const SizedBox(height: 24),
             Text(
-              'Henüz Bir Anı Eklenmedi',
+              ref.watch(stringsProvider).noMemoriesTitle,
               style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 10),
             Text(
-              'Birlikte çekildiğiniz fotoğrafları tekli veya toplu olarak "Anı Ekle" butonundan albümünüze yükleyin! ✨',
+              ref.watch(stringsProvider).noMemoriesDesc,
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: LoveraColors.textMuted,
@@ -3222,16 +3230,16 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                 color: LoveraColors.primary.withValues(alpha: 0.14),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.folder_special_rounded, size: 40, color: LoveraColors.primary),
+              child: Icon(Icons.folder_special_rounded, size: 40, color: LoveraColors.primary),
             ),
             const SizedBox(height: 20),
             Text(
-              'Henüz Bir Anı Grubu Yok',
+              ref.watch(stringsProvider).noAlbumsTitle,
               style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
             Text(
-              'Birlikte olduğunuz özel anları (tatil, gezi, buluşma) düzenlemek için hemen yeni bir klasör oluşturun! 📁💕',
+              ref.watch(stringsProvider).noAlbumsDesc,
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(color: LoveraColors.textMuted, height: 1.4),
             ),
@@ -3242,7 +3250,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
               icon: const Icon(Icons.create_new_folder_rounded, size: 20),
-              label: const Text('Yeni Klasör Ekle ✨', style: TextStyle(fontWeight: FontWeight.w700)),
+              label: Text(ref.watch(stringsProvider).newAlbumBtn, style: const TextStyle(fontWeight: FontWeight.w700)),
               onPressed: _openCreateFolderDialog,
             ),
           ],

@@ -1,61 +1,63 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'theme_palette.dart';
 
-/// Lovera Renk Paleti - Spotify, Instagram ve iOS Standartlarında Kusursuz Koyu & Açık Mod
+/// Lovera Renk Paleti. Tüm değerler SEÇİLİ TEMA PAKETİNDEN okunur
+/// (varsayılan paket "Lovera Klasik" ile birebir aynı değerleri verir).
 class LoveraColors {
   LoveraColors._();
 
-  // Ana Vurgular (Asil, zarif, göz yormayan romantik leylak & gül kurusu tonu - çiğ kırmızı tamamen kaldırıldı)
-  static const primary = Color(0xFF8B5CF6); // Zarif & asil yumuşak leylak/mor (Lüks aşk hissi)
-  static const primaryDark = Color(0xFFA78BFA); // Dark modda göz dinlendiren açık pastel leylak
-  static const primaryDeep = Color(0xFF7C3AED);
-  static const primarySoft = Color(0xFFC4B5FD);
+  static ThemePaletteData get _p => ActivePalette.current;
 
-  // İkincil & Aksiyon Renkleri
-  static const secondary = Color(0xFF34D399); // Dinlendirici nane zümrütü
-  static const accentGold = Color(0xFFFBBF24); // Sıcak pastel altın sarısı
-  static const accentViolet = Color(0xFFA78BFA); // Zarif lavanta moru
-  static const accentPink = Color(0xFFF472B6); // Pastel pembe
+  // Ana vurgular
+  static Color get primary => _p.primary;
+  static Color get primaryDark => _p.primaryDark;
+  static Color get primaryDeep => _p.primaryDeep;
+  static Color get primarySoft => _p.primarySoft;
 
-  // Light Tema
-  static const lightBg = Color(0xFFF8F9FA);
-  static const lightSurface = Color(0xFFFFFFFF);
-  static const lightSurfaceAlt = Color(0xFFF1F3F5);
-  static const lightBorder = Color(0xFFE9ECEF);
-  static const textDark = Color(0xFF1E2024);
-  static const textMuted = Color(0xFF6C757D);
+  // İkincil & aksiyon renkleri
+  static Color get secondary => _p.secondary;
+  static Color get accentGold => _p.accentGold;
+  static Color get accentViolet => _p.accentViolet;
+  static Color get accentPink => _p.accentPink;
 
-  // Dark Tema - Instagram / Spotify / iOS Gerçek Karanlık Mod Standartları
-  // Katman 1: Derin AMOLED Gece Arka Planı
-  static const darkBg = Color(0xFF0C0D12); 
-  // Katman 2: Kartlar ve Yüzeyler (Arka plandan net ayrışan, lüks mat grafit tonu)
-  static const darkSurface = Color(0xFF161820); 
-  // Katman 3: Kart içi butonlar ve bölmeler
-  static const darkSurfaceAlt = Color(0xFF20232E); 
-  // Kenarlıklar: Çok ince, zarif sınır
-  static const darkBorder = Color(0xFF272A36); 
-  // Metinler: Gözü kamaştırmayan pürüzsüz beyaz ve açık gri
-  static const darkText = Color(0xFFF3F4F6); 
-  static const darkTextMuted = Color(0xFF94A3B8); 
+  // Açık tema
+  static Color get lightBg => _p.lightBg;
+  static Color get lightSurface => _p.lightSurface;
+  static Color get lightSurfaceAlt => _p.lightSurfaceAlt;
+  static Color get lightBorder => _p.lightBorder;
+  static Color get textDark => _p.textDark;
+  static Color get textMuted => _p.textMuted;
+
+  // Koyu tema
+  static Color get darkBg => _p.darkBg;
+  static Color get darkSurface => _p.darkSurface;
+  static Color get darkSurfaceAlt => _p.darkSurfaceAlt;
+  static Color get darkBorder => _p.darkBorder;
+  static Color get darkText => _p.darkText;
+  static Color get darkTextMuted => _p.darkTextMuted;
 
   // Gradientler
-  static const primaryGradient = LinearGradient(
-    colors: [Color(0xFF8B5CF6), Color(0xFFA855F7)],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
+  static Color get gradientEnd => _p.id == ThemePalette.classic ? const Color(0xFFA855F7) : _p.secondary;
+  static Color get gradientEndDeep => _p.id == ThemePalette.classic ? const Color(0xFF9333EA) : _p.secondary;
+  static LinearGradient get primaryGradient => LinearGradient(
+        colors: [_p.primary, _p.id == ThemePalette.classic ? const Color(0xFFA855F7) : _p.secondary],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      );
 
-  static const darkPrimaryGradient = LinearGradient(
-    colors: [Color(0xFF7C3AED), Color(0xFF9333EA)],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
+  static LinearGradient get darkPrimaryGradient => LinearGradient(
+        colors: [_p.primaryDeep, _p.id == ThemePalette.classic ? const Color(0xFF9333EA) : _p.secondary],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      );
 
-  static const goldGradient = LinearGradient(
-    colors: [Color(0xFFF59E0B), Color(0xFFFBBF24)],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
+  static LinearGradient get goldGradient => LinearGradient(
+        colors: [_p.accentGold, _p.accentGold.withValues(alpha: 0.85)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      );
 }
 
 class AppTheme {
@@ -63,46 +65,55 @@ class AppTheme {
 
   static const double radius = 24;
 
-  static List<BoxShadow> ambientShadow = [
-    BoxShadow(
-      color: Colors.black.withValues(alpha: 0.04),
-      blurRadius: 20,
-      offset: const Offset(0, 6),
-    ),
-  ];
+  static List<BoxShadow> get ambientShadow => [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.04),
+          blurRadius: 20,
+          offset: const Offset(0, 6),
+        ),
+      ];
 
-  static List<BoxShadow> primaryGlow = [
-    BoxShadow(
-      color: LoveraColors.primary.withValues(alpha: 0.22),
-      blurRadius: 18,
-      offset: const Offset(0, 6),
-    ),
-  ];
+  static List<BoxShadow> get primaryGlow => [
+        BoxShadow(
+          color: LoveraColors.primary.withValues(alpha: 0.22),
+          blurRadius: 18,
+          offset: const Offset(0, 6),
+        ),
+      ];
 
-  static ThemeData get light => _build(
+  static ThemeData get light => buildLight(ThemePaletteData.classic);
+  static ThemeData get dark => buildDark(ThemePaletteData.classic);
+
+  static ThemeData buildLight(ThemePaletteData p) => _build(
         brightness: Brightness.light,
-        bg: LoveraColors.lightBg,
-        surface: LoveraColors.lightSurface,
-        text: LoveraColors.textDark,
-        muted: LoveraColors.textMuted,
-        border: LoveraColors.lightBorder,
-        primaryColor: LoveraColors.primary,
+        p: p,
+        bg: p.lightBg,
+        surface: p.lightSurface,
+        surfaceAlt: p.lightSurfaceAlt,
+        text: p.textDark,
+        muted: p.textMuted,
+        border: p.lightBorder,
+        primaryColor: p.primary,
       );
 
-  static ThemeData get dark => _build(
+  static ThemeData buildDark(ThemePaletteData p) => _build(
         brightness: Brightness.dark,
-        bg: LoveraColors.darkBg,
-        surface: LoveraColors.darkSurface,
-        text: LoveraColors.darkText,
-        muted: LoveraColors.darkTextMuted,
-        border: LoveraColors.darkBorder,
-        primaryColor: LoveraColors.primaryDark,
+        p: p,
+        bg: p.darkBg,
+        surface: p.darkSurface,
+        surfaceAlt: p.darkSurfaceAlt,
+        text: p.darkText,
+        muted: p.darkTextMuted,
+        border: p.darkBorder,
+        primaryColor: p.primaryDark,
       );
 
   static ThemeData _build({
     required Brightness brightness,
+    required ThemePaletteData p,
     required Color bg,
     required Color surface,
+    required Color surfaceAlt,
     required Color text,
     required Color muted,
     required Color border,
@@ -114,23 +125,50 @@ class AppTheme {
       brightness: brightness,
     ).copyWith(
       primary: primaryColor,
-      secondary: LoveraColors.secondary,
+      onPrimary: Colors.white,
+      secondary: p.secondary,
+      tertiary: p.accentPink,
       surface: surface,
       onSurface: text,
+      surfaceContainerLowest: bg,
+      surfaceContainerLow: surface,
+      surfaceContainer: surface,
+      surfaceContainerHigh: surfaceAlt,
+      surfaceContainerHighest: surfaceAlt,
+      onSurfaceVariant: muted,
       outline: border,
+      outlineVariant: border,
+      primaryContainer: primaryColor.withValues(alpha: isDark ? 0.22 : 0.14),
+      onPrimaryContainer: isDark ? p.primarySoft : p.primaryDeep,
+      secondaryContainer: p.secondary.withValues(alpha: isDark ? 0.22 : 0.14),
+      onSecondaryContainer: isDark ? p.secondary : text,
     );
     final base = ThemeData(brightness: brightness, useMaterial3: true);
     final textTheme = GoogleFonts.plusJakartaSansTextTheme(base.textTheme)
         .apply(bodyColor: text, displayColor: text);
 
+    final fieldBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(radius),
+      borderSide: BorderSide(color: border, width: 1.2),
+    );
+
     return base.copyWith(
       colorScheme: scheme,
       scaffoldBackgroundColor: bg,
+      canvasColor: surface,
       textTheme: textTheme,
+      primaryColor: primaryColor,
       dividerColor: border,
+      dividerTheme: DividerThemeData(color: border, thickness: 1),
+      iconTheme: IconThemeData(color: text),
+      primaryIconTheme: const IconThemeData(color: Colors.white),
+      splashColor: primaryColor.withValues(alpha: 0.10),
+      highlightColor: primaryColor.withValues(alpha: 0.06),
       listTileTheme: ListTileThemeData(
         textColor: text,
         iconColor: text,
+        selectedColor: primaryColor,
+        selectedTileColor: primaryColor.withValues(alpha: 0.10),
       ),
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.transparent,
@@ -138,6 +176,18 @@ class AppTheme {
         scrolledUnderElevation: 0,
         centerTitle: true,
         foregroundColor: text,
+        iconTheme: IconThemeData(color: text),
+        systemOverlayStyle: isDark
+            ? SystemUiOverlayStyle.light.copyWith(
+                statusBarColor: Colors.transparent,
+                systemNavigationBarColor: bg,
+                systemNavigationBarIconBrightness: Brightness.light,
+              )
+            : SystemUiOverlayStyle.dark.copyWith(
+                statusBarColor: Colors.transparent,
+                systemNavigationBarColor: bg,
+                systemNavigationBarIconBrightness: Brightness.dark,
+              ),
         titleTextStyle: textTheme.titleLarge?.copyWith(
           fontWeight: FontWeight.w800,
           letterSpacing: -0.5,
@@ -146,12 +196,51 @@ class AppTheme {
       ),
       cardTheme: CardThemeData(
         color: surface,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radius),
           side: BorderSide(color: border, width: 1.2),
         ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: surface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
+        titleTextStyle: textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: text),
+        contentTextStyle: textTheme.bodyMedium?.copyWith(color: muted),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: surface,
+        modalBackgroundColor: surface,
+        surfaceTintColor: Colors.transparent,
+        dragHandleColor: border,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: surface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: border),
+        ),
+        textStyle: textTheme.bodyMedium?.copyWith(color: text),
+      ),
+      menuTheme: MenuThemeData(
+        style: MenuStyle(
+          backgroundColor: WidgetStatePropertyAll(surface),
+          surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+        ),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: isDark ? surfaceAlt : p.textDark,
+        contentTextStyle: textTheme.bodyMedium?.copyWith(color: Colors.white),
+        actionTextColor: p.primarySoft,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
@@ -166,19 +255,128 @@ class AppTheme {
           ),
         ),
       ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: primaryColor,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: primaryColor,
+          side: BorderSide(color: primaryColor.withValues(alpha: 0.6)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(foregroundColor: primaryColor),
+      ),
+      iconButtonTheme: IconButtonThemeData(
+        style: IconButton.styleFrom(
+          foregroundColor: text,
+          highlightColor: primaryColor.withValues(alpha: 0.12),
+        ),
+      ),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: primaryColor,
+        foregroundColor: Colors.white,
+        elevation: 4,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith(
+          (s) => s.contains(WidgetState.selected) ? Colors.white : muted,
+        ),
+        trackColor: WidgetStateProperty.resolveWith(
+          (s) => s.contains(WidgetState.selected) ? primaryColor : surfaceAlt,
+        ),
+        trackOutlineColor: WidgetStateProperty.resolveWith(
+          (s) => s.contains(WidgetState.selected) ? primaryColor : border,
+        ),
+      ),
+      checkboxTheme: CheckboxThemeData(
+        fillColor: WidgetStateProperty.resolveWith(
+          (s) => s.contains(WidgetState.selected) ? primaryColor : Colors.transparent,
+        ),
+        checkColor: const WidgetStatePropertyAll(Colors.white),
+        side: BorderSide(color: border, width: 1.5),
+      ),
+      radioTheme: RadioThemeData(
+        fillColor: WidgetStateProperty.resolveWith(
+          (s) => s.contains(WidgetState.selected) ? primaryColor : muted,
+        ),
+      ),
+      sliderTheme: SliderThemeData(
+        activeTrackColor: primaryColor,
+        inactiveTrackColor: primaryColor.withValues(alpha: 0.2),
+        thumbColor: primaryColor,
+        overlayColor: primaryColor.withValues(alpha: 0.15),
+      ),
+      progressIndicatorTheme: ProgressIndicatorThemeData(
+        color: primaryColor,
+        linearTrackColor: primaryColor.withValues(alpha: 0.18),
+        circularTrackColor: primaryColor.withValues(alpha: 0.12),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: surfaceAlt,
+        selectedColor: primaryColor.withValues(alpha: 0.2),
+        side: BorderSide(color: border),
+        labelStyle: textTheme.labelLarge?.copyWith(color: text),
+        secondaryLabelStyle: textTheme.labelLarge?.copyWith(color: primaryColor),
+      ),
+      tabBarTheme: TabBarThemeData(
+        labelColor: primaryColor,
+        unselectedLabelColor: muted,
+        indicatorColor: primaryColor,
+        dividerColor: border,
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: surface,
+        surfaceTintColor: Colors.transparent,
+        indicatorColor: primaryColor.withValues(alpha: 0.2),
+      ),
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: SegmentedButton.styleFrom(
+          selectedBackgroundColor: primaryColor.withValues(alpha: 0.2),
+          selectedForegroundColor: primaryColor,
+          foregroundColor: muted,
+          side: BorderSide(color: border),
+        ),
+      ),
+      textSelectionTheme: TextSelectionThemeData(
+        cursorColor: primaryColor,
+        selectionColor: primaryColor.withValues(alpha: 0.28),
+        selectionHandleColor: primaryColor,
+      ),
+      datePickerTheme: DatePickerThemeData(
+        backgroundColor: surface,
+        surfaceTintColor: Colors.transparent,
+        headerBackgroundColor: primaryColor,
+        headerForegroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
+      ),
+      timePickerTheme: TimePickerThemeData(
+        backgroundColor: surface,
+        dialBackgroundColor: surfaceAlt,
+        hourMinuteColor: surfaceAlt,
+        dayPeriodColor: surfaceAlt,
+      ),
+      tooltipTheme: TooltipThemeData(
+        decoration: BoxDecoration(
+          color: isDark ? surfaceAlt : p.textDark,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        textStyle: const TextStyle(color: Colors.white, fontSize: 12),
+      ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: isDark ? LoveraColors.darkSurfaceAlt : surface,
+        fillColor: isDark ? surfaceAlt : surface,
         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
         hintStyle: TextStyle(color: muted, fontSize: 14),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(radius),
-          borderSide: BorderSide(color: border, width: 1.2),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(radius),
-          borderSide: BorderSide(color: border, width: 1.2),
-        ),
+        border: fieldBorder,
+        enabledBorder: fieldBorder,
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(radius),
           borderSide: BorderSide(color: primaryColor, width: 2),

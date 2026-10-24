@@ -1,3 +1,4 @@
+import '../../../core/localization/app_strings.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -174,9 +175,13 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
         speed: (data['speed'] as num?)?.toDouble(),
         currentPlaceTitle: data['currentPlaceTitle'] as String?,
         currentPlaceEmoji: data['currentPlaceEmoji'] as String?,
+        language: data['language'] as String?,
       );
 
       ref.read(partnerProvider.notifier).state = partnerUser;
+      if (data['language'] != null) {
+        SharedPreferences.getInstance().then((p) => p.setString('cached_partner_language_${doc.id}', data['language'].toString())).catchError((_) => false);
+      }
 
       if (newLat != null && newLng != null) {
         final newPartnerLatLng = LatLng(newLat, newLng);
@@ -500,8 +505,8 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     final partnerUid = ref.read(partnerUidProvider);
     if (partnerUid == null || partnerUid.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Buluşma talebi için partnerinizle eşleşmiş olmanız gerekir.'),
+        SnackBar(
+          content: Text(loc('Buluşma talebi için partnerinizle eşleşmiş olmanız gerekir.', 'You must be paired with your partner to send a meetup request.')),
           backgroundColor: LoveraColors.primary,
         ),
       );
@@ -509,7 +514,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     }
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final partnerName = ref.read(partnerProvider)?.name ?? 'Partnerin';
+    final partnerName = ref.read(partnerProvider)?.name ?? loc('Partnerin', 'Partner');
     final noteController = TextEditingController();
     TimeOfDay? selectedTime;
 
@@ -531,7 +536,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
               bottom: MediaQuery.of(context).viewInsets.bottom + 24,
             ),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E212B) : Colors.white,
+              color: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurface,
               borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
               boxShadow: [
                 BoxShadow(
@@ -573,9 +578,9 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              'Buluşma Talebi Gönder',
-                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                            Text(
+                              loc('Buluşma Talebi Gönder', 'Send Meetup Request'),
+                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                             ),
                             const SizedBox(height: 2),
                             Text(
@@ -597,7 +602,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
 
                   // Saat Seçimi (İsteğe bağlı)
                   Text(
-                    'Buluşma Saati (İsteğe Bağlı)',
+                    loc('Buluşma Saati (İsteğe Bağlı)', 'Meetup Time (Optional)'),
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w800,
@@ -630,7 +635,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                       decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF282C3A) : const Color(0xFFF6F8FB),
+                        color: isDark ? LoveraColors.darkBorder : LoveraColors.lightBg,
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
                           color: selectedTime != null
@@ -648,12 +653,12 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              selectedTime != null ? 'Saat: $timeStr' : 'Saat belirle (İsteğe bağlı)',
+                              selectedTime != null ? loc('Saat: $timeStr', 'Time: $timeStr') : loc('Saat belirle (İsteğe bağlı)', 'Set time (Optional)'),
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: selectedTime != null ? FontWeight.w800 : FontWeight.w500,
                                 color: selectedTime != null
-                                    ? (isDark ? Colors.white : const Color(0xFF1E2024))
+                                    ? (isDark ? Colors.white : LoveraColors.textDark)
                                     : (isDark ? Colors.white54 : LoveraColors.textMuted),
                               ),
                             ),
@@ -679,7 +684,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
 
                   // Not Ekleme (İsteğe bağlı)
                   Text(
-                    'Romantik / Özel Not (İsteğe Bağlı)',
+                    loc('Romantik / Özel Not (İsteğe Bağlı)', 'Romantic / Special Note (Optional)'),
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w800,
@@ -693,13 +698,13 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                     maxLength: 100,
                     textCapitalization: TextCapitalization.sentences,
                     decoration: InputDecoration(
-                      hintText: 'Örn: Seni çok özledim, kahveler benden... ☕❤️',
+                      hintText: loc('Örn: Seni çok özledim, kahveler benden... ☕❤️', 'Ex: Missed you so much, coffees on me... ☕❤️'),
                       hintStyle: TextStyle(
                         fontSize: 13,
                         color: isDark ? Colors.white38 : LoveraColors.textMuted,
                       ),
                       filled: true,
-                      fillColor: isDark ? const Color(0xFF282C3A) : const Color(0xFFF6F8FB),
+                      fillColor: isDark ? LoveraColors.darkBorder : LoveraColors.lightBg,
                       counterStyle: TextStyle(
                         fontSize: 11,
                         color: isDark ? Colors.white38 : LoveraColors.textMuted,
@@ -727,7 +732,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                       ),
                       icon: const Icon(Icons.send_rounded, size: 18),
                       label: Text(
-                        '$partnerName\'e Talebi Gönder',
+                        loc('$partnerName\'e Talebi Gönder', 'Send Request to $partnerName'),
                         style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
                       ),
                       onPressed: () {
@@ -761,15 +766,15 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     final partnerUid = ref.read(partnerUidProvider);
     if (partnerUid == null || partnerUid.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Buluşma talebi için partnerinizle eşleşmiş olmanız gerekir.'),
+        SnackBar(
+          content: Text(loc('Buluşma talebi için partnerinizle eşleşmiş olmanız gerekir.', 'You must be paired with your partner to send a meetup request.')),
           backgroundColor: LoveraColors.primary,
         ),
       );
       return;
     }
     final myName = ref.read(userNameProvider);
-    final name = myName.isNotEmpty ? myName : 'Partnerin';
+    final name = myName.isNotEmpty ? myName : loc('Partnerin', 'Partner');
     try {
       await DatabaseService().sendMeetingRequest(
         partnerUid: partnerUid,
@@ -781,32 +786,39 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
         note: note,
       );
 
-      String pushBody = '$name seni "$title" konumunda buluşmaya çağırıyor.';
+      String pushBodyTr = '$name seni "$title" konumunda buluşmaya çağırıyor.';
+      String pushBodyEn = '$name invites you to meet up at "${localizePlaceTitle(title)}".';
       if (meetingTime != null && meetingTime.isNotEmpty) {
-        pushBody += ' (Saat: $meetingTime)';
+        pushBodyTr += ' (Saat: $meetingTime)';
+        pushBodyEn += ' (Time: $meetingTime)';
       }
       if (note != null && note.isNotEmpty) {
-        pushBody += ' - "$note"';
+        pushBodyTr += ' - "$note"';
+        pushBodyEn += ' - "$note"';
       }
 
       NotificationService().sendPushToPartner(
         partnerUid: partnerUid,
-        title: 'Buluşma talebi 💕',
-        body: pushBody,
+        title: loc('Buluşma talebi 💕', 'Meetup request 💕'),
+        body: loc(pushBodyTr, pushBodyEn),
+        titleTr: 'Buluşma talebi 💕',
+        titleEn: 'Meetup request 💕',
+        bodyTr: pushBodyTr,
+        bodyEn: pushBodyEn,
         data: {'type': 'meeting_request'},
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Buluşma talebi gönderildi 💌'),
-            backgroundColor: Color(0xFF10B981),
+          SnackBar(
+            content: Text(loc('Buluşma talebi gönderildi 💌', 'Meetup request sent 💌')),
+            backgroundColor: const Color(0xFF10B981),
           ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Buluşma talebi gönderilemedi, tekrar dene.')),
+          SnackBar(content: Text(loc('Buluşma talebi gönderilemedi, tekrar dene.', 'Could not send meetup request, try again.'))),
         );
       }
     }
@@ -818,8 +830,8 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
 
     if (coupleId == null || coupleId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Konum kaydedebilmek için partnerinizle eşleşmiş olmanız gerekir.'),
+        SnackBar(
+          content: Text(loc('Konum kaydedebilmek için partnerinizle eşleşmiş olmanız gerekir.', 'You must be paired with your partner to save locations.')),
           backgroundColor: LoveraColors.primary,
         ),
       );
@@ -831,14 +843,14 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     String selectedEmoji = '🏠';
 
     final categories = [
-      {'key': 'home', 'label': 'Evim', 'emoji': '🏠'},
-      {'key': 'work', 'label': 'İş / Ofis', 'emoji': '💼'},
-      {'key': 'school', 'label': 'Okul', 'emoji': '🏫'},
-      {'key': 'campus', 'label': 'Kampüs', 'emoji': '🎓'},
-      {'key': 'gym', 'label': 'Spor Salonu', 'emoji': '🏋️'},
-      {'key': 'cafe', 'label': 'Favori Kafe', 'emoji': '☕'},
-      {'key': 'favorite', 'label': 'Özel Yerimiz', 'emoji': '💖'},
-      {'key': 'other', 'label': 'Diğer', 'emoji': '📍'},
+      {'key': 'home', 'label': loc('Evim', 'Home'), 'emoji': '🏠'},
+      {'key': 'work', 'label': loc('İş / Ofis', 'Work / Office'), 'emoji': '💼'},
+      {'key': 'school', 'label': loc('Okul', 'School'), 'emoji': '🏫'},
+      {'key': 'campus', 'label': loc('Kampüs', 'Campus'), 'emoji': '🎓'},
+      {'key': 'gym', 'label': loc('Spor Salonu', 'Gym'), 'emoji': '🏋️'},
+      {'key': 'cafe', 'label': loc('Favori Kafe', 'Favorite Cafe'), 'emoji': '☕'},
+      {'key': 'favorite', 'label': loc('Özel Yerimiz', 'Special Place'), 'emoji': '💖'},
+      {'key': 'other', 'label': loc('Diğer', 'Other'), 'emoji': '📍'},
     ];
 
     showModalBottomSheet(
@@ -857,7 +869,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                 bottom: MediaQuery.of(context).viewInsets.bottom + 24,
               ),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E212B) : Colors.white,
+                color: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurface,
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
                 boxShadow: [
                   BoxShadow(
@@ -898,16 +910,16 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Konum Etiketle',
+                              loc('Konum Etiketle', 'Tag Location'),
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w800,
-                                color: isDark ? Colors.white : const Color(0xFF1E2024),
+                                color: isDark ? Colors.white : LoveraColors.textDark,
                               ),
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              'Bu konum haritanızda kalıcı olarak görünecektir.',
+                              loc('Bu konum haritanızda kalıcı olarak görünecektir.', 'This location will be permanently visible on your map.'),
                               style: TextStyle(
                                 fontSize: 12,
                                 color: isDark ? Colors.white60 : LoveraColors.textMuted,
@@ -924,7 +936,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF282C3A) : const Color(0xFFF1F3F7),
+                      color: isDark ? LoveraColors.darkBorder : LoveraColors.lightSurfaceAlt,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06),
@@ -956,7 +968,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                             Clipboard.setData(ClipboardData(text: coordStr));
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('Koordinatlar panoya kopyalandı: $coordStr'),
+                                content: Text(loc('Koordinatlar panoya kopyalandı: $coordStr', 'Coordinates copied to clipboard: $coordStr')),
                                 duration: const Duration(seconds: 2),
                                 behavior: SnackBarBehavior.floating,
                               ),
@@ -974,7 +986,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                                 Icon(Icons.copy_rounded, size: 13, color: LoveraColors.primary),
                                 const SizedBox(width: 3),
                                 Text(
-                                  'Kopyala',
+                                  loc('Kopyala', 'Copy'),
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w700,
@@ -1012,13 +1024,13 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                               color: const Color(0xFF10B981).withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: const Row(
+                            child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.chat_bubble_outline_rounded, size: 13, color: Color(0xFF10B981)),
-                                SizedBox(width: 3),
+                                const Icon(Icons.chat_bubble_outline_rounded, size: 13, color: Color(0xFF10B981)),
+                                const SizedBox(width: 3),
                                 Text(
-                                  'Yanıtla',
+                                  loc('Yanıtla', 'Reply'),
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w700,
@@ -1035,8 +1047,8 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                   const SizedBox(height: 16),
 
                   // Kategori / İkon Seçimi
-                  const Text(
-                    'Kategori Seçin',
+                  Text(
+                    loc('Kategori Seçin', 'Select Category'),
                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 8),
@@ -1065,7 +1077,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                               decoration: BoxDecoration(
                                 color: isSelected
                                     ? LoveraColors.primary
-                                    : (isDark ? const Color(0xFF282C3A) : const Color(0xFFF1F3F7)),
+                                    : (isDark ? LoveraColors.darkBorder : LoveraColors.lightSurfaceAlt),
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(
                                   color: isSelected
@@ -1104,10 +1116,10 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                     controller: titleController,
                     textCapitalization: TextCapitalization.words,
                     decoration: InputDecoration(
-                      labelText: 'Konum Adı',
-                      hintText: 'Örn: Evim, Aşkımın Evi, Ofisim...',
+                      labelText: loc('Konum Adı', 'Location Name'),
+                      hintText: loc('Örn: Evim, Aşkımın Evi, Ofisim...', 'e.g. My Home, Sweetheart\'s Home, My Office...'),
                       filled: true,
-                      fillColor: isDark ? const Color(0xFF282C3A) : const Color(0xFFF6F8FB),
+                      fillColor: isDark ? LoveraColors.darkBorder : LoveraColors.lightBg,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
                         borderSide: BorderSide.none,
@@ -1141,20 +1153,20 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                           iconEmoji: selectedEmoji,
                           lat: point.latitude,
                           lng: point.longitude,
-                          createdByName: myName.isNotEmpty ? myName : 'Ben',
+                          createdByName: myName.isNotEmpty ? myName : loc('Ben', 'Me'),
                         );
 
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('"$finalTitle" haritaya kalıcı olarak eklendi! ✨'),
+                              content: Text(loc('"$finalTitle" haritaya kalıcı olarak eklendi! ✨', '"$finalTitle" permanently added to map! ✨')),
                               backgroundColor: const Color(0xFF10B981),
                             ),
                           );
                         }
                       },
-                      child: const Text(
-                        'Konumu Haritaya Kaydet',
+                      child: Text(
+                        loc('Konumu Haritaya Kaydet', 'Save Location to Map'),
                         style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800),
                       ),
                     ),
@@ -1170,12 +1182,12 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                       ),
                       icon: Icon(Icons.favorite_rounded, color: LoveraColors.primary, size: 18),
                       label: Text(
-                        'Buluşma Talebi Gönder',
+                        loc('Buluşma Talebi Gönder', 'Send Meetup Request'),
                         style: TextStyle(color: LoveraColors.primary, fontSize: 14, fontWeight: FontWeight.w800),
                       ),
                       onPressed: () {
                         final typed = titleController.text.trim();
-                        final meetTitle = typed.isNotEmpty ? '$selectedEmoji $typed' : '💖 Buluşma Noktası';
+                        final meetTitle = typed.isNotEmpty ? '$selectedEmoji $typed' : loc('💖 Buluşma Noktası', '💖 Meetup Point');
                         Navigator.pop(ctx);
                         HapticFeedback.selectionClick();
                         _showSendMeetingRequestSheet(point, meetTitle);
@@ -1200,14 +1212,14 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final categories = [
-      {'key': 'home', 'label': 'Evim', 'emoji': '🏠'},
-      {'key': 'partner_home', 'label': 'Aşkımın Evi', 'emoji': '🏡'},
-      {'key': 'work', 'label': 'İş / Ofis', 'emoji': '💼'},
-      {'key': 'school', 'label': 'Okul', 'emoji': '📚'},
-      {'key': 'campus', 'label': 'Kampüs', 'emoji': '🎓'},
-      {'key': 'cafe', 'label': 'Kafe / Buluşma', 'emoji': '☕'},
-      {'key': 'park', 'label': 'Park / Sahil', 'emoji': '🌳'},
-      {'key': 'favorite', 'label': 'Özel Yerimiz', 'emoji': '❤️'},
+      {'key': 'home', 'label': loc('Evim', 'Home'), 'emoji': '🏠'},
+      {'key': 'partner_home', 'label': loc('Aşkımın Evi', 'Partner\'s Home'), 'emoji': '🏡'},
+      {'key': 'work', 'label': loc('İş / Ofis', 'Work / Office'), 'emoji': '💼'},
+      {'key': 'school', 'label': loc('Okul', 'School'), 'emoji': '📚'},
+      {'key': 'campus', 'label': loc('Kampüs', 'Campus'), 'emoji': '🎓'},
+      {'key': 'cafe', 'label': loc('Kafe / Buluşma', 'Cafe / Meetup'), 'emoji': '☕'},
+      {'key': 'park', 'label': loc('Park / Sahil', 'Park / Coast'), 'emoji': '🌳'},
+      {'key': 'favorite', 'label': loc('Özel Yerimiz', 'Special Place'), 'emoji': '❤️'},
     ];
 
     String selectedCategory = place.category;
@@ -1229,7 +1241,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                 bottom: MediaQuery.of(context).viewInsets.bottom + 24,
               ),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E212B) : Colors.white,
+                color: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurface,
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
               ),
               child: Column(
@@ -1263,16 +1275,16 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Konumu Düzenle',
+                              loc('Konumu Düzenle', 'Edit Location'),
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w800,
-                                color: isDark ? Colors.white : const Color(0xFF1E2024),
+                                color: isDark ? Colors.white : LoveraColors.textDark,
                               ),
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              'İsmini veya simgesini güncelleyin.',
+                              loc('İsmini veya simgesini güncelleyin.', 'Update name or icon.'),
                               style: TextStyle(
                                 fontSize: 12,
                                 color: isDark ? Colors.white60 : LoveraColors.textMuted,
@@ -1285,9 +1297,9 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                   ),
                   const SizedBox(height: 18),
 
-                  const Text(
-                    'Kategori Seçin',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                  Text(
+                    loc('Kategori Seçin', 'Select Category'),
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 8),
                   SingleChildScrollView(
@@ -1311,7 +1323,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                               decoration: BoxDecoration(
                                 color: isSelected
                                     ? LoveraColors.primary
-                                    : (isDark ? const Color(0xFF282C3A) : const Color(0xFFF1F3F7)),
+                                    : (isDark ? LoveraColors.darkBorder : LoveraColors.lightSurfaceAlt),
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(
                                   color: isSelected ? LoveraColors.primary : Colors.transparent,
@@ -1347,9 +1359,9 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                     controller: titleController,
                     textCapitalization: TextCapitalization.words,
                     decoration: InputDecoration(
-                      labelText: 'Konum Adı',
+                      labelText: loc('Konum Adı', 'Location Name'),
                       filled: true,
-                      fillColor: isDark ? const Color(0xFF282C3A) : const Color(0xFFF6F8FB),
+                      fillColor: isDark ? LoveraColors.darkBorder : LoveraColors.lightBg,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
                         borderSide: BorderSide.none,
@@ -1392,15 +1404,15 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('"$finalTitle" güncellendi! ✨'),
+                              content: Text(loc('"$finalTitle" güncellendi! ✨', '"$finalTitle" updated! ✨')),
                               backgroundColor: const Color(0xFF10B981),
                             ),
                           );
                         }
                       },
-                      child: const Text(
-                        'Değişiklikleri Kaydet',
-                        style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800),
+                      child: Text(
+                        loc('Değişiklikleri Kaydet', 'Save Changes'),
+                        style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800),
                       ),
                     ),
                   ),
@@ -1429,7 +1441,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
         ),
         padding: const EdgeInsets.only(left: 22, right: 22, top: 16, bottom: 24),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E212B) : Colors.white,
+          color: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         ),
         child: SingleChildScrollView(
@@ -1462,9 +1474,8 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
             ),
             if (place.createdByName != null && place.createdByName!.isNotEmpty) ...[
               const SizedBox(height: 4),
-              Text(
-                'Ekleyen: ${place.createdByName}',
-                style: const TextStyle(fontSize: 12, color: LoveraColors.textMuted),
+              Text('${loc("Ekleyen:", "Added by:")} ${place.createdByName}',
+                style: TextStyle(fontSize: 12, color: LoveraColors.textMuted),
               ),
             ],
             const SizedBox(height: 14),
@@ -1479,7 +1490,9 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                   myDist = Geolocator.distanceBetween(currentUser!.lat!, currentUser.lng!, place.lat, place.lng);
                 }
                 final distText = myDist != null
-                    ? (myDist >= 1000 ? '${(myDist / 1000).toStringAsFixed(1)} km uzaklıkta' : '${myDist.round()} m uzaklıkta')
+                    ? (myDist >= 1000
+                        ? loc('${(myDist / 1000).toStringAsFixed(1)} km uzaklıkta', '${(myDist / 1000).toStringAsFixed(1)} km away')
+                        : loc('${myDist.round()} m uzaklıkta', '${myDist.round()} m away'))
                     : null;
 
                 Future<void> openMap(String urlStr) async {
@@ -1494,7 +1507,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                   } catch (e) {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Harita uygulaması açılamadı.')),
+                        SnackBar(content: Text(loc('Harita uygulaması açılamadı.', 'Could not open map app.'))),
                       );
                     }
                   }
@@ -1504,7 +1517,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                   width: double.infinity,
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF282B37) : const Color(0xFFF3F4F6),
+                    color: isDark ? LoveraColors.darkBorder : LoveraColors.lightSurfaceAlt,
                     borderRadius: BorderRadius.circular(18),
                     border: Border.all(
                       color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.05),
@@ -1515,10 +1528,9 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.location_on_rounded, size: 15, color: LoveraColors.primary),
+                          Icon(Icons.location_on_rounded, size: 15, color: LoveraColors.primary),
                           const SizedBox(width: 6),
-                          Text(
-                            'KONUM DETAYI',
+                          Text(loc('KONUM DETAYI', 'LOCATION DETAILS'),
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w800,
@@ -1530,7 +1542,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                             const Spacer(),
                             Text(
                               distText,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w700,
                                 color: LoveraColors.primary,
@@ -1564,7 +1576,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                                     children: [
                                       const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
                                       const SizedBox(width: 8),
-                                      Text('${place.title} koordinatları kopyalandı! 📋'),
+                                      Text(loc('${place.title} koordinatları kopyalandı! 📋', '${place.title} coordinates copied! 📋')),
                                     ],
                                   ),
                                   backgroundColor: const Color(0xFF10B981),
@@ -1613,8 +1625,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                                     children: [
                                       const Icon(Icons.map_rounded, size: 16, color: Color(0xFF4285F4)),
                                       const SizedBox(width: 6),
-                                      const Text(
-                                        'Google Haritalar',
+                                      Text(loc('Google Haritalar', 'Google Maps'),
                                         style: TextStyle(
                                           fontSize: 12,
                                           fontWeight: FontWeight.w800,
@@ -1657,8 +1668,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                                         color: isDark ? Colors.white : Colors.black87,
                                       ),
                                       const SizedBox(width: 6),
-                                      Text(
-                                        'Apple Haritalar',
+                                      Text(loc('Apple Haritalar', 'Apple Maps'),
                                         style: TextStyle(
                                           fontSize: 12,
                                           fontWeight: FontWeight.w800,
@@ -1745,10 +1755,10 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                           padding: const EdgeInsets.only(left: 4, bottom: 8),
                           child: Row(
                             children: [
-                              const Icon(Icons.favorite_rounded, size: 14, color: LoveraColors.primary),
+                              Icon(Icons.favorite_rounded, size: 14, color: LoveraColors.primary),
                               const SizedBox(width: 6),
                               Text(
-                                '$partnerName İçin Bildirimler',
+                                loc('$partnerName İçin Bildirimler', 'Notifications for $partnerName'),
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w800,
@@ -1761,7 +1771,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                         ),
                         Container(
                           decoration: BoxDecoration(
-                            color: isDark ? const Color(0xFF282B37) : const Color(0xFFF3F4F6),
+                            color: isDark ? LoveraColors.darkBorder : LoveraColors.lightSurfaceAlt,
                             borderRadius: BorderRadius.circular(18),
                           ),
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
@@ -1777,10 +1787,10 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                                     color: LoveraColors.primary.withValues(alpha: 0.15),
                                     shape: BoxShape.circle,
                                   ),
-                                  child: const Icon(Icons.notifications_active_rounded, color: LoveraColors.primary, size: 18),
+                                  child: Icon(Icons.notifications_active_rounded, color: LoveraColors.primary, size: 18),
                                 ),
                                 title: Text(
-                                  '$partnerName buraya gidince bana haber ver',
+                                  loc('$partnerName buraya gidince bana haber ver', 'Notify me when $partnerName arrives here'),
                                   style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                                 ),
                                 value: partnerNotifyEnter,
@@ -1823,7 +1833,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                                   child: const Icon(Icons.directions_walk_rounded, color: Colors.orangeAccent, size: 18),
                                 ),
                                 title: Text(
-                                  '$partnerName buradan ayrılınca bana haber ver',
+                                  loc('$partnerName buradan ayrılınca bana haber ver', 'Notify me when $partnerName leaves here'),
                                   style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                                 ),
                                 value: partnerNotifyExit,
@@ -1863,10 +1873,10 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                           padding: const EdgeInsets.only(left: 4, bottom: 8),
                           child: Row(
                             children: [
-                              const Icon(Icons.person_pin_circle_rounded, size: 15, color: Color(0xFF8B5CF6)),
+                              Icon(Icons.person_pin_circle_rounded, size: 15, color: LoveraColors.primary),
                               const SizedBox(width: 6),
                               Text(
-                                'Kendim İçin Bildirimler',
+                                loc('Kendim İçin Bildirimler', 'Notifications for Myself'),
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w800,
@@ -1879,7 +1889,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                         ),
                         Container(
                           decoration: BoxDecoration(
-                            color: isDark ? const Color(0xFF282B37) : const Color(0xFFF3F4F6),
+                            color: isDark ? LoveraColors.darkBorder : LoveraColors.lightSurfaceAlt,
                             borderRadius: BorderRadius.circular(18),
                           ),
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
@@ -1888,17 +1898,17 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                               SwitchListTile(
                                 contentPadding: EdgeInsets.zero,
                                 dense: true,
-                                activeColor: const Color(0xFF8B5CF6),
+                                activeColor: LoveraColors.primary,
                                 secondary: Container(
                                   padding: const EdgeInsets.all(7),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                                    color: LoveraColors.primary.withValues(alpha: 0.15),
                                     shape: BoxShape.circle,
                                   ),
-                                  child: const Icon(Icons.location_on_rounded, color: Color(0xFF8B5CF6), size: 18),
+                                  child: Icon(Icons.location_on_rounded, color: LoveraColors.primary, size: 18),
                                 ),
                                 title: Text(
-                                  'Ben buraya gidince $partnerName\'e haber ver',
+                                  loc('Ben buraya gidince $partnerName\'e haber ver', 'Notify $partnerName when I arrive here'),
                                   style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                                 ),
                                 value: myNotifyEnter,
@@ -1930,7 +1940,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                               SwitchListTile(
                                 contentPadding: EdgeInsets.zero,
                                 dense: true,
-                                activeColor: const Color(0xFF8B5CF6),
+                                activeColor: LoveraColors.primary,
                                 secondary: Container(
                                   padding: const EdgeInsets.all(7),
                                   decoration: BoxDecoration(
@@ -1940,7 +1950,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                                   child: const Icon(Icons.directions_run_rounded, color: Color(0xFF3B82F6), size: 18),
                                 ),
                                 title: Text(
-                                  'Ben buradan ayrılınca $partnerName\'e haber ver',
+                                  loc('Ben buradan ayrılınca $partnerName\'e haber ver', 'Notify $partnerName when I leave here'),
                                   style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                                 ),
                                 value: myNotifyExit,
@@ -1988,7 +1998,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                       side: BorderSide(color: Colors.redAccent.withValues(alpha: 0.4)),
                     ),
                     icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 18),
-                    label: const Text('Sil', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w700, fontSize: 13)),
+                    label: Text(loc('Sil', 'Delete'), style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w700, fontSize: 13)),
                     onPressed: () async {
                       Navigator.pop(ctx);
                       HapticFeedback.mediumImpact();
@@ -2000,7 +2010,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                         if (mounted) {
                           setState(() {});
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Buluşma noktası silindi.')),
+                            SnackBar(content: Text(loc('Buluşma noktası silindi.', 'Meetup point deleted.'))),
                           );
                         }
                       } else {
@@ -2008,7 +2018,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                           await DatabaseService().deleteSavedPlace(coupleId, place.id);
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('"${place.title}" konumu silindi.')),
+                              SnackBar(content: Text(loc('"${place.title}" konumu silindi.', '"${place.title}" location deleted.'))),
                             );
                           }
                         }
@@ -2025,7 +2035,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                       side: BorderSide(color: LoveraColors.primary.withValues(alpha: 0.5)),
                     ),
                     icon: Icon(Icons.edit_rounded, color: LoveraColors.primary, size: 18),
-                    label: Text('Düzenle', style: TextStyle(color: LoveraColors.primary, fontWeight: FontWeight.w700, fontSize: 13)),
+                    label: Text(loc('Düzenle', 'Edit'), style: TextStyle(color: LoveraColors.primary, fontWeight: FontWeight.w700, fontSize: 13)),
                     onPressed: () {
                       Navigator.pop(ctx);
                       _showEditPlaceDialog(place);
@@ -2042,7 +2052,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                       elevation: 0,
                     ),
                     icon: const Icon(Icons.flight_takeoff_rounded, color: Colors.white, size: 18),
-                    label: const Text('Uç', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
+                    label: Text(loc('Uç', 'Fly'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
                     onPressed: () {
                       Navigator.pop(ctx);
                       _animatedFlightMove(LatLng(place.lat, place.lng), 16.5);
@@ -2064,9 +2074,9 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                   elevation: 0,
                 ),
                 icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
-                label: const Text(
-                  'Bu Konumu Mesajla Yanıtla / Paylaş',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                label: Text(
+                  loc('Bu Konumu Mesajla Yanıtla / Paylaş', 'Share Location in Chat'),
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
                 ),
                 onPressed: () {
                   Navigator.pop(ctx);
@@ -2097,7 +2107,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                   ),
                   icon: Icon(Icons.favorite_rounded, color: LoveraColors.primary, size: 18),
                   label: Text(
-                    'Buluşma Talebi Gönder',
+                    loc('Buluşma Talebi Gönder', 'Send Meetup Request'),
                     style: TextStyle(color: LoveraColors.primary, fontWeight: FontWeight.w800, fontSize: 13),
                   ),
                   onPressed: () {
@@ -2129,7 +2139,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     HapticFeedback.heavyImpact();
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final partnerName = partner?.name ?? 'Partnerin';
+    final partnerName = partner?.name ?? loc('Partnerin', 'Partner');
 
     // Konum başlığı ve detay metni (Örn: "🏠 Evim" veya "İstanbul · 41.0822, 28.9323")
     final String locationTitle;
@@ -2141,7 +2151,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     } else if (partner?.city != null && partner!.city!.isNotEmpty) {
       locationTitle = '📍 ${partner.city}';
     } else {
-      locationTitle = '📍 Canlı Konum';
+      locationTitle = loc('📍 Canlı Konum', '📍 Live Location');
     }
 
     final String coordText = '${partnerPos.latitude.toStringAsFixed(5)}, ${partnerPos.longitude.toStringAsFixed(5)}';
@@ -2153,9 +2163,9 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
 
     final String distanceInfo = distanceMeters != null
         ? (distanceMeters >= 1000
-            ? '${(distanceMeters / 1000).toStringAsFixed(1)} km uzaklıkta'
-            : '${distanceMeters.round()} m uzaklıkta')
-        : 'Mesafe hesaplanıyor';
+            ? loc('${(distanceMeters / 1000).toStringAsFixed(1)} km uzaklıkta', '${(distanceMeters / 1000).toStringAsFixed(1)} km away')
+            : loc('${distanceMeters.round()} m uzaklıkta', '${distanceMeters.round()} m away'))
+        : loc('Mesafe hesaplanıyor', 'Calculating distance...');
 
     showModalBottomSheet<void>(
       context: context,
@@ -2164,7 +2174,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
       builder: (ctx) => Container(
         padding: const EdgeInsets.only(left: 20, right: 20, top: 14, bottom: 28),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E212B) : Colors.white,
+          color: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
           boxShadow: [
             BoxShadow(
@@ -2221,8 +2231,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                       Row(
                         children: [
                           Flexible(
-                            child: Text(
-                              '$partnerName\'in Mevcut Konumu',
+                            child: Text(loc('$partnerName\'in Mevcut Konumu', '$partnerName\'s Current Location'),
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w800,
@@ -2273,7 +2282,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
               width: double.infinity,
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF282B37) : const Color(0xFFF3F4F6),
+                color: isDark ? LoveraColors.darkBorder : LoveraColors.lightSurfaceAlt,
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(
                   color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.04),
@@ -2284,10 +2293,10 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.near_me_rounded, size: 14, color: LoveraColors.secondary),
+                      Icon(Icons.near_me_rounded, size: 14, color: LoveraColors.secondary),
                       const SizedBox(width: 6),
                       Text(
-                        'KOORDİNAT VE DETAY',
+                        loc('KOORDİNAT VE DETAY', 'COORDINATES & DETAILS'),
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w800,
@@ -2334,9 +2343,9 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                       ),
                     ),
                     icon: const Icon(Icons.copy_rounded, size: 18),
-                    label: const Text(
-                      'Kopyala',
-                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                    label: Text(
+                      loc('Kopyala', 'Copy'),
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
                     ),
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: fullLocationText));
@@ -2348,7 +2357,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                             children: [
                               const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
                               const SizedBox(width: 10),
-                              Expanded(child: Text('$partnerName\'in konumu panoya kopyalandı! 📋')),
+                              Expanded(child: Text(loc('$partnerName\'in konumu panoya kopyalandı! 📋', '$partnerName\'s location copied to clipboard! 📋'))),
                             ],
                           ),
                           backgroundColor: const Color(0xFF10B981),
@@ -2373,9 +2382,9 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                       elevation: 0,
                     ),
                     icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
-                    label: const Text(
-                      'Mesajla Yanıtla',
-                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                    label: Text(
+                      loc('Mesajla Yanıtla', 'Reply with Message'),
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
                     ),
                     onPressed: () {
                       Navigator.pop(ctx);
@@ -2410,6 +2419,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final palette = ref.watch(themePaletteProvider);
     final partner = ref.watch(partnerProvider);
     final currentUser = ref.watch(currentUserProvider);
     final providerPlaces = ref.watch(savedPlacesProvider);
@@ -2468,7 +2478,9 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     final initialCenter = effectivePartnerPos ?? effectiveMyPos ?? const LatLng(39.0, 35.0);
     final initialZoom = (effectivePartnerPos != null || effectiveMyPos != null) ? 15.0 : 6.0;
 
-    final mapBgColor = isDark ? const Color(0xFF141620) : const Color(0xFFE8EEF3);
+    final mapBgColor = isDark
+        ? const Color(0xFF0E1015)
+        : const Color(0xFFE8EEF3);
 
     // Kayıtlı bir yerde bulunma kontrolü (45m içi ise yer rozeti avatar rozetiyle birleşir)
     SavedPlace? myCurrentPlace;
@@ -2494,7 +2506,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
 
     // Avatar veya Aktif Buluşma ile birleşen yerleri bağımsız yer pinleri katmanından çıkar (çift pin oluşmasın)
     final standalonePlaces = currentSavedPlaces.where((p) {
-      if (p.title.toLowerCase().contains('seçilen')) return false;
+      if (p.title.toLowerCase().contains('seçilen') || p.title.toLowerCase().contains('selected')) return false;
       if (p.id == myCurrentPlace?.id || p.id == partnerCurrentPlace?.id) return false;
       if (activeMeeting != null) {
         final distToMeeting = Geolocator.distanceBetween(activeMeeting.lat, activeMeeting.lng, p.lat, p.lng);
@@ -2562,6 +2574,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
             children: [
               // Yüksek Hızlı, Filigransız Google Harita Katmanı (Koyu Modda Snap Gece Matrisi)
               TileLayer(
+                key: ValueKey('tiles_$isDark'),
                 urlTemplate: 'https://{s}.google.com/vt/lyrs=m&hl=tr&x={x}&y={y}&z={z}',
                 subdomains: const ['mt0', 'mt1', 'mt2', 'mt3'],
                 userAgentPackageName: 'com.lovera.app.lovera',
@@ -2605,8 +2618,8 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                         name: currentUser?.name ?? 'Ben',
                         avatarUrl: currentUser?.avatarUrl,
                         batteryLevel: currentUser?.batteryLevel,
-                        borderColor: const Color(0xFF388AF6), // Okyanus Mavisi Rozet
-                        glowColor: const Color(0xFF388AF6).withValues(alpha: 0.35),
+                        borderColor: palette.id == ThemePalette.classic ? const Color(0xFF388AF6) : palette.secondary,
+                        glowColor: (palette.id == ThemePalette.classic ? const Color(0xFF388AF6) : palette.secondary).withValues(alpha: 0.40),
                         isMe: true,
                         isOnline: true,
                         isDark: isDark,
@@ -2627,12 +2640,8 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                         name: partner?.name ?? 'Partner',
                         avatarUrl: partner?.avatarUrl,
                         batteryLevel: partner?.batteryLevel,
-                        borderColor: isPartnerOnline
-                            ? const Color(0xFF10B981)
-                            : LoveraColors.primary,
-                        glowColor: isPartnerOnline
-                            ? const Color(0xFF10B981).withValues(alpha: 0.5)
-                            : LoveraColors.primary.withValues(alpha: 0.35),
+                        borderColor: isDark ? palette.primaryDark : palette.primary,
+                        glowColor: (isDark ? palette.primaryDark : palette.primary).withValues(alpha: 0.50),
                         isMe: false,
                         isOnline: isPartnerOnline,
                         isDark: isDark,
@@ -2703,13 +2712,13 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                           HapticFeedback.mediumImpact();
                           final meetingPlace = SavedPlace(
                             id: 'active_meeting',
-                            title: activeMeeting.title.isNotEmpty ? activeMeeting.title : 'Buluşma Noktası',
+                            title: activeMeeting.title.isNotEmpty ? activeMeeting.title : loc('Buluşma Noktası', 'Meetup Point'),
                             iconEmoji: '💖',
                             lat: activeMeeting.lat,
                             lng: activeMeeting.lng,
                             category: 'meeting',
                             createdBy: currentUser?.id ?? '',
-                            createdByName: 'Buluşma Noktası',
+                            createdByName: loc('Buluşma Noktası', 'Meetup Point'),
                             createdAt: DateTime.now(),
                           );
                           _showPlaceDetailsDialog(meetingPlace);
@@ -2737,10 +2746,10 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                                 children: [
                                   const Text('💖', style: TextStyle(fontSize: 13)),
                                   const SizedBox(width: 4),
-                                  const Flexible(
+                                  Flexible(
                                     child: Text(
-                                      'Buluşma',
-                                      style: TextStyle(
+                                      loc('Buluşma', 'Meetup'),
+                                      style: const TextStyle(
                                         color: Colors.white,
                                         fontSize: 12,
                                         fontWeight: FontWeight.w800,
@@ -2753,7 +2762,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                               ),
                             ),
                             const SizedBox(height: 2),
-                            const CustomPaint(
+                            CustomPaint(
                               size: Size(10, 6),
                               painter: _TrianglePainter(color: LoveraColors.primary),
                             ),
@@ -2773,11 +2782,11 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF3B82F6),
+                              color: LoveraColors.primary,
                               borderRadius: BorderRadius.circular(12),
                               boxShadow: [
                                 BoxShadow(
-                                  color: const Color(0xFF3B82F6).withValues(alpha: 0.4),
+                                  color: LoveraColors.primary.withValues(alpha: 0.4),
                                   blurRadius: 8,
                                   offset: const Offset(0, 3),
                                 ),
@@ -2795,9 +2804,9 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                             ),
                           ),
                           const SizedBox(height: 2),
-                          const Icon(
+                          Icon(
                             Icons.location_on_rounded,
-                            color: Color(0xFF3B82F6),
+                            color: LoveraColors.primary,
                             size: 32,
                           ),
                         ],
@@ -2818,7 +2827,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                   _GlassButton(
                     icon: Icons.arrow_back_ios_new_rounded,
                     iconSize: 18,
-                    tooltip: 'Geri',
+                    tooltip: loc('Geri', 'Back'),
                     isDark: isDark,
                     onTap: () {
                       if (widget.onBackToHome != null) {
@@ -2842,7 +2851,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                             child: _GlassButton(
                               icon: Icons.explore_rounded,
                               iconColor: LoveraColors.primary,
-                              tooltip: 'Kuzeyi Göster (Sıfırla)',
+                              tooltip: loc('Kuzeyi Göster (Sıfırla)', 'Reset Compass to North'),
                               isDark: isDark,
                               onTap: () {
                                 _resetCompassToNorth();
@@ -2854,7 +2863,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                       _GlassButton(
                         icon: Icons.add_location_alt_rounded,
                         iconColor: LoveraColors.primary,
-                        tooltip: 'Konum Etiketle',
+                        tooltip: loc('Konum Etiketle', 'Tag Location'),
                         isDark: isDark,
                         onTap: () {
                           final targetPoint = myLatLng ?? _mapController.camera.center;
@@ -2866,7 +2875,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                         _GlassButton(
                           icon: Icons.all_inclusive_rounded,
                           iconColor: LoveraColors.primary,
-                          tooltip: 'İkimizi Göster',
+                          tooltip: loc('İkimizi Göster', 'Show Both of Us'),
                           isDark: isDark,
                           onTap: () {
                             setState(() => _followTarget = _FollowTarget.none);
@@ -2914,8 +2923,8 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                             borderColor: Colors.white.withValues(alpha: 0.25),
                             shadowColor: LoveraColors.primary.withValues(alpha: 0.35),
                             isDark: isDark,
-                            label: partner?.name ?? 'Partner',
-                            tooltip: '${partner?.name ?? "Partner"}\'a Uç',
+                            label: partner?.name ?? loc('Partner', 'Partner'),
+                            tooltip: loc('${partner?.name ?? "Partner"}\'a Uç', 'Fly to ${partner?.name ?? "Partner"}'),
                             onTap: () {
                               setState(() => _followTarget = _FollowTarget.partner);
                               _animatedFlightMove(partnerLatLng, 16.0);
@@ -2930,17 +2939,17 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                             },
                           ),
 
-                        // 2. Kendi Konumuma Uç Butonu (Mavi Daire + Konum İkonu)
+                        // 2. Kendi Konumuma Uç Butonu (Seçili Temanın İkincil Rengi / Klasik Mavi)
                         if (myLatLng != null) ...[
                           const SizedBox(width: 12),
                           _QuickCircleActionButton(
                             iconWidget: const Icon(Icons.my_location_rounded, color: Colors.white, size: 25),
-                            bgColor: const Color(0xFF388AF6),
+                            bgColor: palette.id == ThemePalette.classic ? const Color(0xFF388AF6) : palette.secondary,
                             borderColor: Colors.white.withValues(alpha: 0.25),
-                            shadowColor: const Color(0xFF388AF6).withValues(alpha: 0.35),
+                            shadowColor: (palette.id == ThemePalette.classic ? const Color(0xFF388AF6) : palette.secondary).withValues(alpha: 0.35),
                             isDark: isDark,
-                            label: 'Ben',
-                            tooltip: 'Bana Dön',
+                            label: loc('Ben', 'Me'),
+                            tooltip: loc('Bana Dön', 'Center on Me'),
                             onTap: () async {
                               setState(() => _followTarget = _FollowTarget.me);
                               DeviceService().syncStatusToFirebase();
@@ -2958,8 +2967,8 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                             borderColor: Colors.white.withValues(alpha: 0.4),
                             shadowColor: LoveraColors.primary.withValues(alpha: 0.45),
                             isDark: isDark,
-                            label: 'Buluşma',
-                            tooltip: 'Buluşma Noktası',
+                            label: loc('Buluşma', 'Meetup'),
+                            tooltip: loc('Buluşma Noktası', 'Meetup Point'),
                             onTap: () {
                               HapticFeedback.selectionClick();
                               _animatedFlightMove(LatLng(activeMeeting.lat, activeMeeting.lng), 16.5);
@@ -2968,13 +2977,13 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                               HapticFeedback.mediumImpact();
                               final meetingPlace = SavedPlace(
                                 id: 'active_meeting',
-                                title: activeMeeting.title.isNotEmpty ? activeMeeting.title : 'Buluşma Noktası',
+                                title: activeMeeting.title.isNotEmpty ? activeMeeting.title : loc('Buluşma Noktası', 'Meetup Point'),
                                 iconEmoji: '💖',
                                 lat: activeMeeting.lat,
                                 lng: activeMeeting.lng,
                                 category: 'meeting',
                                 createdBy: currentUser?.id ?? '',
-                                createdByName: 'Buluşma Noktası',
+                                createdByName: loc('Buluşma Noktası', 'Meetup Point'),
                                 createdAt: DateTime.now(),
                               );
                               _showPlaceDetailsDialog(meetingPlace);
@@ -2984,7 +2993,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
 
                         // 4+. Kayıtlı Mekanlar (Büyük Emoji Butonları + Net Görünen Rozet + 'Ev' Etiketi)
                         ...currentSavedPlaces.where((place) {
-                          if (place.title.toLowerCase().contains('seçilen')) return false;
+                          if (place.title.toLowerCase().contains('seçilen') || place.title.toLowerCase().contains('selected')) return false;
                           if (activeMeeting != null) {
                             final distToMeeting = Geolocator.distanceBetween(activeMeeting.lat, activeMeeting.lng, place.lat, place.lng);
                             if (distToMeeting <= 30) return false;
@@ -3003,7 +3012,8 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                             displayLabel = 'Ev';
                           }
 
-                          // Kimin yeri olduğunu gösteren net ve belirgin köşe rozeti (Partner: Mor Kalp 💜, Ben: Mavi Kullanıcı 👤)
+                          final myAccentColor = palette.id == ThemePalette.classic ? const Color(0xFF388AF6) : palette.secondary;
+                          // Kimin yeri olduğunu gösteren net ve belirgin köşe rozeti
                           final Widget? cornerBadge = isPartnerPlace
                               ? Container(
                                   width: 18,
@@ -3012,7 +3022,7 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                                     color: LoveraColors.primary,
                                     shape: BoxShape.circle,
                                     border: Border.all(
-                                      color: isDark ? const Color(0xFF1E212B) : Colors.white,
+                                      color: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurface,
                                       width: 2,
                                     ),
                                     boxShadow: [
@@ -3032,15 +3042,15 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                                       width: 18,
                                       height: 18,
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFF388AF6),
+                                        color: myAccentColor,
                                         shape: BoxShape.circle,
                                         border: Border.all(
-                                          color: isDark ? const Color(0xFF1E212B) : Colors.white,
+                                          color: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurface,
                                           width: 2,
                                         ),
                                         boxShadow: [
                                           BoxShadow(
-                                            color: const Color(0xFF388AF6).withValues(alpha: 0.5),
+                                            color: myAccentColor.withValues(alpha: 0.5),
                                             blurRadius: 4,
                                             offset: const Offset(0, 1),
                                           ),
@@ -3059,10 +3069,10 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                                 place.iconEmoji,
                                 style: const TextStyle(fontSize: 25),
                               ),
-                              bgColor: isDark ? const Color(0xFF232734) : Colors.white,
+                              bgColor: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurface,
                               borderColor: isPartnerPlace
                                   ? LoveraColors.primary.withValues(alpha: 0.55)
-                                  : const Color(0xFF388AF6).withValues(alpha: 0.45),
+                                  : myAccentColor.withValues(alpha: 0.50),
                               shadowColor: isDark
                                   ? Colors.black.withValues(alpha: 0.4)
                                   : LoveraColors.primary.withValues(alpha: 0.18),
@@ -3161,20 +3171,18 @@ class _SnapAvatarMarker extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E212B) : Colors.white,
+                color: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurface,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: currentPlace != null
-                      ? const Color(0xFF10B981)
-                      : (isOnline
-                          ? const Color(0xFF10B981)
-                          : (isDark ? Colors.white.withValues(alpha: 0.15) : borderColor.withValues(alpha: 0.3))),
+                  color: (currentPlace != null || isOnline)
+                      ? borderColor
+                      : (isDark ? LoveraColors.darkBorder : borderColor.withValues(alpha: 0.35)),
                   width: (currentPlace != null || isOnline) ? 1.8 : 1.2,
                 ),
                 boxShadow: [
                   BoxShadow(
                     color: (currentPlace != null || isOnline)
-                        ? const Color(0xFF10B981).withValues(alpha: 0.4)
+                        ? borderColor.withValues(alpha: 0.4)
                         : Colors.black.withValues(alpha: isDark ? 0.35 : 0.14),
                     blurRadius: (currentPlace != null || isOnline) ? 10 : 8,
                     offset: const Offset(0, 3),
@@ -3199,7 +3207,7 @@ class _SnapAvatarMarker extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: isOnline
                             ? const Color(0xFF10B981)
-                            : (isMe ? const Color(0xFF388AF6) : const Color(0xFF94A3B8)),
+                            : borderColor,
                         shape: BoxShape.circle,
                         boxShadow: isOnline
                             ? [
@@ -3219,13 +3227,13 @@ class _SnapAvatarMarker extends StatelessWidget {
                     child: Text(
                       currentPlace != null
                           ? (currentPlace!.category == 'home' || currentPlace!.title.toLowerCase().contains('ev')
-                              ? '$name Evde'
-                              : '$name ${currentPlace!.title}\'de')
+                              ? loc('$name Evde', '$name at Home')
+                              : loc('$name ${currentPlace!.title}\'de', '$name at ${currentPlace!.title}'))
                           : name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: isDark ? Colors.white : const Color(0xFF1E2022),
+                        color: isDark ? LoveraColors.darkText : LoveraColors.textDark,
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
                       ),
@@ -3236,7 +3244,7 @@ class _SnapAvatarMarker extends StatelessWidget {
                     Text(
                       '%$batteryLevel',
                       style: TextStyle(
-                        color: isDark ? const Color(0xFFA0A6B2) : const Color(0xFF6B7280),
+                        color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
                       ),
@@ -3259,7 +3267,7 @@ class _SnapAvatarMarker extends StatelessWidget {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: const Color(0xFF10B981).withValues(alpha: 0.4),
+                        color: borderColor.withValues(alpha: 0.45),
                         width: 2,
                       ),
                     ),
@@ -3273,7 +3281,7 @@ class _SnapAvatarMarker extends StatelessWidget {
                       )
                       .fadeOut(duration: 1600.ms, curve: Curves.easeOut),
 
-                // 2. Snapchat Parlama Halkası (Canlıysa zümrüt yeşili neon, değilse marka rengi)
+                // 2. Snapchat Parlama Halkası (Seçili tema rengi)
                 Container(
                   width: 54,
                   height: 54,
@@ -3282,7 +3290,7 @@ class _SnapAvatarMarker extends StatelessWidget {
                     boxShadow: [
                       BoxShadow(
                         color: isOnline
-                            ? const Color(0xFF10B981).withValues(alpha: 0.65)
+                            ? borderColor.withValues(alpha: 0.65)
                             : glowColor,
                         blurRadius: isOnline ? 18 : 14,
                         spreadRadius: isOnline ? 3 : 2,
@@ -3296,10 +3304,10 @@ class _SnapAvatarMarker extends StatelessWidget {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF22252E) : Colors.white,
+                    color: isDark ? LoveraColors.darkSurface : LoveraColors.lightSurface,
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: isOnline ? const Color(0xFF10B981) : borderColor,
+                      color: borderColor,
                       width: 3,
                     ),
                   ),
@@ -3341,7 +3349,7 @@ class _SnapAvatarMarker extends StatelessWidget {
                   ),
                 ),
 
-                // 4. Alt köşe minik rozet (Mor zeminli beyaz kalp simgesi)
+                // 4. Alt köşe minik rozet (Tema renginde zeminli beyaz simge)
                 Positioned(
                   bottom: 0,
                   right: 0,
@@ -3349,15 +3357,15 @@ class _SnapAvatarMarker extends StatelessWidget {
                     width: 18,
                     height: 18,
                     decoration: BoxDecoration(
-                      color: isMe ? const Color(0xFF388AF6) : LoveraColors.primary,
+                      color: borderColor,
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: isDark ? const Color(0xFF22252E) : Colors.white,
+                        color: isDark ? LoveraColors.darkSurface : LoveraColors.lightSurface,
                         width: 1.5,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: (isMe ? const Color(0xFF388AF6) : LoveraColors.primary).withValues(alpha: 0.4),
+                          color: borderColor.withValues(alpha: 0.4),
                           blurRadius: 4,
                           offset: const Offset(0, 1),
                         ),
@@ -3379,7 +3387,7 @@ class _SnapAvatarMarker extends StatelessWidget {
             CustomPaint(
               size: const Size(10, 5),
               painter: _TrianglePainter(
-                color: isOnline ? const Color(0xFF10B981) : borderColor,
+                color: borderColor,
               ),
             ),
 
@@ -3393,9 +3401,7 @@ class _SnapAvatarMarker extends StatelessWidget {
                   width: 20,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: isOnline
-                        ? const Color(0xFF10B981).withValues(alpha: 0.3)
-                        : Colors.black.withValues(alpha: 0.22),
+                    color: borderColor.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(10),
                   ),
                 ),
@@ -3469,7 +3475,7 @@ class _QuickCircleActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textThemeColor = isDark ? Colors.white70 : const Color(0xFF2C303E);
+    final textThemeColor = isDark ? LoveraColors.darkText : LoveraColors.textDark;
 
     return Tooltip(
       message: tooltip,
@@ -3564,9 +3570,11 @@ class _SnapMapBottomCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cardBg = isDark ? const Color(0xFF1E212A).withValues(alpha: 0.96) : Colors.white.withValues(alpha: 0.96);
-    final titleColor = isDark ? Colors.white : const Color(0xFF1E2022);
-    final subColor = isDark ? const Color(0xFFA0A6B2) : const Color(0xFF6B7280);
+    final cardBg = isDark
+        ? LoveraColors.darkSurface.withValues(alpha: 0.96)
+        : LoveraColors.lightSurface.withValues(alpha: 0.96);
+    final titleColor = isDark ? LoveraColors.darkText : LoveraColors.textDark;
+    final subColor = isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted;
 
     return Material(
       color: Colors.transparent,
@@ -3575,7 +3583,7 @@ class _SnapMapBottomCard extends StatelessWidget {
           color: cardBg,
           borderRadius: BorderRadius.circular(26),
           border: Border.all(
-            color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.04),
+            color: isDark ? LoveraColors.darkBorder : LoveraColors.lightBorder,
           ),
           boxShadow: [
             BoxShadow(
@@ -3615,7 +3623,7 @@ class _SnapMapBottomCard extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'ARANIZDAKİ YOL MESAFESİ',
+                        loc('ARANIZDAKİ YOL MESAFESİ', 'ROAD DISTANCE BETWEEN YOU'),
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w800,
@@ -3625,7 +3633,7 @@ class _SnapMapBottomCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        distanceText ?? (partner == null ? 'Partner bekleniyor' : 'Mesafe hesaplanıyor...'),
+                        distanceText ?? (partner == null ? loc('Partner bekleniyor', 'Waiting for partner') : loc('Mesafe hesaplanıyor...', 'Calculating distance...')),
                         style: TextStyle(
                           fontSize: 19,
                           fontWeight: FontWeight.w900,
@@ -3638,7 +3646,7 @@ class _SnapMapBottomCard extends StatelessWidget {
                         Row(
                           children: [
                             if (partner.city != null) ...[
-                              const Icon(Icons.location_on_rounded, size: 12, color: LoveraColors.primary),
+                              Icon(Icons.location_on_rounded, size: 12, color: LoveraColors.primary),
                               const SizedBox(width: 2),
                               Text(
                                 '${partner.name} · ${partner.city}',
@@ -3673,7 +3681,7 @@ class _SnapMapBottomCard extends StatelessWidget {
                     color: LoveraColors.primary.withValues(alpha: 0.12),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.flight_takeoff_rounded, color: LoveraColors.primary, size: 18),
+                  child: Icon(Icons.flight_takeoff_rounded, color: LoveraColors.primary, size: 18),
                 ),
               ],
             ),
@@ -3704,14 +3712,16 @@ class _GlassButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveColor = iconColor ?? (isDark ? Colors.white : const Color(0xFF1E2022));
+    final effectiveColor = iconColor ?? (isDark ? LoveraColors.darkText : LoveraColors.textDark);
 
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E2028).withValues(alpha: 0.92) : Colors.white.withValues(alpha: 0.94),
+        color: isDark
+            ? LoveraColors.darkSurface.withValues(alpha: 0.94)
+            : LoveraColors.lightSurface.withValues(alpha: 0.95),
         shape: BoxShape.circle,
         border: Border.all(
-          color: isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.05),
+          color: isDark ? LoveraColors.darkBorder : LoveraColors.lightBorder,
         ),
         boxShadow: [
           BoxShadow(
@@ -3767,15 +3777,17 @@ class _SavedPlaceMarker extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E2028).withValues(alpha: 0.94) : Colors.white.withValues(alpha: 0.95),
+              color: isDark
+                  ? LoveraColors.darkSurface.withValues(alpha: 0.94)
+                  : LoveraColors.lightSurface.withValues(alpha: 0.95),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: LoveraColors.primary.withValues(alpha: 0.5),
+                color: LoveraColors.primary.withValues(alpha: 0.55),
                 width: 1.5,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.15),
+                  color: LoveraColors.primary.withValues(alpha: isDark ? 0.30 : 0.18),
                   blurRadius: 8,
                   offset: const Offset(0, 3),
                 ),
@@ -3798,7 +3810,7 @@ class _SavedPlaceMarker extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
-                      color: isDark ? Colors.white : const Color(0xFF1E2022),
+                      color: isDark ? LoveraColors.darkText : LoveraColors.textDark,
                     ),
                   ),
                 ),
@@ -3806,7 +3818,7 @@ class _SavedPlaceMarker extends StatelessWidget {
             ),
           ),
           // Minik Pin İğnesi
-          const CustomPaint(
+          CustomPaint(
             size: Size(10, 6),
             painter: _TrianglePainter(
               color: LoveraColors.primary,

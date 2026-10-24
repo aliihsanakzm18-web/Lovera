@@ -1,8 +1,11 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
+import '../localization/app_strings.dart';
+import '../theme/theme_palette.dart';
 
 /// Hem Android hem iOS Ana Ekran Widget'larına partner verilerini ve
 /// gün sayacını senkronize eden servis.
@@ -36,7 +39,7 @@ class WidgetSyncService {
       // 2. Partner Adı
       final partnerName = (partner?.name != null && partner!.name.trim().isNotEmpty)
           ? partner.name.trim()
-          : 'Sevgilim';
+          : loc('Sevgilim', 'Partner');
 
       // 3. Batarya Seviyesi
       final batteryLevel = partner?.batteryLevel != null
@@ -46,10 +49,10 @@ class WidgetSyncService {
       // 4. Durum (Evde, Yürüyor, Arabada, Dışarıda vb.) ve Emoji
       final statusInfo = resolveMovementOrPlaceStatus(partner, savedPlaces);
       final statusEmoji = statusInfo['emoji'] ?? '📍';
-      final statusText = statusInfo['title'] ?? 'Bilinmiyor';
+      final statusText = statusInfo['title'] ?? loc('Bilinmiyor', 'Unknown');
 
       // 5. Son Görülme / Canlılık
-      String lastSeen = 'Çevrimdışı';
+      String lastSeen = loc('Çevrimdışı', 'Offline');
       if (partner?.lastActive != null) {
         // Hem partner.lastActive hem now'ı UTC olarak karşılaştır
         final partnerActiveUtc = partner!.lastActive!.isUtc
@@ -60,25 +63,26 @@ class WidgetSyncService {
         final diffMinutes = diff.inMinutes.abs();
 
         if (partner.isAppOpen == true && diffMinutes < 3) {
-          lastSeen = 'Şimdi aktif';
+          lastSeen = loc('Şimdi aktif', 'Active now');
         } else if (diffMinutes < 1) {
-          lastSeen = 'Şimdi';
+          lastSeen = loc('Şimdi', 'Just now');
         } else if (diffMinutes == 1) {
-          lastSeen = '1 dk önce';
+          lastSeen = loc('1 dk önce', '1m ago');
         } else if (diffMinutes < 60) {
-          lastSeen = '$diffMinutes dk önce';
+          lastSeen = loc('$diffMinutes dk önce', '${diffMinutes}m ago');
         } else if (diff.inHours.abs() < 24) {
-          lastSeen = '${diff.inHours.abs()} sa önce';
+          lastSeen = loc('${diff.inHours.abs()} sa önce', '${diff.inHours.abs()}h ago');
         } else {
-          lastSeen = '${diff.inDays.abs()} gün önce';
+          lastSeen = loc('${diff.inDays.abs()} gün önce', '${diff.inDays.abs()}d ago');
         }
       } else if (partner?.isAppOpen == true) {
-        lastSeen = 'Şimdi aktif';
+        lastSeen = loc('Şimdi aktif', 'Active now');
       } else {
-        lastSeen = 'Çevrimdışı';
+        lastSeen = loc('Çevrimdışı', 'Offline');
       }
 
       // Verileri HomeWidget saklama alanına kaydet
+      await HomeWidget.saveWidgetData<String>('app_language', currentAppLanguage == AppLanguage.en ? 'en' : 'tr');
       await HomeWidget.saveWidgetData<String>('days_count', daysCount);
       await HomeWidget.saveWidgetData<String>('partner_name', partnerName);
       await HomeWidget.saveWidgetData<String>('battery_level', batteryLevel);
@@ -90,6 +94,9 @@ class WidgetSyncService {
           : 0;
       await HomeWidget.saveWidgetData<int>('last_active_millis', partnerActiveMillis);
       await HomeWidget.saveWidgetData<bool>('partner_is_app_open', partner?.isAppOpen == true);
+
+      // Aktif tema paketinin renklerini de HomeWidget'a kaydet
+      await _savePaletteColorsToHomeWidget(ActivePalette.current);
 
       // Her iki platformun widget'larını güncelle
       await HomeWidget.updateWidget(
@@ -110,7 +117,7 @@ class WidgetSyncService {
     List<SavedPlace> savedPlaces,
   ) {
     if (p == null) {
-      return {'emoji': '❤️', 'title': 'Bağlantı bekleniyor'};
+      return {'emoji': '❤️', 'title': loc('Bağlantı bekleniyor', 'Waiting for connection')};
     }
 
     // 1. Kayıtlı mekan kontrolü (Evim, İş, vb. <= 85 metre GPS toleransı)
@@ -120,7 +127,7 @@ class WidgetSyncService {
         if (dist <= 85) {
           return {
             'emoji': place.iconEmoji.isNotEmpty ? place.iconEmoji : '🏠',
-            'title': place.title,
+            'title': localizePlaceTitle(place.title),
           };
         }
       }
@@ -131,12 +138,12 @@ class WidgetSyncService {
     if (speedKmH >= 20.0) {
       return {
         'emoji': '🚗',
-        'title': 'Arabada',
+        'title': loc('Arabada', 'Driving'),
       };
     } else if (speedKmH >= 2.5) {
       return {
         'emoji': '🚶',
-        'title': 'Yürüyor',
+        'title': loc('Yürüyor', 'Walking'),
       };
     }
 
@@ -144,7 +151,7 @@ class WidgetSyncService {
     if (p.lat != null && p.lng != null) {
       return {
         'emoji': '📍',
-        'title': 'Dışarıda',
+        'title': loc('Dışarıda', 'Outdoors'),
       };
     }
 
@@ -160,7 +167,7 @@ class WidgetSyncService {
 
     return {
       'emoji': '✨',
-      'title': 'Haber bekliyor',
+      'title': loc('Haber bekliyor', 'Awaiting news'),
     };
   }
 
@@ -203,6 +210,55 @@ class WidgetSyncService {
     }
   }
 
+  static String _colorToHex(Color c) {
+    final argb = c.toARGB32();
+    return '#${(argb & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
+  }
+
+  static Future<void> _savePaletteColorsToHomeWidget(ThemePaletteData p) async {
+    await HomeWidget.saveWidgetData<String>('widget_palette_id', p.id.name);
+    await HomeWidget.saveWidgetData<String>('widget_color_primary', _colorToHex(p.primary));
+    await HomeWidget.saveWidgetData<String>('widget_color_primary_dark', _colorToHex(p.primaryDark));
+    await HomeWidget.saveWidgetData<String>('widget_color_primary_deep', _colorToHex(p.primaryDeep));
+    await HomeWidget.saveWidgetData<String>('widget_color_primary_soft', _colorToHex(p.primarySoft));
+    await HomeWidget.saveWidgetData<String>('widget_color_secondary', _colorToHex(p.secondary));
+    await HomeWidget.saveWidgetData<String>('widget_color_light_bg', _colorToHex(p.lightBg));
+    await HomeWidget.saveWidgetData<String>('widget_color_light_surface', _colorToHex(p.lightSurface));
+    await HomeWidget.saveWidgetData<String>('widget_color_light_surface_alt', _colorToHex(p.lightSurfaceAlt));
+    await HomeWidget.saveWidgetData<String>('widget_color_light_border', _colorToHex(p.lightBorder));
+    await HomeWidget.saveWidgetData<String>('widget_color_text_dark', _colorToHex(p.textDark));
+    await HomeWidget.saveWidgetData<String>('widget_color_text_muted', _colorToHex(p.textMuted));
+    await HomeWidget.saveWidgetData<String>('widget_color_dark_bg', _colorToHex(p.darkBg));
+    await HomeWidget.saveWidgetData<String>('widget_color_dark_surface', _colorToHex(p.darkSurface));
+    await HomeWidget.saveWidgetData<String>('widget_color_dark_surface_alt', _colorToHex(p.darkSurfaceAlt));
+    await HomeWidget.saveWidgetData<String>('widget_color_dark_border', _colorToHex(p.darkBorder));
+    await HomeWidget.saveWidgetData<String>('widget_color_dark_text', _colorToHex(p.darkText));
+    await HomeWidget.saveWidgetData<String>('widget_color_dark_text_muted', _colorToHex(p.darkTextMuted));
+  }
+
+  /// Seçili tema paketinin renklerini widget'lara senkronize eder ve widget'ları günceller
+  static Future<void> syncWidgetPalette(ThemePaletteData p) async {
+    try {
+      try {
+        await HomeWidget.setAppGroupId(appGroupId);
+      } catch (_) {}
+      await _savePaletteColorsToHomeWidget(p);
+      await HomeWidget.updateWidget(
+        name: androidWidgetName,
+        androidName: androidWidgetName,
+        iOSName: iOSWidgetName,
+      );
+      await HomeWidget.updateWidget(
+        name: androidDrawingWidgetName,
+        androidName: androidDrawingWidgetName,
+        iOSName: iOSDrawingWidgetName,
+      );
+      debugPrint('[WidgetSyncService] Widget palette synced: ${p.id.name}');
+    } catch (e) {
+      debugPrint('[WidgetSyncService] syncWidgetPalette error: $e');
+    }
+  }
+
   /// Widget temasını ayarlar ('app', 'dark', 'light') ve widget'ları günceller
   /// [savedPreferenceMode]: Kullanıcının ayarlarda seçtiği tercih ('app', 'dark', 'light')
   /// [effectiveTheme]: Widget'ların native render için kullanacağı somut tema ('dark', 'light')
@@ -214,6 +270,7 @@ class WidgetSyncService {
       
       // Native Kotlin widget'ların okuduğu 'widget_theme' değeri ('dark' veya 'light')
       await HomeWidget.saveWidgetData<String>('widget_theme', effectiveTheme);
+      await _savePaletteColorsToHomeWidget(ActivePalette.current);
 
       // Ayarlar ekranının ve Riverpod/Main'in okuduğu tercih ('app', 'dark', 'light')
       final prefs = await SharedPreferences.getInstance();
@@ -242,7 +299,7 @@ class WidgetSyncService {
     required String imagePath,
     required String senderName,
     String? imageBase64,
-    String timeAgo = 'Şimdi',
+    String? timeAgo,
     int? timestampMillis,
   }) async {
     try {
@@ -250,6 +307,7 @@ class WidgetSyncService {
         await HomeWidget.setAppGroupId(appGroupId);
       } catch (_) {}
 
+      final effectiveTimeAgo = timeAgo ?? loc('Şimdi', 'Just now');
       await HomeWidget.saveWidgetData<String>('drawing_image_path', imagePath);
       if (imageBase64 != null && imageBase64.isNotEmpty) {
         // Base64 doğrudan App Group UserDefaults'a kaydedilerek iOS sandbox sınırı aşılır
@@ -257,7 +315,7 @@ class WidgetSyncService {
       }
       await HomeWidget.saveWidgetData<String>('drawing_sender', senderName);
       await HomeWidget.saveWidgetData<String>('drawing_sender_name', senderName);
-      await HomeWidget.saveWidgetData<String>('drawing_time_ago', timeAgo);
+      await HomeWidget.saveWidgetData<String>('drawing_time_ago', effectiveTimeAgo);
       if (timestampMillis != null) {
         await HomeWidget.saveWidgetData<int>('drawing_timestamp_millis', timestampMillis);
       } else {
@@ -354,12 +412,13 @@ class WidgetSyncService {
       await prefs.remove('widget_custom_bg_path');
 
       // 2. Partner Widget verilerini sıfırla
+      await HomeWidget.saveWidgetData<String>('app_language', currentAppLanguage == AppLanguage.en ? 'en' : 'tr');
       await HomeWidget.saveWidgetData<String>('days_count', '0');
-      await HomeWidget.saveWidgetData<String>('partner_name', 'Eşleşme Yok');
+      await HomeWidget.saveWidgetData<String>('partner_name', loc('Eşleşme Yok', 'No Partner'));
       await HomeWidget.saveWidgetData<String>('battery_level', '%--');
-      await HomeWidget.saveWidgetData<String>('status_text', 'Bağlantı bekleniyor');
+      await HomeWidget.saveWidgetData<String>('status_text', loc('Bağlantı bekleniyor', 'Waiting for connection'));
       await HomeWidget.saveWidgetData<String>('status_emoji', '💔');
-      await HomeWidget.saveWidgetData<String>('last_seen', 'Çevrimdışı');
+      await HomeWidget.saveWidgetData<String>('last_seen', loc('Çevrimdışı', 'Offline'));
       await HomeWidget.saveWidgetData<int>('last_active_millis', 0);
       await HomeWidget.saveWidgetData<bool>('partner_is_app_open', false);
       await HomeWidget.saveWidgetData<String>('widget_bg_image_path', '');

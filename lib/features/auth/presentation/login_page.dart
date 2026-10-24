@@ -1,11 +1,10 @@
-import 'dart:io';
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/localization/app_strings.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
@@ -33,7 +32,7 @@ class LoginPage extends ConsumerWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Google ile giriş yapılamadı: $e'),
+            content: Text(loc('Google ile giriş yapılamadı: $e', 'Could not sign in with Google: $e')),
             backgroundColor: LoveraColors.primary,
           ),
         );
@@ -57,7 +56,7 @@ class LoginPage extends ConsumerWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Apple ile giriş yapılamadı: $e'),
+            content: Text(loc('Apple ile giriş yapılamadı: $e', 'Could not sign in with Apple: $e')),
             backgroundColor: LoveraColors.primary,
           ),
         );
@@ -118,14 +117,17 @@ class LoginPage extends ConsumerWidget {
                 style: theme.textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w800)),
             const SizedBox(height: 10),
             Text(
-              'Sadece ikinize özel,\nsakin ve samimi bir alan.',
+              loc(
+                'Sadece ikinize özel,\nsakin ve samimi bir alan.',
+                'A private, peaceful,\nand intimate space just for the two of you.',
+              ),
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyLarge?.copyWith(color: LoveraColors.textMuted, height: 1.45),
             ).animate(delay: 150.ms).fadeIn(),
             const Spacer(flex: 3),
             // Apple ile Giriş & Google ile Giriş (Guideline 4.8: Her iki platformda da görünür)
             _AuthButton(
-              label: 'Apple ile devam et',
+              label: loc('Apple ile devam et', 'Continue with Apple'),
               icon: const Icon(Icons.apple, color: Colors.white, size: 24),
               background: const Color(0xFF1C1C1E),
               foreground: Colors.white,
@@ -133,7 +135,7 @@ class LoginPage extends ConsumerWidget {
             ).animate(delay: 250.ms).fadeIn().slideY(begin: 0.2),
             const SizedBox(height: 12),
             _AuthButton(
-              label: 'Google ile devam et',
+              label: loc('Google ile devam et', 'Continue with Google'),
               icon: const Text('G',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Color(0xFFDB4437))),
               background: theme.colorScheme.surface,
@@ -143,8 +145,8 @@ class LoginPage extends ConsumerWidget {
             ).animate(delay: 300.ms).fadeIn().slideY(begin: 0.2),
             const SizedBox(height: 12),
             _AuthButton(
-              label: 'E-posta ile devam et',
-              icon: const Icon(Icons.mail_outline_rounded, color: LoveraColors.primary, size: 22),
+              label: loc('E-posta ile devam et', 'Continue with email'),
+              icon: Icon(Icons.mail_outline_rounded, color: LoveraColors.primary, size: 22),
               background: LoveraColors.primary.withValues(alpha: 0.12),
               foreground: LoveraColors.primary,
               onTap: () => _openEmailSheet(context, ref),
@@ -158,10 +160,10 @@ class LoginPage extends ConsumerWidget {
                 text: TextSpan(
                   style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted, height: 1.4),
                   children: [
-                    const TextSpan(text: 'Devam ederek '),
+                    TextSpan(text: loc('Devam ederek ', 'By continuing, you accept our ')),
                     TextSpan(
-                      text: 'Kullanım Koşulları',
-                      style: const TextStyle(
+                      text: loc('Kullanım Koşulları', 'Terms of Use'),
+                      style: TextStyle(
                         color: LoveraColors.primary,
                         fontWeight: FontWeight.w600,
                         decoration: TextDecoration.underline,
@@ -169,10 +171,10 @@ class LoginPage extends ConsumerWidget {
                       recognizer: TapGestureRecognizer()
                         ..onTap = () => _openLegalDoc(context, LegalDocType.termsOfUse),
                     ),
-                    const TextSpan(text: ' ve '),
+                    TextSpan(text: loc(' ve ', ' and ')),
                     TextSpan(
-                      text: 'Gizlilik Politikası',
-                      style: const TextStyle(
+                      text: loc('Gizlilik Politikası', 'Privacy Policy'),
+                      style: TextStyle(
                         color: LoveraColors.primary,
                         fontWeight: FontWeight.w600,
                         decoration: TextDecoration.underline,
@@ -180,7 +182,7 @@ class LoginPage extends ConsumerWidget {
                       recognizer: TapGestureRecognizer()
                         ..onTap = () => _openLegalDoc(context, LegalDocType.privacyPolicy),
                     ),
-                    const TextSpan(text: '’nı kabul etmiş olursun.'),
+                    TextSpan(text: loc('’nı kabul etmiş olursun.', '.')),
                   ],
                 ),
               ),
@@ -272,7 +274,7 @@ class _EmailSheetState extends State<_EmailSheet> {
   Future<void> _submit() async {
     if (!_form.currentState!.validate()) return;
     if (_register && !_ageConfirmed) {
-      setState(() => _error = 'Devam etmek için 18 yaşından büyük olduğunu onaylamalısın.');
+      setState(() => _error = loc('Devam etmek için 18 yaşından büyük olduğunu onaylamalısın.', 'You must confirm you are over 18 to continue.'));
       return;
     }
     setState(() {
@@ -299,20 +301,20 @@ class _EmailSheetState extends State<_EmailSheet> {
     } on FirebaseAuthException catch (e) {
       setState(() {
         if (e.code == 'user-not-found' || e.code == 'wrong-password' || e.code == 'invalid-credential' || e.code == 'INVALID_LOGIN_CREDENTIALS') {
-          _error = 'E-posta veya şifre hatalı.';
+          _error = loc('E-posta veya şifre hatalı.', 'Incorrect email or password.');
         } else if (e.code == 'email-already-in-use') {
-          _error = 'Bu e-posta adresi zaten kullanımda.';
+          _error = loc('Bu e-posta adresi zaten kullanımda.', 'This email address is already in use.');
         } else if (e.code == 'weak-password') {
-          _error = 'Şifre çok zayıf. En az 6 karakter seçin.';
+          _error = loc('Şifre çok zayıf. En az 6 karakter seçin.', 'Password is too weak. Use at least 6 characters.');
         } else if (e.code == 'network-request-failed') {
-          _error = 'İnternet bağlantınızı kontrol edin.';
+          _error = loc('İnternet bağlantınızı kontrol edin.', 'Please check your internet connection.');
         } else {
-          _error = e.message ?? 'Giriş yapılamadı.';
+          _error = e.message ?? loc('Giriş yapılamadı.', 'Could not sign in.');
         }
       });
     } catch (e) {
       setState(() {
-        _error = 'Beklenmeyen bir hata oluştu: $e';
+        _error = loc('Beklenmeyen bir hata oluştu: $e', 'An unexpected error occurred: $e');
       });
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -330,7 +332,7 @@ class _EmailSheetState extends State<_EmailSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(_register ? 'Hesap oluştur' : 'Tekrar hoş geldin',
+            Text(_register ? loc('Hesap oluştur', 'Create account') : loc('Tekrar hoş geldin', 'Welcome back'),
                 textAlign: TextAlign.center,
                 style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
             const SizedBox(height: 18),
@@ -338,15 +340,15 @@ class _EmailSheetState extends State<_EmailSheet> {
               TextFormField(
                 controller: _username,
                 textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(
-                  hintText: 'Kullanıcı adı',
-                  prefixIcon: Icon(Icons.person_outline_rounded),
+                decoration: InputDecoration(
+                  hintText: loc('Kullanıcı adı', 'Username'),
+                  prefixIcon: const Icon(Icons.person_outline_rounded),
                 ),
                 validator: (v) {
                   final t = v?.trim() ?? '';
-                  if (t.length < 3) return 'En az 3 karakter olmalı';
+                  if (t.length < 3) return loc('En az 3 karakter olmalı', 'Must be at least 3 characters');
                   if (!RegExp(r'^[a-zA-Z0-9_.çğıöşüÇĞİÖŞÜ]+$').hasMatch(t)) {
-                    return 'Boşluk ve özel karakter kullanma';
+                    return loc('Boşluk ve özel karakter kullanma', 'Do not use spaces or special characters');
                   }
                   return null;
                 },
@@ -358,7 +360,7 @@ class _EmailSheetState extends State<_EmailSheet> {
                 dense: true,
                 contentPadding: EdgeInsets.zero,
                 controlAffinity: ListTileControlAffinity.leading,
-                title: const Text('18 yaşından büyük olduğumu onaylıyorum.',
+                title: Text(loc('18 yaşından büyük olduğumu onaylıyorum.', 'I confirm that I am over 18.'),
                     style: TextStyle(fontSize: 13)),
               ),
             ],
@@ -366,13 +368,13 @@ class _EmailSheetState extends State<_EmailSheet> {
               controller: _email,
               keyboardType: TextInputType.emailAddress,
               textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(
-                hintText: 'E-posta',
-                prefixIcon: Icon(Icons.mail_outline_rounded),
+              decoration: InputDecoration(
+                hintText: loc('E-posta', 'Email'),
+                prefixIcon: const Icon(Icons.mail_outline_rounded),
               ),
               validator: (v) => RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(v?.trim() ?? '')
                   ? null
-                  : 'Geçerli bir e-posta gir',
+                  : loc('Geçerli bir e-posta gir', 'Enter a valid email'),
             ),
             const SizedBox(height: 12),
             TextFormField(
@@ -381,14 +383,14 @@ class _EmailSheetState extends State<_EmailSheet> {
               textInputAction: TextInputAction.done,
               onFieldSubmitted: (_) => _submit(),
               decoration: InputDecoration(
-                hintText: 'Şifre',
+                hintText: loc('Şifre', 'Password'),
                 prefixIcon: const Icon(Icons.lock_outline_rounded),
                 suffixIcon: IconButton(
                   icon: Icon(_obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined),
                   onPressed: () => setState(() => _obscure = !_obscure),
                 ),
               ),
-              validator: (v) => (v ?? '').length < 6 ? 'En az 6 karakter olmalı' : null,
+              validator: (v) => (v ?? '').length < 6 ? loc('En az 6 karakter olmalı', 'Must be at least 6 characters') : null,
             ),
             if (_error != null) ...[
               const SizedBox(height: 12),
@@ -400,7 +402,7 @@ class _EmailSheetState extends State<_EmailSheet> {
                 ),
                 child: Text(
                   _error!,
-                  style: const TextStyle(color: LoveraColors.primary, fontSize: 13),
+                  style: TextStyle(color: LoveraColors.primary, fontSize: 13),
                   textAlign: TextAlign.center,
                 ),
               ),
@@ -414,12 +416,12 @@ class _EmailSheetState extends State<_EmailSheet> {
                       height: 20,
                       child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                     )
-                  : Text(_register ? 'Kayıt ol' : 'Giriş yap'),
+                  : Text(_register ? loc('Kayıt ol', 'Sign up') : loc('Giriş yap', 'Sign in')),
             ),
             const SizedBox(height: 6),
             TextButton(
               onPressed: _loading ? null : () => setState(() => _register = !_register),
-              child: Text(_register ? 'Zaten hesabım var' : 'Hesabın yok mu? Kayıt ol'),
+              child: Text(_register ? loc('Zaten hesabım var', 'I already have an account') : loc('Hesabın yok mu? Kayıt ol', "Don't have an account? Sign up")),
             ),
           ],
         ),

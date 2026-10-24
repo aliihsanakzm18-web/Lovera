@@ -6,9 +6,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/localization/app_strings.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/widget_sync_service.dart';
@@ -16,7 +16,6 @@ import '../../../core/state/app_state.dart';
 import '../../auth/presentation/login_page.dart';
 import '../../auth/presentation/pairing_view.dart';
 import '../../dashboard/presentation/main_navigation_shell.dart';
-import 'permissions_page.dart';
 import 'welcome_page.dart';
 
 /// Giriş -> (Gerekliyse Hoş Geldin) -> (Eşleşmemişse Eşleşme) -> (Eksik İzin Varsa İzinler) -> Ana ekran
@@ -121,6 +120,27 @@ class _OnboardingFlowState extends ConsumerState<OnboardingFlow> {
       avatarUrl = data['avatarUrl'] as String?;
       widgetBgUrl = data['widgetBgUrl'] as String?;
       birthDate = data['birthDate'] as String?;
+
+      // Hesaba kayıtlı dil, tema modu ve tema paketini başka cihazda giriş yapılır yapılmaz uygula
+      final remoteLang = data['language'] as String?;
+      if (remoteLang == 'en' || remoteLang == 'tr') {
+        final targetLang = remoteLang == 'en' ? AppLanguage.en : AppLanguage.tr;
+        await ref.read(appLanguageProvider.notifier).setLanguage(targetLang, syncToCloud: false);
+      }
+
+      final remoteThemeMode = data['themeMode'] as String?;
+      if (remoteThemeMode == 'light' || remoteThemeMode == 'dark' || remoteThemeMode == 'system') {
+        final targetMode = remoteThemeMode == 'light'
+            ? ThemeMode.light
+            : (remoteThemeMode == 'dark' ? ThemeMode.dark : ThemeMode.system);
+        await ref.read(themeModeProvider.notifier).setThemeMode(targetMode, syncToCloud: false);
+      }
+
+      final remotePaletteKey = data['themePalette'] as String?;
+      if (remotePaletteKey != null && remotePaletteKey.isNotEmpty) {
+        final targetPalette = ThemePaletteData.fromKey(remotePaletteKey);
+        await ref.read(themePaletteProvider.notifier).setPalette(targetPalette.id, syncToCloud: false);
+      }
     }
 
     // Ekstra güvenlik ağı: Eğer kullanıcı belgesinde coupleId herhangi bir sebeple boş görünüyorsa,

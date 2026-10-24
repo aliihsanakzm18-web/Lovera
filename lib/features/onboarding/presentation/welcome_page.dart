@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/localization/app_strings.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
@@ -34,9 +35,9 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
       initialDate: _selectedBirthDate ?? DateTime(2000, 1, 1),
       firstDate: DateTime(1940),
       lastDate: now,
-      helpText: 'Doğum Tarihinizi Seçin',
-      cancelText: 'Vazgeç',
-      confirmText: 'Seç',
+      helpText: loc('Doğum Tarihinizi Seçin', 'Select Your Date of Birth'),
+      cancelText: loc('Vazgeç', 'Cancel'),
+      confirmText: loc('Seç', 'Select'),
     );
     if (picked != null && mounted) {
       setState(() => _selectedBirthDate = picked);
@@ -83,16 +84,19 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                       color: LoveraColors.primarySoft.withValues(alpha: 0.22),
                     ),
                   ),
-                  const Icon(Icons.favorite_rounded, size: 54, color: LoveraColors.primary),
+                  Icon(Icons.favorite_rounded, size: 54, color: LoveraColors.primary),
                 ],
               ),
               const SizedBox(height: 28),
-              Text('Hoş geldin 💛',
+              Text(loc('Hoş geldin 💛', 'Welcome 💛'),
                   style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800))
                   .animate().fadeIn().slideY(begin: 0.2),
               const SizedBox(height: 10),
               Text(
-                'Lovera, birlikte geçirdiğiniz her anı, her günü ve her mesafeyi bir arada tutar.',
+                loc(
+                  'Lovera, birlikte geçirdiğiniz her anı, her günü ve her mesafeyi bir arada tutar.',
+                  'Lovera keeps every moment, day, and distance you share close together.',
+                ),
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyLarge?.copyWith(color: LoveraColors.textMuted, height: 1.45),
               ).animate(delay: 120.ms).fadeIn(),
@@ -102,9 +106,9 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                 textCapitalization: TextCapitalization.words,
                 textInputAction: TextInputAction.done,
                 onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                  hintText: 'Sana nasıl hitap edelim?',
-                  prefixIcon: Icon(Icons.person_outline_rounded),
+                decoration: InputDecoration(
+                  hintText: loc('Sana nasıl hitap edelim?', 'What should we call you?'),
+                  prefixIcon: const Icon(Icons.person_outline_rounded),
                 ),
               ).animate(delay: 220.ms).fadeIn(),
               const SizedBox(height: 14),
@@ -120,12 +124,12 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.cake_rounded, color: LoveraColors.primary),
+                      Icon(Icons.cake_rounded, color: LoveraColors.primary),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           _selectedBirthDate == null
-                              ? 'Doğum Tarihini Seç (İsteğe Bağlı)'
+                              ? loc('Doğum Tarihini Seç (İsteğe Bağlı)', 'Select Date of Birth (Optional)')
                               : '${_selectedBirthDate!.day}.${_selectedBirthDate!.month}.${_selectedBirthDate!.year}',
                           style: TextStyle(
                             fontSize: 15,
@@ -136,7 +140,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                           ),
                         ),
                       ),
-                      const Icon(Icons.calendar_month_rounded, size: 20, color: LoveraColors.textMuted),
+                      Icon(Icons.calendar_month_rounded, size: 20, color: LoveraColors.textMuted),
                     ],
                   ),
                 ),
@@ -160,7 +164,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                         widget.onNext();
                       }
                     : null,
-                child: const Text('Devam Et'),
+                child: Text(loc('Devam Et', 'Continue')),
               ),
               const SizedBox(height: 24),
             ],

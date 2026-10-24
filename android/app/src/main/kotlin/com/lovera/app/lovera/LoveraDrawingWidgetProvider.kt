@@ -105,6 +105,8 @@ class LoveraDrawingWidgetProvider : HomeWidgetProvider() {
                     }
                 }
 
+                val isEn = widgetData.getString("app_language", "tr") == "en"
+
                 val timeAgo: String = if (timestampMillis > 0L) {
                     val diffMillis = System.currentTimeMillis() - timestampMillis
                     val diffMinutes = (diffMillis / 60000).toInt()
@@ -112,15 +114,18 @@ class LoveraDrawingWidgetProvider : HomeWidgetProvider() {
                     val diffDays = diffHours / 24
 
                     when {
-                        diffMinutes < 1 -> "Şimdi"
-                        diffMinutes < 60 -> "$diffMinutes dk önce"
-                        diffHours < 24 -> "$diffHours sa önce"
-                        diffDays < 30 -> "$diffDays gün önce"
-                        else -> "${diffDays / 30} ay önce"
+                        diffMinutes < 1 -> if (isEn) "Just now" else "Şimdi"
+                        diffMinutes < 60 -> if (isEn) "${diffMinutes}m ago" else "$diffMinutes dk önce"
+                        diffHours < 24 -> if (isEn) "${diffHours}h ago" else "$diffHours sa önce"
+                        diffDays < 30 -> if (isEn) "${diffDays}d ago" else "$diffDays gün önce"
+                        else -> if (isEn) "${diffDays / 30}mo ago" else "${diffDays / 30} ay önce"
                     }
                 } else {
-                    val fallback = widgetData.getString("drawing_time_ago", "Şimdi") ?: "Şimdi"
-                    if (fallback.contains("dk önce") || fallback == "Şimdi") "Eski çizim" else fallback
+                    val defaultTime = if (isEn) "Just now" else "Şimdi"
+                    val fallback = widgetData.getString("drawing_time_ago", defaultTime) ?: defaultTime
+                    if (fallback.contains("dk önce") || fallback == "Şimdi" || fallback.contains("m ago") || fallback == "Just now") {
+                        if (isEn) "Previous drawing" else "Eski çizim"
+                    } else fallback
                 }
 
                 // Tema Tespiti (Koyu / Açık) - Varsayılan koyu gece teması
@@ -134,21 +139,54 @@ class LoveraDrawingWidgetProvider : HomeWidgetProvider() {
                     }
                 }
 
-                // Arka plan deseni ve çip stilleri (Sanatsal Eskiz & Çizim Teması)
+                // Seçili Tema Paketi Renklerini Oku
+                val primaryHex = widgetData.getString("widget_color_primary", "#8B5CF6") ?: "#8B5CF6"
+                val primaryDarkHex = widgetData.getString("widget_color_primary_dark", "#A78BFA") ?: "#A78BFA"
+                val secondaryHex = widgetData.getString("widget_color_secondary", "#34D399") ?: "#34D399"
+                val darkBgHex = widgetData.getString("widget_color_dark_bg", "#0C0D12") ?: "#0C0D12"
+                val darkSurfaceHex = widgetData.getString("widget_color_dark_surface", "#161820") ?: "#161820"
+                val darkTextHex = widgetData.getString("widget_color_dark_text", "#F3F4F6") ?: "#F3F4F6"
+                val lightBgHex = widgetData.getString("widget_color_light_bg", "#F8F9FA") ?: "#F8F9FA"
+                val lightSurfaceHex = widgetData.getString("widget_color_light_surface", "#FFFFFF") ?: "#FFFFFF"
+                val lightTextHex = widgetData.getString("widget_color_text_dark", "#1E2024") ?: "#1E2024"
+
+                val primaryColor = safeParseColor(primaryHex, "#8B5CF6")
+                val primaryDarkColor = safeParseColor(primaryDarkHex, "#A78BFA")
+                val secondaryColor = safeParseColor(secondaryHex, "#34D399")
+
+                // Placeholder ve buton metinlerini dile göre ayarla
+                setTextViewText(R.id.widget_drawing_empty_title, if (isEn) "Live Drawing Canvas" else "Canlı Çizim Tuvali")
+                setTextViewText(R.id.widget_drawing_empty_subtitle, if (isEn) "Tap to draw ✨" else "Çizmek için tıkla ✨")
+                try {
+                    setTextViewText(R.id.widget_drawing_btn_reply_text, if (isEn) "🖌️ Draw" else "🖌️ Çiz")
+                } catch (_: Exception) {}
+
+                // Arka plan deseni ve çip stilleri (Seçili Palete Göre Dinamik Çizim)
+                val themedBgBitmap = createThemedDrawingBackground(
+                    isDark = isDarkTheme,
+                    bgColor = safeParseColor(if (isDarkTheme) darkBgHex else lightBgHex, if (isDarkTheme) "#0F0C1B" else "#F8FAFC"),
+                    surfaceColor = safeParseColor(if (isDarkTheme) darkSurfaceHex else lightSurfaceHex, if (isDarkTheme) "#18132A" else "#FFFFFF"),
+                    primaryColor = if (isDarkTheme) primaryDarkColor else primaryColor,
+                    secondaryColor = secondaryColor
+                )
+                setImageViewBitmap(R.id.widget_drawing_bg_pattern, themedBgBitmap)
+
                 if (isDarkTheme) {
-                    setImageViewResource(R.id.widget_drawing_bg_pattern, R.drawable.widget_drawing_background)
                     setInt(R.id.widget_drawing_badge, "setBackgroundResource", R.drawable.widget_chip_bg)
                     setInt(R.id.widget_drawing_btn_reply, "setBackgroundResource", R.drawable.widget_chip_bg)
-                    setTextColor(R.id.widget_drawing_sender_text, android.graphics.Color.parseColor("#F3F4F6"))
-                    setTextColor(R.id.widget_drawing_empty_title, android.graphics.Color.parseColor("#F3F4F6"))
-                    setTextColor(R.id.widget_drawing_empty_subtitle, android.graphics.Color.parseColor("#A78BFA"))
+                    val textCol = safeParseColor(darkTextHex, "#F3F4F6")
+                    setTextColor(R.id.widget_drawing_sender_text, textCol)
+                    setTextColor(R.id.widget_drawing_time_text, primaryDarkColor)
+                    setTextColor(R.id.widget_drawing_empty_title, textCol)
+                    setTextColor(R.id.widget_drawing_empty_subtitle, primaryDarkColor)
                 } else {
-                    setImageViewResource(R.id.widget_drawing_bg_pattern, R.drawable.widget_drawing_background_light)
                     setInt(R.id.widget_drawing_badge, "setBackgroundResource", R.drawable.widget_chip_bg_light)
                     setInt(R.id.widget_drawing_btn_reply, "setBackgroundResource", R.drawable.widget_chip_bg_light)
-                    setTextColor(R.id.widget_drawing_sender_text, android.graphics.Color.parseColor("#1E1B4B"))
-                    setTextColor(R.id.widget_drawing_empty_title, android.graphics.Color.parseColor("#1E1B4B"))
-                    setTextColor(R.id.widget_drawing_empty_subtitle, android.graphics.Color.parseColor("#7C3AED"))
+                    val textCol = safeParseColor(lightTextHex, "#1E1B4B")
+                    setTextColor(R.id.widget_drawing_sender_text, textCol)
+                    setTextColor(R.id.widget_drawing_time_text, primaryColor)
+                    setTextColor(R.id.widget_drawing_empty_title, textCol)
+                    setTextColor(R.id.widget_drawing_empty_subtitle, primaryColor)
                 }
 
                 if (drawingImagePath != null && drawingImagePath.isNotEmpty()) {
@@ -164,7 +202,8 @@ class LoveraDrawingWidgetProvider : HomeWidgetProvider() {
 
                                 // Gönderen rozeti
                                 setViewVisibility(R.id.widget_drawing_badge, View.VISIBLE)
-                                setTextViewText(R.id.widget_drawing_sender_text, senderName ?: "Partnerin")
+                                val defaultPartner = if (isEn) "Partner" else "Partnerin"
+                                setTextViewText(R.id.widget_drawing_sender_text, senderName ?: defaultPartner)
                                 setTextViewText(R.id.widget_drawing_time_text, "• $timeAgo")
                             } else {
                                 showPlaceholder()
@@ -245,5 +284,236 @@ class LoveraDrawingWidgetProvider : HomeWidgetProvider() {
         } catch (_: Exception) {
             sourceBitmap
         }
+    }
+
+    private fun safeParseColor(hex: String, fallbackHex: String): Int {
+        return try {
+            android.graphics.Color.parseColor(hex)
+        } catch (_: Exception) {
+            android.graphics.Color.parseColor(fallbackHex)
+        }
+    }
+
+    private fun withAlpha(color: Int, alpha: Int): Int {
+        return (alpha.coerceIn(0, 255) shl 24) or (color and 0x00FFFFFF)
+    }
+
+    private fun createThemedDrawingBackground(
+        isDark: Boolean,
+        bgColor: Int,
+        surfaceColor: Int,
+        primaryColor: Int,
+        secondaryColor: Int
+    ): android.graphics.Bitmap {
+        val size = 360
+        val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        val radius = 48f
+        val rect = android.graphics.RectF(2f, 2f, size - 2f, size - 2f)
+
+        val bgPath = android.graphics.Path().apply {
+            addRoundRect(rect, radius, radius, android.graphics.Path.Direction.CW)
+        }
+        canvas.save()
+        canvas.clipPath(bgPath)
+
+        paint.style = android.graphics.Paint.Style.FILL
+        paint.shader = android.graphics.RadialGradient(
+            size * 0.5f,
+            size * 0.5f,
+            size * 0.75f,
+            intArrayOf(surfaceColor, bgColor),
+            floatArrayOf(0f, 1f),
+            android.graphics.Shader.TileMode.CLAMP
+        )
+        canvas.drawRect(0f, 0f, size.toFloat(), size.toFloat(), paint)
+
+        // Sol Üst Primary Aurora
+        paint.shader = android.graphics.RadialGradient(
+            size * 0.15f,
+            size * 0.15f,
+            size * 0.55f,
+            intArrayOf(withAlpha(primaryColor, if (isDark) 60 else 44), withAlpha(primaryColor, 0)),
+            floatArrayOf(0f, 1f),
+            android.graphics.Shader.TileMode.CLAMP
+        )
+        canvas.drawRect(0f, 0f, size.toFloat(), size.toFloat(), paint)
+
+        // Sağ Alt Secondary Aurora
+        paint.shader = android.graphics.RadialGradient(
+            size * 0.85f,
+            size * 0.85f,
+            size * 0.55f,
+            intArrayOf(withAlpha(secondaryColor, if (isDark) 50 else 36), withAlpha(secondaryColor, 0)),
+            floatArrayOf(0f, 1f),
+            android.graphics.Shader.TileMode.CLAMP
+        )
+        canvas.drawRect(0f, 0f, size.toFloat(), size.toFloat(), paint)
+        paint.shader = null
+
+        // 3. Eski Sanatsal Çizim Motifleri (Palet, Fırça, Kalem, Kalp, Cetvel, Kılavuz - 200x200 viewport'tan 360x360'a ölçekli)
+        canvas.save()
+        val scale = size / 200f
+        canvas.scale(scale, scale)
+
+        val fillPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            style = android.graphics.Paint.Style.FILL
+        }
+        val strokePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            style = android.graphics.Paint.Style.STROKE
+            strokeCap = android.graphics.Paint.Cap.ROUND
+            strokeJoin = android.graphics.Paint.Join.ROUND
+        }
+
+        // Köşe Eskiz Çerçeve Çentikleri (L Şeklinde)
+        strokePaint.color = withAlpha(primaryColor, if (isDark) 52 else 45)
+        strokePaint.strokeWidth = 1.2f
+        val cornerPath = android.graphics.Path().apply {
+            moveTo(12f, 20f); lineTo(12f, 12f); lineTo(20f, 12f)
+            moveTo(188f, 20f); lineTo(188f, 12f); lineTo(180f, 12f)
+            moveTo(12f, 180f); lineTo(12f, 188f); lineTo(20f, 188f)
+            moveTo(188f, 180f); lineTo(188f, 188f); lineTo(180f, 188f)
+        }
+        canvas.drawPath(cornerPath, strokePaint)
+
+        // Ressam Paleti 🎨 (Sol Üst / Orta)
+        val palettePath = android.graphics.Path().apply {
+            moveTo(44f, 52f)
+            cubicTo(54f, 46f, 68f, 52f, 68f, 64f)
+            cubicTo(68f, 76f, 60f, 82f, 50f, 82f)
+            cubicTo(40f, 82f, 32f, 74f, 32f, 62f)
+            cubicTo(32f, 54f, 38f, 48f, 44f, 52f)
+            close()
+        }
+        fillPaint.color = withAlpha(primaryColor, if (isDark) 24 else 20)
+        strokePaint.color = withAlpha(primaryColor, if (isDark) 60 else 52)
+        strokePaint.strokeWidth = 1.0f
+        canvas.drawPath(palettePath, fillPaint)
+        canvas.drawPath(palettePath, strokePaint)
+
+        // Palet Başparmak Deliği & Renk Noktaları
+        fillPaint.color = bgColor
+        strokePaint.strokeWidth = 0.8f
+        canvas.drawCircle(40f, 68f, 3f, fillPaint)
+        canvas.drawCircle(40f, 68f, 3f, strokePaint)
+
+        fillPaint.color = withAlpha(secondaryColor, 75)
+        canvas.drawCircle(46f, 56f, 1.8f, fillPaint)
+        fillPaint.color = withAlpha(primaryColor, 75)
+        canvas.drawCircle(56f, 58f, 1.8f, fillPaint)
+        fillPaint.color = withAlpha(secondaryColor, 65)
+        canvas.drawCircle(60f, 68f, 1.8f, fillPaint)
+
+        // Ressam Fırçası 🖌️ (Sağ Üst)
+        val brushPath = android.graphics.Path().apply {
+            moveTo(168f, 36f)
+            lineTo(150f, 54f)
+            lineTo(146f, 56f)
+            lineTo(144f, 62f)
+            lineTo(140f, 64f)
+            lineTo(142f, 60f)
+            lineTo(144f, 58f)
+            lineTo(148f, 54f)
+            lineTo(166f, 34f)
+            close()
+        }
+        fillPaint.color = withAlpha(primaryColor, if (isDark) 26 else 22)
+        strokePaint.color = withAlpha(primaryColor, if (isDark) 62 else 55)
+        strokePaint.strokeWidth = 1.0f
+        canvas.drawPath(brushPath, fillPaint)
+        canvas.drawPath(brushPath, strokePaint)
+        fillPaint.color = withAlpha(secondaryColor, if (isDark) 55 else 48)
+        canvas.drawCircle(136f, 69f, 2.2f, fillPaint)
+
+        // Kurşun Kalem ✏️ (Sağ Alt)
+        val pencilPath = android.graphics.Path().apply {
+            moveTo(160f, 130f)
+            lineTo(144f, 146f)
+            lineTo(138f, 154f)
+            lineTo(138f, 150f)
+            lineTo(146f, 142f)
+            lineTo(162f, 126f)
+            close()
+        }
+        fillPaint.color = withAlpha(secondaryColor, if (isDark) 24 else 20)
+        strokePaint.color = withAlpha(secondaryColor, if (isDark) 58 else 50)
+        strokePaint.strokeWidth = 0.9f
+        canvas.drawPath(pencilPath, fillPaint)
+        canvas.drawPath(pencilPath, strokePaint)
+
+        // Akıcı Dalgalı Fırça Darbesi ~ (Alt Orta)
+        val wavePath = android.graphics.Path().apply {
+            moveTo(50f, 158f)
+            cubicTo(70f, 148f, 85f, 168f, 105f, 158f)
+            cubicTo(120f, 150f, 135f, 162f, 150f, 154f)
+        }
+        strokePaint.color = withAlpha(primaryColor, if (isDark) 50 else 44)
+        strokePaint.strokeWidth = 1.1f
+        canvas.drawPath(wavePath, strokePaint)
+
+        // Cetvel Çizgileri 📐 (Sol Alt)
+        val rulerPath = android.graphics.Path().apply {
+            moveTo(30f, 120f); lineTo(30f, 140f)
+            moveTo(30f, 120f); lineTo(35f, 120f)
+            moveTo(30f, 125f); lineTo(33f, 125f)
+            moveTo(30f, 130f); lineTo(35f, 130f)
+            moveTo(30f, 135f); lineTo(33f, 135f)
+            moveTo(30f, 140f); lineTo(35f, 140f)
+        }
+        strokePaint.color = withAlpha(primaryColor, if (isDark) 44 else 38)
+        strokePaint.strokeWidth = 0.8f
+        canvas.drawPath(rulerPath, strokePaint)
+
+        // Çizilmiş Romantik Kalp Eskizi (Merkez Sol)
+        val sketchHeart = android.graphics.Path().apply {
+            moveTo(85f, 78f)
+            cubicTo(80f, 72f, 72f, 74f, 70f, 82f)
+            cubicTo(68f, 90f, 85f, 102f, 85f, 102f)
+            cubicTo(85f, 102f, 102f, 90f, 100f, 82f)
+            cubicTo(98f, 74f, 90f, 72f, 85f, 78f)
+            close()
+        }
+        fillPaint.color = withAlpha(primaryColor, if (isDark) 20 else 16)
+        strokePaint.color = withAlpha(primaryColor, if (isDark) 52 else 45)
+        strokePaint.strokeWidth = 1.0f
+        canvas.drawPath(sketchHeart, fillPaint)
+        canvas.drawPath(sketchHeart, strokePaint)
+
+        // Işıltı Yıldızı ✦
+        val starPath = android.graphics.Path().apply {
+            moveTo(115f, 45f)
+            quadTo(115f, 51f, 121f, 51f)
+            quadTo(115f, 51f, 115f, 57f)
+            quadTo(115f, 51f, 109f, 51f)
+            quadTo(115f, 51f, 115f, 45f)
+            close()
+        }
+        fillPaint.color = withAlpha(secondaryColor, if (isDark) 36 else 30)
+        strokePaint.color = withAlpha(secondaryColor, if (isDark) 62 else 52)
+        strokePaint.strokeWidth = 0.8f
+        canvas.drawPath(starPath, fillPaint)
+        canvas.drawPath(starPath, strokePaint)
+
+        // Minik Sanatsal Boya Sıçramaları
+        fillPaint.color = withAlpha(primaryColor, if (isDark) 50 else 42)
+        canvas.drawCircle(96f, 128f, 1.4f, fillPaint)
+        canvas.drawCircle(156f, 92f, 1.2f, fillPaint)
+        canvas.drawCircle(65f, 108f, 1.0f, fillPaint)
+        canvas.drawCircle(126f, 116f, 1.2f, fillPaint)
+        canvas.drawCircle(80f, 48f, 1.5f, fillPaint)
+        canvas.drawCircle(168f, 162f, 1.2f, fillPaint)
+
+        canvas.restore()
+
+        canvas.restore()
+
+        // Dış Çerçeve
+        paint.style = android.graphics.Paint.Style.STROKE
+        paint.strokeWidth = 3f
+        paint.color = withAlpha(primaryColor, if (isDark) 95 else 75)
+        canvas.drawRoundRect(rect, radius, radius, paint)
+
+        return bitmap
     }
 }

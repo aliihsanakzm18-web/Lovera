@@ -5,6 +5,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../../core/localization/app_strings.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
@@ -17,11 +18,11 @@ class PairingContent extends ConsumerStatefulWidget {
     super.key,
     required this.onDone,
     this.onBack,
-    this.skipLabel = 'Şimdilik atla',
+    this.skipLabel,
   });
   final VoidCallback onDone;
   final VoidCallback? onBack;
-  final String skipLabel;
+  final String? skipLabel;
 
   @override
   ConsumerState<PairingContent> createState() => _PairingContentState();
@@ -104,7 +105,7 @@ class _PairingContentState extends ConsumerState<PairingContent> {
             _waitingMessage = null;
           });
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Eşleşme isteği reddedildi.')),
+            SnackBar(content: Text(loc('Eşleşme isteği reddedildi.', 'Pairing request was declined.'))),
           );
         }
       }
@@ -142,8 +143,8 @@ class _PairingContentState extends ConsumerState<PairingContent> {
           _isRefreshingCode = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Eski kod iptal edildi ve yepyeni tek seferlik bir kod üretildi! 🔐'),
+          SnackBar(
+            content: Text(loc('Eski kod iptal edildi ve yepyeni tek seferlik bir kod üretildi! 🔐', 'Old code was invalidated and a brand new one-time code was generated! 🔐')),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -152,7 +153,7 @@ class _PairingContentState extends ConsumerState<PairingContent> {
       if (mounted) {
         setState(() => _isRefreshingCode = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Kod yenilenemedi: $e')),
+          SnackBar(content: Text(loc('Kod yenilenemedi: $e', 'Could not refresh code: $e'))),
         );
       }
     }
@@ -214,13 +215,16 @@ class _PairingContentState extends ConsumerState<PairingContent> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  '$requesterName Seninle Eşleşmek İstiyor! 💕',
+                  loc('$requesterName Seninle Eşleşmek İstiyor! 💕', '$requesterName wants to pair with you! 💕'),
                   textAlign: TextAlign.center,
                   style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Onayladığında ikinize özel ortak alanınız açılacak. Lütfen birliktelik başlangıç tarihinizi seçin.',
+                  loc(
+                    'Onayladığında ikinize özel ortak alanınız açılacak. Lütfen birliktelik başlangıç tarihinizi seçin.',
+                    'When approved, your private shared space will open. Please select your relationship start date.',
+                  ),
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodyMedium?.copyWith(color: LoveraColors.textMuted, height: 1.3),
                 ),
@@ -234,7 +238,7 @@ class _PairingContentState extends ConsumerState<PairingContent> {
                       initialDate: selectedDate ?? DateTime.now(),
                       firstDate: DateTime(1990),
                       lastDate: DateTime.now(),
-                      helpText: 'İlişki Başlangıç Tarihi',
+                      helpText: loc('İlişki Başlangıç Tarihi', 'Relationship Start Date'),
                     );
                     if (picked != null) {
                       setSheetState(() {
@@ -274,7 +278,7 @@ class _PairingContentState extends ConsumerState<PairingContent> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'BİRLİKTELİK BAŞLANGICI *',
+                                  loc('BİRLİKTELİK BAŞLANGICI *', 'RELATIONSHIP START *'),
                                   style: theme.textTheme.labelSmall?.copyWith(
                                     color: showErrorBorder ? Colors.redAccent : LoveraColors.textMuted,
                                     fontWeight: FontWeight.w700,
@@ -283,7 +287,7 @@ class _PairingContentState extends ConsumerState<PairingContent> {
                                 Text(
                                   selectedDate != null
                                       ? '${selectedDate!.day}.${selectedDate!.month}.${selectedDate!.year}'
-                                      : 'Tarih seçmek için dokunun',
+                                      : loc('Tarih seçmek için dokunun', 'Tap to select date'),
                                   style: theme.textTheme.titleMedium?.copyWith(
                                     fontWeight: FontWeight.w800,
                                     color: selectedDate != null
@@ -303,8 +307,8 @@ class _PairingContentState extends ConsumerState<PairingContent> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
-                              '$days Gündür',
-                              style: const TextStyle(
+                              loc('$days Gündür', 'For $days days'),
+                              style: TextStyle(
                                 color: LoveraColors.primary,
                                 fontWeight: FontWeight.w700,
                                 fontSize: 12,
@@ -323,13 +327,13 @@ class _PairingContentState extends ConsumerState<PairingContent> {
                 ),
                 if (showErrorBorder) ...[
                   const SizedBox(height: 6),
-                  const Align(
+                  Align(
                     alignment: Alignment.centerLeft,
                     child: Padding(
-                      padding: EdgeInsets.only(left: 4),
+                      padding: const EdgeInsets.only(left: 4),
                       child: Text(
-                        '⚠️ Devam etmek için birliktelik başlangıç tarihini seçmelisiniz.',
-                        style: TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.w600),
+                        loc('⚠️ Devam etmek için birliktelik başlangıç tarihini seçmelisiniz.', '⚠️ You must select relationship start date to continue.'),
+                        style: const TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.w600),
                       ),
                     ),
                   ),
@@ -346,7 +350,7 @@ class _PairingContentState extends ConsumerState<PairingContent> {
                           _dialogOpen = false;
                           await DatabaseService().rejectPairRequest(requesterUid);
                         },
-                        child: const Text('Reddet'),
+                        child: Text(loc('Reddet', 'Decline')),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -354,14 +358,14 @@ class _PairingContentState extends ConsumerState<PairingContent> {
                       flex: 2,
                       child: FilledButton.icon(
                         icon: const Icon(Icons.favorite_rounded, size: 18),
-                        label: const Text('Kabul Et ve Bağlan'),
+                        label: Text(loc('Kabul Et ve Bağlan', 'Accept & Connect')),
                         onPressed: () async {
                           if (selectedDate == null) {
                             HapticFeedback.vibrate();
                             setSheetState(() => showErrorBorder = true);
                             ScaffoldMessenger.of(sheetCtx).showSnackBar(
-                              const SnackBar(
-                                content: Text('Lütfen birliktelik başlangıç tarihinizi seçin! 📅'),
+                              SnackBar(
+                                content: Text(loc('Lütfen birliktelik başlangıç tarihinizi seçin! 📅', 'Please select your relationship start date! 📅')),
                                 backgroundColor: Colors.redAccent,
                                 behavior: SnackBarBehavior.floating,
                               ),
@@ -413,16 +417,19 @@ class _PairingContentState extends ConsumerState<PairingContent> {
                 color: LoveraColors.primary.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.favorite_rounded, color: LoveraColors.primary, size: 54),
+              child: Icon(Icons.favorite_rounded, color: LoveraColors.primary, size: 54),
             ).animate().scale(curve: Curves.elasticOut, duration: 600.ms),
             const SizedBox(height: 20),
             Text(
-              'Eşleşme Başarılı! 🎉',
+              loc('Eşleşme Başarılı! 🎉', 'Paired Successfully! 🎉'),
               style: Theme.of(ctx).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 10),
             Text(
-              'Artık Lovera alanınız birbirinize bağlandı. Sonsuz anılar biriktirmeye hazırsınız!',
+              loc(
+                'Artık Lovera alanınız birbirinize bağlandı. Sonsuz anılar biriktirmeye hazırsınız!',
+                'Your Lovera space is now connected. You are ready to create timeless memories!',
+              ),
               textAlign: TextAlign.center,
               style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(color: LoveraColors.textMuted),
             ),
@@ -434,7 +441,7 @@ class _PairingContentState extends ConsumerState<PairingContent> {
                   Navigator.pop(ctx);
                   widget.onDone();
                 },
-                child: const Text('Hemen Başla'),
+                child: Text(loc('Hemen Başla', 'Get Started')),
               ),
             ),
           ],
@@ -448,14 +455,14 @@ class _PairingContentState extends ConsumerState<PairingContent> {
     final code = _controller.text.trim().toUpperCase();
     if (code.length != 6) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Lütfen 6 haneli kodu gir.')),
+        SnackBar(content: Text(loc('Lütfen 6 haneli kodu gir.', 'Please enter the 6-character code.'))),
       );
       return;
     }
 
     if (code == _myCode) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Kendi kodunuzu giremezsiniz.')),
+        SnackBar(content: Text(loc('Kendi kodunuzu giremezsiniz.', 'You cannot enter your own code.'))),
       );
       return;
     }
@@ -469,13 +476,13 @@ class _PairingContentState extends ConsumerState<PairingContent> {
         if (!mounted) return;
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Bu koda ait partner bulunamadı. Lütfen kontrol et.')),
+          SnackBar(content: Text(loc('Bu koda ait partner bulunamadı. Lütfen kontrol et.', 'No partner found with this code. Please check again.'))),
         );
         return;
       }
 
       final targetUid = partnerData['uid'] as String;
-      final targetName = partnerData['name'] as String? ?? 'Partnerin';
+      final targetName = partnerData['name'] as String? ?? loc('Partnerin', 'Your Partner');
 
       // İsteği gönder
       await DatabaseService().sendPairRequest(
@@ -487,11 +494,11 @@ class _PairingContentState extends ConsumerState<PairingContent> {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _waitingMessage = '$targetName onaylaması bekleniyor... ⏳';
+        _waitingMessage = loc('$targetName onaylaması bekleniyor... ⏳', 'Waiting for $targetName to approve... ⏳');
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$targetName kullanıcısına istek gönderildi! Karşı telefon onayladığında bağlanacaksınız.')),
+        SnackBar(content: Text(loc('$targetName kullanıcısına istek gönderildi! Karşı telefon onayladığında bağlanacaksınız.', 'Request sent to $targetName! You will connect once confirmed.'))),
       );
     } catch (e) {
       if (!mounted) return;
@@ -511,7 +518,7 @@ class _PairingContentState extends ConsumerState<PairingContent> {
               ),
             ],
           ),
-          backgroundColor: errorMsg.contains('engellediği') ? const Color(0xFFEF4444) : const Color(0xFF333333),
+          backgroundColor: (errorMsg.contains('engelledi') || errorMsg.toLowerCase().contains('block')) ? const Color(0xFFEF4444) : const Color(0xFF333333),
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         ),
@@ -535,12 +542,15 @@ class _PairingContentState extends ConsumerState<PairingContent> {
               onPressed: widget.onBack,
             ),
           ),
-        Text('Partnerini bağla',
+        Text(loc('Partnerini bağla', 'Connect your partner'),
             textAlign: TextAlign.center,
             style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
         const SizedBox(height: 8),
         Text(
-          'QR kodunu partnerine göster ya da kodunu paylaş. İstersen onun kodunu girebilirsin.',
+          loc(
+            'QR kodunu partnerine göster ya da kodunu paylaş. İstersen onun kodunu girebilirsin.',
+            'Show the QR code to your partner or share your code. You can also enter their code below.',
+          ),
           textAlign: TextAlign.center,
           style: theme.textTheme.bodyMedium?.copyWith(color: LoveraColors.textMuted, height: 1.4),
         ),
@@ -564,7 +574,7 @@ class _PairingContentState extends ConsumerState<PairingContent> {
                   borderRadius: BorderRadius.circular(18),
                 ),
                 child: _myCode == '...'
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 170,
                         height: 170,
                         child: Center(child: CircularProgressIndicator(color: LoveraColors.primary)),
@@ -572,8 +582,8 @@ class _PairingContentState extends ConsumerState<PairingContent> {
                     : QrImageView(
                         data: 'lovera://pair/$_myCode',
                         size: 170,
-                        eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.circle, color: LoveraColors.textDark),
-                        dataModuleStyle: const QrDataModuleStyle(
+                        eyeStyle: QrEyeStyle(eyeShape: QrEyeShape.circle, color: LoveraColors.textDark),
+                        dataModuleStyle: QrDataModuleStyle(
                             dataModuleShape: QrDataModuleShape.circle, color: LoveraColors.textDark),
                       ),
               ),
@@ -588,19 +598,19 @@ class _PairingContentState extends ConsumerState<PairingContent> {
                   TextButton.icon(
                     onPressed: _copy,
                     icon: Icon(_copied ? Icons.check_rounded : Icons.copy_rounded, size: 18),
-                    label: Text(_copied ? 'Kopyalandı' : 'Kodu kopyala'),
+                    label: Text(_copied ? loc('Kopyalandı', 'Copied') : loc('Kodu kopyala', 'Copy code')),
                   ),
                   const SizedBox(width: 8),
                   TextButton.icon(
                     onPressed: _isRefreshingCode ? null : _refreshCode,
                     icon: _isRefreshingCode
-                        ? const SizedBox(
+                        ? SizedBox(
                             width: 14,
                             height: 14,
                             child: CircularProgressIndicator(strokeWidth: 2, color: LoveraColors.primary),
                           )
                         : const Icon(Icons.refresh_rounded, size: 18),
-                    label: const Text('Kodu Yenile'),
+                    label: Text(loc('Kodu Yenile', 'Refresh Code')),
                   ),
                 ],
               ),
@@ -613,7 +623,7 @@ class _PairingContentState extends ConsumerState<PairingContent> {
           Expanded(child: Divider(color: theme.dividerColor)),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: Text('VEYA', style: theme.textTheme.labelSmall?.copyWith(color: LoveraColors.textMuted)),
+            child: Text(loc('VEYA', 'OR'), style: theme.textTheme.labelSmall?.copyWith(color: LoveraColors.textMuted)),
           ),
           Expanded(child: Divider(color: theme.dividerColor)),
         ]),
@@ -627,7 +637,7 @@ class _PairingContentState extends ConsumerState<PairingContent> {
           style: theme.textTheme.titleLarge
               ?.copyWith(fontWeight: FontWeight.w700, letterSpacing: 6, color: isDark ? null : LoveraColors.textDark),
           decoration: InputDecoration(
-            hintText: 'Partnerin kodu',
+            hintText: loc('Partnerin kodu', 'Partner\'s code'),
             counterText: '',
             hintStyle: const TextStyle(letterSpacing: 0, fontWeight: FontWeight.w400),
           ),
@@ -645,7 +655,7 @@ class _PairingContentState extends ConsumerState<PairingContent> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const SizedBox(
+                SizedBox(
                   width: 16,
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2, color: LoveraColors.secondary),
@@ -653,7 +663,7 @@ class _PairingContentState extends ConsumerState<PairingContent> {
                 const SizedBox(width: 10),
                 Text(
                   _waitingMessage!,
-                  style: const TextStyle(fontWeight: FontWeight.w600, color: LoveraColors.textDark),
+                  style: TextStyle(fontWeight: FontWeight.w600, color: LoveraColors.textDark),
                 ),
               ],
             ),
@@ -667,12 +677,12 @@ class _PairingContentState extends ConsumerState<PairingContent> {
                   height: 20,
                   child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                 )
-              : const Text('Bağlan'),
+              : Text(loc('Bağlan', 'Connect')),
         ),
         const SizedBox(height: 6),
         TextButton(
           onPressed: widget.onDone,
-          child: Text(widget.skipLabel, style: const TextStyle(color: LoveraColors.textMuted)),
+          child: Text(widget.skipLabel ?? loc('Şimdilik atla', 'Skip for now'), style: TextStyle(color: LoveraColors.textMuted)),
         ),
       ],
     );
@@ -686,10 +696,10 @@ class PairingView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Eşleşme')),
+      appBar: AppBar(title: Text(loc('Eşleşme', 'Pairing'))),
       body: LoveraThemeBackground(
         child: SafeArea(
-          child: PairingContent(onDone: () => Navigator.of(context).pop(), skipLabel: 'Kapat'),
+          child: PairingContent(onDone: () => Navigator.of(context).pop(), skipLabel: loc('Kapat', 'Close')),
         ),
       ),
     );

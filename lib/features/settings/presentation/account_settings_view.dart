@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/localization/app_strings.dart';
 import '../../../core/models/models.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/database_service.dart';
@@ -59,7 +59,7 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text('Profil fotoğrafınız güncellendi!'),
+              content: Text(loc('Profil fotoğrafınız güncellendi!', 'Profile photo updated!')),
               backgroundColor: LoveraColors.secondary,
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -70,7 +70,7 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Fotoğraf yüklenemedi: $e'),
+              content: Text(loc('Fotoğraf yüklenemedi: $e', 'Could not upload photo: $e')),
               backgroundColor: LoveraColors.primary,
             ),
           );
@@ -86,19 +86,19 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        title: const Text('Kullanıcı Adını Değiştir'),
+        title: Text(loc('Kullanıcı Adını Değiştir', 'Change Username')),
         content: TextField(
           controller: controller,
           textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(
-            hintText: 'Yeni kullanıcı adınız',
-            prefixIcon: Icon(Icons.person_outline_rounded),
+          decoration: InputDecoration(
+            hintText: loc('Yeni kullanıcı adınız', 'Your new username'),
+            prefixIcon: const Icon(Icons.person_outline_rounded),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Vazgeç'),
+            child: Text(loc('Vazgeç', 'Cancel')),
           ),
           FilledButton(
             onPressed: () async {
@@ -118,7 +118,7 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: const Text('Kullanıcı adınız başarıyla kaydedildi!'),
+                      content: Text(loc('Kullanıcı adınız başarıyla kaydedildi!', 'Username saved successfully!')),
                       backgroundColor: LoveraColors.secondary,
                       behavior: SnackBarBehavior.floating,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -127,7 +127,7 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
                 }
               }
             },
-            child: const Text('Kaydet'),
+            child: Text(loc('Kaydet', 'Save')),
           ),
         ],
       ),
@@ -147,9 +147,9 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
       initialDate: initial,
       firstDate: DateTime(1940),
       lastDate: DateTime.now(),
-      helpText: 'Doğum Tarihinizi Seçin',
-      cancelText: 'Vazgeç',
-      confirmText: 'Kaydet',
+      helpText: loc('Doğum Tarihinizi Seçin', 'Select Date of Birth'),
+      cancelText: loc('Vazgeç', 'Cancel'),
+      confirmText: loc('Kaydet', 'Save'),
     );
 
     if (picked != null && mounted) {
@@ -185,7 +185,7 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Doğum tarihiniz başarıyla güncellendi! 🎉'),
+            content: Text(loc('Doğum tarihiniz başarıyla güncellendi! 🎉', 'Date of birth updated successfully! 🎉')),
             backgroundColor: LoveraColors.secondary,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -207,7 +207,7 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-          title: const Text('Şifre Değiştir'),
+          title: Text(loc('Şifre Değiştir', 'Change Password')),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -215,7 +215,7 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
                 controller: currentPassword,
                 obscureText: obscureCurrent,
                 decoration: InputDecoration(
-                  hintText: 'Mevcut Şifre',
+                  hintText: loc('Mevcut Şifre', 'Current Password'),
                   prefixIcon: const Icon(Icons.lock_outline_rounded),
                   suffixIcon: IconButton(
                     icon: Icon(obscureCurrent ? Icons.visibility_off_outlined : Icons.visibility_outlined),
@@ -228,7 +228,7 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
                 controller: newPassword,
                 obscureText: obscureNew,
                 decoration: InputDecoration(
-                  hintText: 'Yeni Şifre (En az 6 karakter)',
+                  hintText: loc('Yeni Şifre (En az 6 karakter)', 'New Password (At least 6 characters)'),
                   prefixIcon: const Icon(Icons.lock_reset_rounded),
                   suffixIcon: IconButton(
                     icon: Icon(obscureNew ? Icons.visibility_off_outlined : Icons.visibility_outlined),
@@ -241,7 +241,7 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Vazgeç'),
+              child: Text(loc('Vazgeç', 'Cancel')),
             ),
             FilledButton(
               onPressed: () async {
@@ -250,7 +250,7 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
 
                 if (curPass.isEmpty || newPass.length < 6) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Lütfen geçerli şifreler girin (en az 6 karakter).')),
+                    SnackBar(content: Text(loc('Lütfen geçerli şifreler girin (en az 6 karakter).', 'Please enter valid passwords (at least 6 characters).'))),
                   );
                   return;
                 }
@@ -269,7 +269,7 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: const Text('Şifreniz başarıyla güncellendi!'),
+                          content: Text(loc('Şifreniz başarıyla güncellendi!', 'Password updated successfully!')),
                           backgroundColor: LoveraColors.secondary,
                           behavior: SnackBarBehavior.floating,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -280,13 +280,13 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
                 } on FirebaseAuthException catch (e) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text(e.code == 'wrong-password' ? 'Mevcut şifreniz hatalı.' : 'Hata: ${e.message}'),
+                      content: Text(e.code == 'wrong-password' ? loc('Mevcut şifreniz hatalı.', 'Current password incorrect.') : loc('Hata: ${e.message}', 'Error: ${e.message}')),
                       backgroundColor: LoveraColors.primary,
                     ),
                   );
                 }
               },
-              child: const Text('Güncelle'),
+              child: Text(loc('Güncelle', 'Update')),
             ),
           ],
         ),
@@ -300,11 +300,11 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
     final userName = ref.watch(userNameProvider);
     final avatarPath = ref.watch(userAvatarProvider);
     final currentUser = ref.watch(currentUserProvider);
-    final email = AuthService().currentUser?.email ?? 'Giriş yapılmadı';
+    final email = AuthService().currentUser?.email ?? loc('Giriş yapılmadı', 'Not logged in');
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Hesap Bilgileri'),
+        title: Text(loc('Hesap Bilgileri', 'Account Information')),
         centerTitle: true,
       ),
       body: LoveraThemeBackground(
@@ -367,7 +367,7 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
           ),
           const SizedBox(height: 12),
           Text(
-            'Profil fotoğrafını değiştirmek için dokunun',
+            loc('Profil fotoğrafını değiştirmek için dokunun', 'Tap to change profile photo'),
             textAlign: TextAlign.center,
             style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted),
           ),
@@ -385,15 +385,15 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
               children: [
                 ListTile(
                   leading: Icon(Icons.person_outline_rounded, color: theme.colorScheme.onSurface),
-                  title: const Text('Kullanıcı Adı', style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: Text(userName.isNotEmpty ? userName : 'Belirtilmedi', style: const TextStyle(color: LoveraColors.textMuted)),
-                  trailing: const Icon(Icons.edit_outlined, size: 20, color: LoveraColors.secondary),
+                  title: Text(loc('Kullanıcı Adı', 'Username'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Text(userName.isNotEmpty ? userName : loc('Belirtilmedi', 'Not specified'), style: TextStyle(color: LoveraColors.textMuted)),
+                  trailing: Icon(Icons.edit_outlined, size: 20, color: LoveraColors.secondary),
                   onTap: () => _editNameDialog(userName),
                 ),
                 Divider(height: 1, indent: 56, color: theme.dividerColor),
                 ListTile(
                   leading: Icon(Icons.cake_rounded, color: theme.colorScheme.onSurface),
-                  title: const Text('Doğum Tarihi', style: TextStyle(fontWeight: FontWeight.w600)),
+                  title: Text(loc('Doğum Tarihi', 'Date of Birth'), style: const TextStyle(fontWeight: FontWeight.w600)),
                   subtitle: Text(
                     currentUser?.birthDate != null && currentUser!.birthDate!.isNotEmpty
                         ? () {
@@ -403,31 +403,31 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
                             }
                             return currentUser.birthDate!;
                           }()
-                        : 'Belirtilmedi',
-                    style: const TextStyle(color: LoveraColors.textMuted),
+                        : loc('Belirtilmedi', 'Not specified'),
+                    style: TextStyle(color: LoveraColors.textMuted),
                   ),
-                  trailing: const Icon(Icons.edit_calendar_rounded, size: 20, color: LoveraColors.primary),
+                  trailing: Icon(Icons.edit_calendar_rounded, size: 20, color: LoveraColors.primary),
                   onTap: () => _editBirthDateDialog(currentUser?.birthDate),
                 ),
                 Divider(height: 1, indent: 56, color: theme.dividerColor),
                 ListTile(
                   leading: Icon(Icons.email_outlined, color: theme.colorScheme.onSurface),
-                  title: const Text('E-posta', style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: Text(email, style: const TextStyle(color: LoveraColors.textMuted)),
+                  title: Text(loc('E-posta', 'Email'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Text(email, style: TextStyle(color: LoveraColors.textMuted)),
                 ),
                 Divider(height: 1, indent: 56, color: theme.dividerColor),
                 ListTile(
                   leading: Icon(Icons.lock_reset_rounded, color: theme.colorScheme.onSurface),
-                  title: const Text('Şifre Değiştir', style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: const Text('••••••••', style: TextStyle(color: LoveraColors.textMuted)),
+                  title: Text(loc('Şifre Değiştir', 'Change Password'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Text('••••••••', style: TextStyle(color: LoveraColors.textMuted)),
                   trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
                   onTap: _changePasswordDialog,
                 ),
                 Divider(height: 1, indent: 56, color: theme.dividerColor),
                 ListTile(
                   leading: const Icon(Icons.block_rounded, color: Colors.orangeAccent),
-                  title: const Text('Engellenen Kullanıcılar', style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: const Text('Engellediğiniz kişileri yönetin', style: TextStyle(color: LoveraColors.textMuted)),
+                  title: Text(loc('Engellenen Kullanıcılar', 'Blocked Users'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Text(loc('Engellediğiniz kişileri yönetin', 'Manage people you blocked'), style: TextStyle(color: LoveraColors.textMuted)),
                   trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
                   onTap: _showBlockedUsersSheet,
                 ),
@@ -453,9 +453,9 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
                 ),
                 child: const Icon(Icons.logout_rounded, color: Colors.redAccent, size: 22),
               ),
-              title: const Text(
-                'Oturumu Kapat',
-                style: TextStyle(fontWeight: FontWeight.w600, color: Colors.redAccent),
+              title: Text(
+                loc('Oturumu Kapat', 'Log Out'),
+                style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.redAccent),
               ),
               trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
               onTap: _confirmSignOut,
@@ -480,12 +480,12 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
                 ),
                 child: const Icon(Icons.delete_forever_rounded, color: Colors.redAccent, size: 22),
               ),
-              title: const Text(
-                'Hesabı Sil',
-                style: TextStyle(fontWeight: FontWeight.w700, color: Colors.redAccent),
+              title: Text(
+                loc('Hesabı Sil', 'Delete Account'),
+                style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.redAccent),
               ),
-              subtitle: const Text(
-                'Hesabınızı ve tüm verilerinizi kalıcı olarak silin',
+              subtitle: Text(
+                loc('Hesabınızı ve tüm verilerinizi kalıcı olarak silin', 'Permanently delete your account and all data'),
                 style: TextStyle(fontSize: 12, color: LoveraColors.textMuted),
               ),
               trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.redAccent),
@@ -548,7 +548,7 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
                         ),
                         const SizedBox(width: 12),
                         Text(
-                          'Engellenen Kullanıcılar',
+                          loc('Engellenen Kullanıcılar', 'Blocked Users'),
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -575,7 +575,7 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
                                       size: 52, color: LoveraColors.secondary.withOpacity(0.7)),
                                   const SizedBox(height: 12),
                                   Text(
-                                    'Engellenen kimse yok',
+                                    loc('Engellenen kimse yok', 'No blocked users'),
                                     style: TextStyle(
                                       fontWeight: FontWeight.w600,
                                       fontSize: 16,
@@ -583,8 +583,8 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
                                     ),
                                   ),
                                   const SizedBox(height: 4),
-                                  const Text(
-                                    'Engellediğiniz kullanıcılar burada listelenir.',
+                                  Text(
+                                    loc('Engellediğiniz kullanıcılar burada listelenir.', 'Users you blocked will be listed here.'),
                                     style: TextStyle(fontSize: 13, color: LoveraColors.textMuted),
                                   ),
                                 ],
@@ -611,7 +611,7 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
                                   backgroundColor: LoveraColors.primary.withOpacity(0.12),
                                   backgroundImage: _getAvatarProvider(avatar),
                                   child: avatar == null
-                                      ? const Icon(Icons.person_rounded, color: LoveraColors.primary)
+                                      ? Icon(Icons.person_rounded, color: LoveraColors.primary)
                                       : null,
                                 ),
                                 title: Text(
@@ -621,14 +621,14 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
                                     color: isDark ? LoveraColors.darkText : LoveraColors.textDark,
                                   ),
                                 ),
-                                subtitle: const Text(
-                                  'Engellendi',
-                                  style: TextStyle(fontSize: 12, color: Colors.redAccent),
+                                subtitle: Text(
+                                  loc('Engellendi', 'Blocked'),
+                                  style: const TextStyle(fontSize: 12, color: Colors.redAccent),
                                 ),
                                 trailing: OutlinedButton(
                                   style: OutlinedButton.styleFrom(
                                     foregroundColor: LoveraColors.primary,
-                                    side: const BorderSide(color: LoveraColors.primary),
+                                    side: BorderSide(color: LoveraColors.primary),
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                                   ),
@@ -636,19 +636,22 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
                                     final confirm = await showDialog<bool>(
                                       context: context,
                                       builder: (dCtx) => AlertDialog(
-                                        title: const Text('Engeli Kaldır'),
+                                        title: Text(loc('Engeli Kaldır', 'Unblock')),
                                         content: Text(
-                                          '$name adlı kullanıcının engelini kaldırmak istediğinize emin misiniz? Tekrar size istek gönderebilir.',
+                                          loc(
+                                            '$name adlı kullanıcının engelini kaldırmak istediğinize emin misiniz? Tekrar size istek gönderebilir.',
+                                            'Are you sure you want to unblock $name? They will be able to send you requests again.',
+                                          ),
                                         ),
                                         actions: [
                                           TextButton(
                                             onPressed: () => Navigator.pop(dCtx, false),
-                                            child: const Text('Vazgeç'),
+                                            child: Text(loc('Vazgeç', 'Cancel')),
                                           ),
                                           FilledButton(
                                             style: FilledButton.styleFrom(backgroundColor: LoveraColors.primary),
                                             onPressed: () => Navigator.pop(dCtx, true),
-                                            child: const Text('Engeli Kaldır'),
+                                            child: Text(loc('Engeli Kaldır', 'Unblock')),
                                           ),
                                         ],
                                       ),
@@ -660,7 +663,7 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
                                       if (mounted) {
                                         ScaffoldMessenger.of(context).showSnackBar(
                                           SnackBar(
-                                            content: Text('$name kullanıcısının engeli kaldırıldı.'),
+                                            content: Text(loc('$name kullanıcısının engeli kaldırıldı.', '$name was unblocked.')),
                                             backgroundColor: LoveraColors.secondary,
                                             behavior: SnackBarBehavior.floating,
                                           ),
@@ -668,7 +671,7 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
                                       }
                                     }
                                   },
-                                  child: const Text('Engeli Kaldır', style: TextStyle(fontWeight: FontWeight.w700)),
+                                  child: Text(loc('Engeli Kaldır', 'Unblock'), style: const TextStyle(fontWeight: FontWeight.w700)),
                                 ),
                               );
                             },
@@ -691,13 +694,13 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Oturumu Kapat'),
-        content: const Text('Hesabınızdan çıkış yapmak istediğinize emin misiniz?'),
+        title: Text(loc('Oturumu Kapat', 'Log Out')),
+        content: Text(loc('Hesabınızdan çıkış yapmak istediğinize emin misiniz?', 'Are you sure you want to log out of your account?')),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Vazgeç'),
+            child: Text(loc('Vazgeç', 'Cancel')),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
@@ -706,7 +709,7 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
               minimumSize: const Size(100, 44),
             ),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Çıkış Yap'),
+            child: Text(loc('Çıkış Yap', 'Log Out')),
           ),
         ],
       ),
@@ -740,26 +743,29 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 28),
-            SizedBox(width: 10),
-            Text('Hesabı Sil', style: TextStyle(fontWeight: FontWeight.w800)),
+            const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 28),
+            const SizedBox(width: 10),
+            Text(loc('Hesabı Sil', 'Delete Account'), style: const TextStyle(fontWeight: FontWeight.w800)),
           ],
         ),
-        content: const Text(
-          'Emin misiniz? Hesabınız, fotoğraflarınız, özel günleriniz ve partner eşleşmeniz geri alınamaz şekilde kalıcı olarak silinecektir.',
-          style: TextStyle(height: 1.4),
+        content: Text(
+          loc(
+            'Emin misiniz? Hesabınız, fotoğraflarınız, özel günleriniz ve partner eşleşmeniz geri alınamaz şekilde kalıcı olarak silinecektir.',
+            'Are you sure? Your account, photos, milestones, and partner connection will be permanently deleted and cannot be undone.',
+          ),
+          style: const TextStyle(height: 1.4),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Vazgeç'),
+            child: Text(loc('Vazgeç', 'Cancel')),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Eminim, Sil'),
+            child: Text(loc('Eminim, Sil', 'Yes, Delete')),
           ),
         ],
       ),
@@ -782,13 +788,13 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
         builder: (ctx) => StatefulBuilder(
           builder: (ctx, setDialogState) => AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-            title: const Text('Güvenlik Doğrulaması', style: TextStyle(fontWeight: FontWeight.w800)),
+            title: Text(loc('Güvenlik Doğrulaması', 'Security Verification'), style: const TextStyle(fontWeight: FontWeight.w800)),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Hesabınızı silmek için lütfen mevcut hesap şifrenizi girin:',
+                Text(
+                  loc('Hesabınızı silmek için lütfen mevcut hesap şifrenizi girin:', 'Please enter your current account password to delete your account:'),
                   style: TextStyle(fontSize: 13, color: LoveraColors.textMuted),
                 ),
                 const SizedBox(height: 16),
@@ -796,7 +802,7 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
                   controller: passwordController,
                   obscureText: obscure,
                   decoration: InputDecoration(
-                    hintText: 'Şifreniz',
+                    hintText: loc('Şifreniz', 'Your password'),
                     prefixIcon: const Icon(Icons.lock_outline_rounded),
                     suffixIcon: IconButton(
                       icon: Icon(obscure ? Icons.visibility_off : Icons.visibility),
@@ -809,7 +815,7 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Vazgeç'),
+                child: Text(loc('Vazgeç', 'Cancel')),
               ),
               FilledButton(
                 style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
@@ -817,7 +823,7 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
                   if (passwordController.text.trim().isEmpty) return;
                   Navigator.pop(ctx, true);
                 },
-                child: const Text('Hesabı Kalıcı Olarak Sil'),
+                child: Text(loc('Hesabı Kalıcı Olarak Sil', 'Permanently Delete Account')),
               ),
             ],
           ),
@@ -849,7 +855,7 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Hesabınız ve tüm verileriniz başarıyla silindi.'),
+          content: Text(loc('Hesabınız ve tüm verileriniz başarıyla silindi.', 'Your account and all data have been deleted successfully.')),
           backgroundColor: LoveraColors.secondary,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -864,9 +870,9 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
       setState(() => _isDeleting = false);
-      String msg = 'Hesap silinemedi: ${e.message}';
+      String msg = loc('Hesap silinemedi: ${e.message}', 'Could not delete account: ${e.message}');
       if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
-        msg = 'Girdiğiniz şifre hatalı. Lütfen tekrar deneyin.';
+        msg = loc('Girdiğiniz şifre hatalı. Lütfen tekrar deneyin.', 'Password is incorrect. Please try again.');
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -880,7 +886,7 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
       setState(() => _isDeleting = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Hata oluştu: $e'),
+          content: Text(loc('Hata oluştu: $e', 'An error occurred: $e')),
           backgroundColor: Colors.redAccent,
           behavior: SnackBarBehavior.floating,
         ),

@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:dart_jsonwebtoken/dart_jsonwebtoken.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -126,6 +126,7 @@ class FcmV1Service {
             'priority': 'HIGH',
             'notification': {
               'channel_id': 'lovera_partner',
+              'tag': data?['type'] ?? 'lovera_partner_alert',
               'default_sound': true,
               'default_vibrate_timings': true,
               'notification_priority': 'PRIORITY_MAX',

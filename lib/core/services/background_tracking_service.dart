@@ -19,6 +19,7 @@ import '../models/models.dart';
 import 'device_service.dart';
 import 'notification_service.dart';
 import 'widget_sync_service.dart';
+import '../localization/app_strings.dart';
 
 /// 7/24 Kesintisiz Arka Plan Canlı Şarj ve Konum Servisi (Snapchat / Life360 Modeli)
 /// Uygulama görev yöneticisinden kapatılsa dahi Android Foreground Service olarak
@@ -48,10 +49,10 @@ class BackgroundTrackingService {
       }
 
       // 1. Bildirim kanalını oluştur
-      const AndroidNotificationChannel channel = AndroidNotificationChannel(
+      final AndroidNotificationChannel channel = AndroidNotificationChannel(
         'lovera_live_sync',
-        'Lovera Canlı Eşleşme',
-        description: 'Canlı konum ve pil seviyesi arka plan senkronizasyonu',
+        loc('Lovera Canlı Eşleşme', 'Lovera Live Pairing'),
+        description: loc('Canlı konum ve pil seviyesi arka plan senkronizasyonu', 'Background live location and battery sync'),
         importance: Importance.low,
       );
 
@@ -68,8 +69,8 @@ class BackgroundTrackingService {
           autoStartOnBoot: true,
           isForegroundMode: true,
           notificationChannelId: 'lovera_live_sync',
-          initialNotificationTitle: 'Lovera · Canlı Bağlantı Aktif 💕',
-          initialNotificationContent: 'Partnerinle canlı şarj ve konum eşitleniyor',
+          initialNotificationTitle: loc('Lovera · Canlı Bağlantı Aktif 💕', 'Lovera · Live Connection Active 💕'),
+          initialNotificationContent: loc('Partnerinle canlı şarj ve konum eşitleniyor', 'Live battery and location syncing with partner'),
           foregroundServiceNotificationId: 998877,
           foregroundServiceTypes: [
             AndroidForegroundType.location,
@@ -159,6 +160,7 @@ Future<bool> onIosBackground(ServiceInstance service) async {
 void onBackgroundTrackingStart(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
   WidgetsFlutterBinding.ensureInitialized();
+  await loadAppLanguageFromPrefs();
 
   try {
     await Firebase.initializeApp(
@@ -421,10 +423,18 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
                     prefs.getBool('notify_enter_${currentMatchedPlace.id}') ?? true;
 
                 if (shouldNotifyEnter && partnerUid != null && partnerUid.isNotEmpty) {
+                  final titleTr = '$placeEmoji $myName Konuma Ulaştı';
+                  final titleEn = '$placeEmoji $myName Arrived at Location';
+                  final bodyTr = '$myName "$placeTitle" konumuna vardı. 💕';
+                  final bodyEn = '$myName arrived at "${localizePlaceTitle(placeTitle)}". 💕';
                   NotificationService().sendPushToPartner(
                     partnerUid: partnerUid,
-                    title: '$placeEmoji $myName Konuma Ulaştı',
-                    body: '$myName "$placeTitle" konumuna vardı. 💕',
+                    title: loc(titleTr, titleEn),
+                    body: loc(bodyTr, bodyEn),
+                    titleTr: titleTr,
+                    titleEn: titleEn,
+                    bodyTr: bodyTr,
+                    bodyEn: bodyEn,
                     data: {
                       'type': 'place_enter',
                       ...syncDataPayload,
@@ -460,10 +470,18 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
                       prefs.getBool('notify_exit_${oldPlace.id}') ?? true;
 
                   if (shouldNotifyExit && partnerUid != null && partnerUid.isNotEmpty) {
+                    final titleTr = '🚶 $myName Konumdan Ayrıldı';
+                    final titleEn = '🚶 $myName Left Location';
+                    final bodyTr = '$myName "$oldTitle" konumundan ayrıldı.';
+                    final bodyEn = '$myName left "${localizePlaceTitle(oldTitle)}".';
                     NotificationService().sendPushToPartner(
                       partnerUid: partnerUid,
-                      title: '🚶 $myName Konumdan Ayrıldı',
-                      body: '$myName "$oldTitle" konumundan ayrıldı.',
+                      title: loc(titleTr, titleEn),
+                      body: loc(bodyTr, bodyEn),
+                      titleTr: titleTr,
+                      titleEn: titleEn,
+                      bodyTr: bodyTr,
+                      bodyEn: bodyEn,
                       data: {
                         'type': 'place_exit',
                         ...syncDataPayload,
@@ -482,8 +500,8 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
       if (service is AndroidServiceInstance) {
         final batText = batteryLevel != null ? '%$batteryLevel' : '';
         service.setForegroundNotificationInfo(
-          title: 'Lovera · Canlı Bağlantı Aktif 💕',
-          content: 'Şarj: $batText · $city · Canlı eşitleniyor',
+          title: loc('Lovera · Canlı Bağlantı Aktif 💕', 'Lovera · Live Connection Active 💕'),
+          content: '${loc("Şarj", "Battery")}: $batText · $city · ${loc("Canlı eşitleniyor", "Syncing live")}',
         );
       }
       debugPrint('[BG-SERVICE-SYNC-SUCCESS] Pil: $batteryLevel, Konum: $lat, $lng ($city)');
@@ -603,7 +621,11 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
           speed: (data['speed'] as num?)?.toDouble(),
           currentPlaceTitle: data['currentPlaceTitle'] as String?,
           currentPlaceEmoji: data['currentPlaceEmoji'] as String?,
+          language: data['language'] as String?,
         );
+        if (data['language'] != null) {
+          prefs.setString('cached_partner_language_${doc.id}', data['language'].toString());
+        }
 
         // Kayıtlı mekanları önbellekten al
         List<SavedPlace> places = [];
@@ -670,8 +692,8 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
             await WidgetSyncService.syncDrawingWidget(
               imagePath: drawingPath,
               imageBase64: imageBase64,
-              senderName: isMe ? 'Sen' : senderName,
-              timeAgo: 'Şimdi',
+              senderName: isMe ? loc('Sen', 'You') : senderName,
+              timeAgo: loc('Şimdi', 'Just now'),
               timestampMillis: tsMillis,
             );
             debugPrint('[BG-DRAWING-WIDGET-SYNC] Uygulama kapalıyken yeni çizim widget\'a yazıldı: $senderName (isMe=$isMe)');
