@@ -304,17 +304,42 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
     };
 
     final Map<String, dynamic> answeredMap = Map<String, dynamic>.from(gameData['answeredMap'] ?? {});
-    answeredMap[qId] = answeredItem;
+    final existingAnswerEntry = answeredMap[qId];
+    List<dynamic> answersList = [];
+    if (existingAnswerEntry is Map && existingAnswerEntry['answers'] is List) {
+      answersList = List<dynamic>.from(existingAnswerEntry['answers'] as List);
+    } else if (existingAnswerEntry is Map && existingAnswerEntry['answerText'] != null) {
+      answersList.add({
+        'answeredByUid': existingAnswerEntry['answeredByUid'],
+        'answeredByName': existingAnswerEntry['answeredByName'],
+        'answerText': existingAnswerEntry['answerText'],
+        'timestamp': existingAnswerEntry['timestamp'],
+      });
+    }
+
+    answersList.add({
+      'answeredByUid': myUid,
+      'answeredByName': myName.isNotEmpty ? myName : 'Ben',
+      'answerText': text,
+      'timestamp': DateTime.now().toIso8601String(),
+    });
+
+    final completeAnswerEntry = {
+      ...answeredItem,
+      'answers': answersList,
+    };
+
+    answeredMap[qId] = completeAnswerEntry;
 
     await DatabaseService().updateGameState(
       coupleId: coupleId,
       gameType: 'love_questions',
       updates: {
-        'step': 'picking_question', // Sıra soru sorma hakkı olarak diğer tarafa geçer
-        'turnUid': partnerUid,
+        'step': 'answering_question', // Cevap ekranda kalsın, iki taraf da okuyabilsin
+        'turnUid': partnerUid,        // Sıradaki soru sorma hakkı partnerde
         'turnName': partnerName,
-        'activeQuestionId': null,
-        'lastAnsweredItem': answeredItem,
+        'activeQuestionId': qId,
+        'lastAnsweredItem': completeAnswerEntry,
         'answeredMap': answeredMap,
       },
     );
@@ -323,7 +348,7 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
       _answerController.clear();
       setState(() => _isSubmittingAnswer = false);
       HapticFeedback.vibrate();
-      _showSuccessDialog(answeredItem);
+      _showSuccessDialog(completeAnswerEntry);
     }
   }
 
@@ -339,7 +364,7 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                loc('Cevabın Mühürlendi!', 'Answer Sealed!'),
+                loc('Cevabın Gönderildi!', 'Answer Sent!'),
                 style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
               ),
             ),
@@ -351,8 +376,8 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
           children: [
             Text(
               loc(
-                'Harika! Cevabın soru kartına eklendi ve arşivlendi. Şimdi soru sorma sırası partnerine geçti! 💕',
-                'Awesome! Your answer is sealed into the card archive. Now it\'s your partner\'s turn to pick a question! 💕',
+                'Harika! Cevabın sorunun altına mühürlendi ve partnerin ekranında belirdi. Sıra partnerine geçti! 💕',
+                'Awesome! Your answer is sealed below the question and appeared on your partner\'s screen. Turn passed to your partner! 💕',
               ),
               style: const TextStyle(fontSize: 14, height: 1.4),
             ),
@@ -365,10 +390,66 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
             onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(loc('Tamam Devam Et', 'Continue')),
+            child: Text(loc('Harika ✨', 'Awesome ✨')),
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _askBackSameQuestion(Map<String, dynamic> gameData) async {
+    final coupleId = ref.read(coupleIdProvider);
+    final myUid = DatabaseService().uid;
+    final myName = ref.read(userNameProvider);
+    final partner = ref.read(partnerProvider);
+    if (coupleId == null || myUid == null || partner == null) return;
+
+    final partnerUid = partner.id.toString();
+    final partnerName = partner.name.toString();
+    final qId = gameData['activeQuestionId']?.toString() ?? '';
+    if (qId.isEmpty) return;
+
+    HapticFeedback.heavyImpact();
+
+    await DatabaseService().updateGameState(
+      coupleId: coupleId,
+      gameType: 'love_questions',
+      updates: {
+        'step': 'answering_question',
+        'activeQuestionId': qId,
+        'askedByUid': myUid,
+        'askedByName': myName.isNotEmpty ? myName : 'Ben',
+        'answeringUid': partnerUid,
+        'answeringName': partnerName,
+        'turnUid': partnerUid,
+      },
+    );
+
+    NotificationService().sendPushToPartner(
+      partnerUid: partnerUid,
+      title: loc('Sıra Sende! Aynı Soruyu O da Sana Sordu 💌', 'Your Turn! Returned the same question 💌'),
+      body: loc('$myName bu sorunun cevabını senin için de merak ediyor!', '$myName wants to know your answer to this question too!'),
+      titleTr: 'Sıra Sende! Aynı Soruyu O da Sana Sordu 💌',
+      titleEn: 'Your Turn! Returned the same question 💌',
+      bodyTr: '$myName bu sorunun cevabını senin için de merak ediyor!',
+      bodyEn: '$myName wants to know your answer to this question too!',
+      data: {'type': 'game_action', 'game': 'love_questions'},
+    );
+  }
+
+  Future<void> _finishQuestionAndProceed() async {
+    final coupleId = ref.read(coupleIdProvider);
+    final gameData = _lastGameData;
+    if (coupleId == null || gameData == null) return;
+
+    HapticFeedback.mediumImpact();
+    await DatabaseService().updateGameState(
+      coupleId: coupleId,
+      gameType: 'love_questions',
+      updates: {
+        'step': 'picking_question',
+        'activeQuestionId': null,
+      },
     );
   }
 
@@ -377,10 +458,18 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
     final isDark = theme.brightness == Brightness.dark;
 
     final qText = loc(item['questionTr'] ?? '', item['questionEn'] ?? '');
-    final aText = item['answerText']?.toString() ?? '';
-    final askedBy = item['askedByName']?.toString() ?? 'Partner';
-    final answeredBy = item['answeredByName']?.toString() ?? 'Partner';
     final emoji = item['emoji']?.toString() ?? '💖';
+
+    List<Map<String, dynamic>> answersList = [];
+    if (item['answers'] is List) {
+      answersList = (item['answers'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } else if (item['answerText'] != null) {
+      answersList.add({
+        'answeredByName': item['answeredByName'] ?? 'Partner',
+        'answerText': item['answerText'],
+        'timestamp': item['timestamp'],
+      });
+    }
 
     showModalBottomSheet(
       context: context,
@@ -399,124 +488,131 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
             ),
           ],
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 44,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: LoveraColors.textMuted.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(10),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 44,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: LoveraColors.textMuted.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 18),
-            Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: LoveraColors.primary.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(14),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: LoveraColors.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Center(child: Text(emoji, style: const TextStyle(fontSize: 22))),
                   ),
-                  child: Center(child: Text(emoji, style: const TextStyle(fontSize: 22))),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          loc('CEVAPLANDI 💖', 'ANSWERED 💖'),
-                          style: const TextStyle(
-                            color: Color(0xFF10B981),
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0.8,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            loc('MÜHÜRLENMİŞ ANILAR 💖', 'SEALED MEMORIES 💖'),
+                            style: const TextStyle(
+                              color: Color(0xFF10B981),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.8,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        loc('$askedBy sordu, $answeredBy yanıtladı', '$askedBy asked, $answeredBy answered'),
-                        style: TextStyle(
-                          color: LoveraColors.textMuted,
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
+                        const SizedBox(height: 3),
+                        Text(
+                          loc('${answersList.length} yanıt kaydedildi', '${answersList.length} answers saved'),
+                          style: TextStyle(
+                            color: LoveraColors.textMuted,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              qText,
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, height: 1.35),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: LoveraColors.primary.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: LoveraColors.primary.withValues(alpha: 0.2)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.format_quote_rounded, color: LoveraColors.primary, size: 20),
-                      const SizedBox(width: 6),
-                      Text(
-                        '$answeredBy yanıtı:',
-                        style: TextStyle(
-                          color: LoveraColors.primary,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    aText,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      height: 1.45,
+                      ],
                     ),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: LoveraColors.primary,
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                ),
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: Text(loc('Kapat', 'Close'), style: const TextStyle(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 16),
+              Text(
+                qText,
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, height: 1.35),
               ),
-            ),
-          ],
+              const SizedBox(height: 16),
+              ...answersList.map((ans) {
+                final aName = ans['answeredByName']?.toString() ?? 'Partner';
+                final aContent = ans['answerText']?.toString() ?? '';
+                return Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: LoveraColors.primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: LoveraColors.primary.withValues(alpha: 0.2)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.format_quote_rounded, color: LoveraColors.primary, size: 20),
+                          const SizedBox(width: 6),
+                          Text(
+                            loc('$aName yanıtı:', '$aName\'s answer:'),
+                            style: TextStyle(
+                              color: LoveraColors.primary,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        aContent,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          height: 1.45,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: LoveraColors.primary,
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: Text(loc('Kapat', 'Close'), style: const TextStyle(fontWeight: FontWeight.w800)),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -994,6 +1090,28 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
     final emoji = gameData['activeQuestionEmoji'] ?? '💖';
     final askedBy = gameData['askedByName'] ?? 'Partner';
     final answeringBy = gameData['answeringName'] ?? 'Partner';
+    final myUid = DatabaseService().uid;
+    final partner = ref.watch(partnerProvider);
+    final partnerUid = partner?.id.toString() ?? '';
+
+    final qId = gameData['activeQuestionId']?.toString() ?? '';
+    final Map<String, dynamic> answeredMap = Map<String, dynamic>.from(gameData['answeredMap'] ?? {});
+    final currentAnsweredEntry = answeredMap[qId];
+
+    List<Map<String, dynamic>> answersList = [];
+    if (currentAnsweredEntry is Map && currentAnsweredEntry['answers'] is List) {
+      answersList = (currentAnsweredEntry['answers'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } else if (currentAnsweredEntry is Map && currentAnsweredEntry['answerText'] != null) {
+      answersList.add({
+        'answeredByUid': currentAnsweredEntry['answeredByUid'],
+        'answeredByName': currentAnsweredEntry['answeredByName'],
+        'answerText': currentAnsweredEntry['answerText'],
+        'timestamp': currentAnsweredEntry['timestamp'],
+      });
+    }
+
+    final bool hasMyAnswer = answersList.any((a) => a['answeredByUid'] == myUid);
+    final bool hasPartnerAnswer = answersList.any((a) => a['answeredByUid'] == partnerUid);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
@@ -1086,8 +1204,10 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
                       Expanded(
                         child: Text(
                           amIAnswering
-                              ? loc('Bu soruyu sadece sen cevaplayacaksın ✍️', 'Only you will answer this question ✍️')
-                              : loc('$answeringBy şu an yanıtını yazıyor... 💬', '$answeringBy is writing an answer... 💬'),
+                              ? loc('Bu soruyu sen cevaplıyorsun ✍️', 'You are answering this question ✍️')
+                              : (answersList.isNotEmpty
+                                  ? loc('Cevaplar sorunun altında mühürlendi 💖', 'Answers sealed below 💖')
+                                  : loc('$answeringBy şu an yanıtını yazıyor... 💬', '$answeringBy is writing an answer... 💬')),
                           style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
                         ),
                       ),
@@ -1098,9 +1218,147 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
             ),
           ).animate().fadeIn(duration: 400.ms).scale(begin: const Offset(0.92, 0.92)),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
 
-          // CEVAP ALANI
+          // 1. SORUNUN ALTINDAKİ CANLI CEVAPLAR (İki tarafın da hemen okuyabilmesi için)
+          if (answersList.isNotEmpty) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Row(
+                children: [
+                  const Text('💬', style: TextStyle(fontSize: 18)),
+                  const SizedBox(width: 8),
+                  Text(
+                    loc('Verilen Cevaplar (${answersList.length})', 'Given Answers (${answersList.length})'),
+                    style: TextStyle(
+                      color: isDark ? Colors.white : LoveraColors.textDark,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            ...answersList.map((ans) {
+              final aName = ans['answeredByName']?.toString() ?? 'Partner';
+              final aContent = ans['answerText']?.toString() ?? '';
+              final isMyAns = ans['answeredByUid'] == myUid;
+              return Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: isDark ? LoveraColors.darkSurface : LoveraColors.lightSurface,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isMyAns
+                        ? LoveraColors.primary.withValues(alpha: 0.35)
+                        : const Color(0xFF10B981).withValues(alpha: 0.35),
+                    width: 1.5,
+                  ),
+                  boxShadow: AppTheme.ambientShadow,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: (isMyAns ? LoveraColors.primary : const Color(0xFF10B981)).withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            isMyAns ? Icons.person_rounded : Icons.favorite_rounded,
+                            color: isMyAns ? LoveraColors.primary : const Color(0xFF10B981),
+                            size: 14,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          loc('$aName yanıtı:', '$aName\'s answer:'),
+                          style: TextStyle(
+                            color: isMyAns ? LoveraColors.primary : const Color(0xFF10B981),
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      aContent,
+                      style: TextStyle(
+                        color: isDark ? Colors.white : LoveraColors.textDark,
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w600,
+                        height: 1.45,
+                      ),
+                    ),
+                  ],
+                ),
+              ).animate().fadeIn().slideY(begin: 0.05);
+            }),
+            const SizedBox(height: 14),
+
+            // SIRA SIRASI VE AYNI SORUYU PARTNERE SORMA BUTONLARI
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: LoveraColors.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: LoveraColors.primary.withValues(alpha: 0.2)),
+              ),
+              child: Column(
+                children: [
+                  // "Aynı soruyu sende ona sor" butonu (Eğer ben cevapladıysam ve partner henüz cevaplamadıysa)
+                  if (hasMyAnswer && !hasPartnerAnswer) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      height: 46,
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFFEC4899),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        onPressed: () => _askBackSameQuestion(gameData),
+                        icon: const Icon(Icons.swap_calls_rounded, size: 20),
+                        label: Text(
+                          loc('Aynı Soruyu Sen de Ona Sor! 💌', 'Ask Back The Same Question! 💌'),
+                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13.5),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+
+                  // Soruyu tamamlama ve havuzdan yeni soru seçme butonları
+                  SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: LoveraColors.primary,
+                        side: BorderSide(color: LoveraColors.primary.withValues(alpha: 0.5)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      onPressed: _finishQuestionAndProceed,
+                      icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+                      label: Text(
+                        loc('Sıradaki Soruya Geç 🚀', 'Proceed to Next Question 🚀'),
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+
+          // 2. CEVAP YAZMA FORMU
           if (amIAnswering) ...[
             Container(
               padding: const EdgeInsets.all(18),
@@ -1126,7 +1384,7 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    loc('Partnerinle kart havuzuna ömürlük bir anı bırakacaksın.', 'You are leaving a lasting memory in the card vault.'),
+                    loc('Cevabın sorunun altına eklenecek ve partnerin anında okuyabilecek.', 'Your answer will be sealed below and partner can read instantly.'),
                     style: TextStyle(color: LoveraColors.textMuted, fontSize: 11.5),
                   ),
                   const SizedBox(height: 12),
@@ -1177,7 +1435,7 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
                 ],
               ),
             ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.08),
-          ] else ...[
+          ] else if (answersList.isEmpty) ...[
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
@@ -1382,13 +1640,32 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
   }) {
     final theme = Theme.of(context);
     final qText = loc(q.questionTr, q.questionEn);
+    final myUid = DatabaseService().uid;
+
+    List<dynamic> answersList = [];
+    if (answeredData != null) {
+      if (answeredData['answers'] is List) {
+        answersList = answeredData['answers'] as List;
+      } else if (answeredData['answerText'] != null) {
+        answersList.add(answeredData);
+      }
+    }
+
+    final bool hasMyAnswer = answersList.any((a) => (a is Map) && a['answeredByUid'] == myUid);
+    final bool hasPartnerAnswer = answersList.any((a) => (a is Map) && a['answeredByUid'] != myUid);
+    final bool bothAnswered = hasMyAnswer && hasPartnerAnswer;
 
     return InkWell(
       borderRadius: BorderRadius.circular(20),
       onTap: () {
         if (isAnswered && answeredData != null) {
-          HapticFeedback.selectionClick();
-          _showAnswerDetailsModal(answeredData);
+          // Eğer sıra bendeyse ve ben cevaplamışsam ama partner henüz cevaplamamışsa, hem okuma hem de "Ona Sor" opsiyonu sunulur
+          if (isMyTurn && !hasPartnerAnswer) {
+            _showAskOrReadBottomSheet(q, answeredData);
+          } else {
+            HapticFeedback.selectionClick();
+            _showAnswerDetailsModal(answeredData);
+          }
         } else if (isMyTurn) {
           _confirmSelectQuestion(q);
         } else {
@@ -1407,9 +1684,11 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
           color: theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isAnswered
-                ? const Color(0xFF10B981).withValues(alpha: 0.5)
-                : (isMyTurn ? LoveraColors.primary.withValues(alpha: 0.3) : theme.dividerColor),
+            color: bothAnswered
+                ? const Color(0xFF10B981).withValues(alpha: 0.6)
+                : (isAnswered
+                    ? LoveraColors.primary.withValues(alpha: 0.5)
+                    : (isMyTurn ? LoveraColors.primary.withValues(alpha: 0.3) : theme.dividerColor)),
             width: isAnswered ? 1.6 : 1.0,
           ),
           boxShadow: AppTheme.ambientShadow,
@@ -1421,14 +1700,16 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: isAnswered
+                color: bothAnswered
                     ? const Color(0xFF10B981).withValues(alpha: 0.15)
-                    : LoveraColors.primary.withValues(alpha: 0.12),
+                    : (isAnswered
+                        ? LoveraColors.primary.withValues(alpha: 0.15)
+                        : LoveraColors.primary.withValues(alpha: 0.12)),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Center(
                 child: Text(
-                  isAnswered ? '💖' : q.emoji,
+                  bothAnswered ? '💑' : (isAnswered ? '💖' : q.emoji),
                   style: const TextStyle(fontSize: 22),
                 ),
               ),
@@ -1444,13 +1725,17 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                            color: (bothAnswered ? const Color(0xFF10B981) : LoveraColors.primary).withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
-                            loc('CEVAPLANDI ✨', 'ANSWERED ✨'),
-                            style: const TextStyle(
-                              color: Color(0xFF10B981),
+                            bothAnswered
+                                ? loc('İKİNİZ DE CEVAPLADINIZ 💑', 'BOTH ANSWERED 💑')
+                                : (hasMyAnswer
+                                    ? loc('SEN CEVAPLADIN (PARTNERE SORABİLİRSİN) 💌', 'YOU ANSWERED (CAN ASK PARTNER) 💌')
+                                    : loc('PARTNERİN CEVAPLADI ✨', 'PARTNER ANSWERED ✨')),
+                            style: TextStyle(
+                              color: bothAnswered ? const Color(0xFF10B981) : LoveraColors.primary,
                               fontSize: 9.5,
                               fontWeight: FontWeight.w900,
                               letterSpacing: 0.6,
@@ -1459,7 +1744,7 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
                         ),
                         const SizedBox(width: 6),
                         Text(
-                          loc('(Okumak için tıkla)', '(Tap to read)'),
+                          loc('(Detay için tıkla)', '(Tap for details)'),
                           style: TextStyle(color: LoveraColors.textMuted, fontSize: 10),
                         ),
                       ],
@@ -1482,13 +1767,110 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
             ),
             const SizedBox(width: 8),
             Icon(
-              isAnswered
-                  ? Icons.check_circle_rounded
-                  : (isMyTurn ? Icons.touch_app_rounded : Icons.chevron_right_rounded),
-              color: isAnswered
+              bothAnswered
+                  ? Icons.verified_rounded
+                  : (isAnswered
+                      ? Icons.favorite_rounded
+                      : (isMyTurn ? Icons.touch_app_rounded : Icons.chevron_right_rounded)),
+              color: bothAnswered
                   ? const Color(0xFF10B981)
-                  : (isMyTurn ? LoveraColors.primary : LoveraColors.textMuted),
+                  : (isAnswered ? LoveraColors.primary : (isMyTurn ? LoveraColors.primary : LoveraColors.textMuted)),
               size: 22,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAskOrReadBottomSheet(QuestionCard q, Map<String, dynamic> answeredData) {
+    final qText = loc(q.questionTr, q.questionEn);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 34),
+        decoration: BoxDecoration(
+          color: Theme.of(ctx).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: LoveraColors.textMuted.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Text(q.emoji, style: const TextStyle(fontSize: 32)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    loc('Bu Soruyu Partnere Sor?', 'Ask This Question To Partner?'),
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              qText,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, height: 1.35),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              loc(
+                'Bu soruyu daha önce sen cevaplamıştın. Şimdi sıra sende ve aynı soruyu partnerine sorup onun da cevabını alabilirsin!',
+                'You already answered this question before. Now it\'s your turn and you can ask it to your partner to hear their answer!',
+              ),
+              style: TextStyle(color: LoveraColors.textMuted, fontSize: 12.5),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _showAnswerDetailsModal(answeredData);
+                    },
+                    icon: const Icon(Icons.menu_book_rounded, size: 18),
+                    label: Text(loc('Cevabımı Oku', 'Read My Answer')),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: LoveraColors.primary,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _selectQuestion(q);
+                    },
+                    icon: const Icon(Icons.send_rounded, size: 18),
+                    label: Text(
+                      loc('Partnere Sor! 💌', 'Ask Partner! 💌'),
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
