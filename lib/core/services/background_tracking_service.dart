@@ -19,6 +19,7 @@ import '../models/models.dart';
 import 'device_service.dart';
 import 'notification_service.dart';
 import 'widget_sync_service.dart';
+import 'background_slideshow_service.dart';
 import '../localization/app_strings.dart';
 
 /// 7/24 Kesintisiz Arka Plan Canlı Şarj ve Konum Servisi (Snapchat / Life360 Modeli)
@@ -574,6 +575,31 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
     if (bgTickCounter >= 4) {
       bgTickCounter = 0;
       await WidgetSyncService.updateWidgetFromLocalCache();
+    }
+
+    // Uygulama tamamen kapalı olsa bile Widget Slideshow (Otomatik Arka Plan Değişimi) kontrolü:
+    try {
+      final wCfg = await BackgroundSlideshowService().getConfig('widget');
+      if (wCfg.isEnabled) {
+        final cId = prefs.getString('saved_couple_id');
+        if (cId != null && cId.isNotEmpty) {
+          final nowMs = DateTime.now().millisecondsSinceEpoch;
+          final diffSec = (nowMs - wCfg.lastRotatedAt) / 1000;
+          if (diffSec >= wCfg.intervalSeconds || wCfg.lastRotatedAt == 0) {
+            // Anıları çekip sıradaki fotoğrafa geçir
+            final memsSnap = await FirebaseFirestore.instance
+                .collection('couples')
+                .doc(cId)
+                .collection('memories')
+                .orderBy('date', descending: true)
+                .get();
+            final mems = memsSnap.docs.map((d) => MemoryItem.fromJson(d.data(), d.id)).toList();
+            await BackgroundSlideshowService().rotateWidgetSlideshowIfNeeded(mems, force: true);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[BG-WIDGET-SLIDESHOW-ERR] $e');
     }
   });
 

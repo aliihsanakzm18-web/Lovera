@@ -12,14 +12,18 @@ import 'package:gal/gal.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../core/models/models.dart';
+import '../../../core/services/background_slideshow_service.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/notification_service.dart';
 import '../../../core/services/widget_sync_service.dart';
 import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../common/presentation/widgets/background_source_selection_sheet.dart';
+import '../../common/presentation/widgets/memory_background_picker_sheet.dart';
 import '../../drawing/presentation/drawing_screen.dart';
 import '../../../core/widgets/avatar_cache.dart';
 import '../../../core/widgets/lovera_theme_background.dart';
+import 'widgets/chat_media_gallery_sheet.dart';
 
 class ChatView extends ConsumerStatefulWidget {
   const ChatView({super.key, this.onBackToHome, this.onOpenMap, this.isEmbedded = false});
@@ -73,6 +77,27 @@ class _ChatViewState extends ConsumerState<ChatView> {
 
     // Sohbete girildiğinde widget üzerindeki mesajları derhal temizle
     WidgetSyncService.clearWidgetMessages();
+
+    // Eğer aktif bir chat slideshow konfigürasyonu varsa sohbet açıldığında döngüyü sürdür
+    final cId = ref.read(coupleIdProvider) ?? ref.read(currentUserProvider)?.coupleId;
+    if (cId != null && cId.isNotEmpty) {
+      BackgroundSlideshowService().getConfig('chat').then((cfg) {
+        if (cfg.isEnabled && mounted) {
+          DatabaseService().getMemoriesOnce(cId).then((mems) {
+            if (mounted) {
+              BackgroundSlideshowService().startChatSlideshow(
+                coupleId: cId,
+                memories: mems,
+                config: cfg,
+                onBgChanged: (_) {
+                  if (mounted) setState(() {});
+                },
+              );
+            }
+          });
+        }
+      });
+    }
   }
 
   @override
@@ -80,6 +105,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
     WidgetSyncService.clearWidgetMessages();
     _textController.dispose();
     _scrollController.dispose();
+    BackgroundSlideshowService().stopChatTimerOnly();
     super.dispose();
   }
 
@@ -258,6 +284,48 @@ class _ChatViewState extends ConsumerState<ChatView> {
                   leading: Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
+                      color: LoveraColors.primary.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.photo_library_rounded, color: LoveraColors.primary, size: 22),
+                  ),
+                  title: Text(
+                    loc('Paylaşılan Fotoğraflar 📸', 'Shared Photos 📸'),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                    ),
+                  ),
+                  subtitle: Text(
+                    loc('Sohbetteki tüm fotoğrafları gör, indir veya albüme ekle', 'View, save or add all chat photos to album'),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    HapticFeedback.mediumImpact();
+                    showModalBottomSheet<void>(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (_) => ChatMediaGallerySheet(
+                        coupleId: coupleId,
+                        onReplyToMessage: (ChatMessage msg) {
+                          setState(() {
+                            _replyingTo = msg;
+                          });
+                        },
+                      ),
+                    );
+                  },
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
                       color: LoveraColors.primary.withValues(alpha: 0.12),
                       shape: BoxShape.circle,
                     ),
@@ -277,42 +345,90 @@ class _ChatViewState extends ConsumerState<ChatView> {
                       color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
                     ),
                   ),
-                  onTap: () async {
+                  onTap: () {
                     Navigator.pop(ctx);
                     HapticFeedback.lightImpact();
-                    try {
-                      final picker = ImagePicker();
-                      final picked = await picker.pickImage(
-                        source: ImageSource.gallery,
-                        imageQuality: 65,
-                        maxWidth: 720,
-                        maxHeight: 1280,
-                      );
-                      if (picked != null) {
-                        final bytes = await File(picked.path).readAsBytes();
-                        final base64Str = 'data:image/jpeg;base64,${base64Encode(bytes)}';
-                        final myName = ref.read(userNameProvider);
-                        await DatabaseService().updateChatBackground(coupleId, base64Str, myName.isEmpty ? 'Partnerin' : myName);
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(loc('Sohbet arka planı iki taraf için de güncellendi! 💕', 'Chat background updated for both sides! 💕')),
-                              backgroundColor: LoveraColors.secondary,
-                              behavior: SnackBarBehavior.floating,
-                            ),
+                    BackgroundSourceSelectionSheet.show(
+                      context: context,
+                      title: loc('Sohbet Arka Planı', 'Chat Background'),
+                      onSelectDevice: () async {
+                        try {
+                          final picker = ImagePicker();
+                          final picked = await picker.pickImage(
+                            source: ImageSource.gallery,
+                            imageQuality: 65,
+                            maxWidth: 720,
+                            maxHeight: 1280,
                           );
+                          if (picked != null) {
+                            final bytes = await File(picked.path).readAsBytes();
+                            final base64Str = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+                            final myName = ref.read(userNameProvider);
+                            // Cihazdan tekil fotoğraf seçildiğinde varsa slideshow'u durdur
+                            await BackgroundSlideshowService().stopSlideshow('chat');
+                            await DatabaseService().updateChatBackground(coupleId, base64Str, myName.isEmpty ? 'Partnerin' : myName);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(loc('Sohbet arka planı iki taraf için de güncellendi! 💕', 'Chat background updated for both sides! 💕')),
+                                  backgroundColor: LoveraColors.secondary,
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            }
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(loc('Fotoğraf eklenirken bir hata oluştu: $e', 'Error adding photo: $e')),
+                                backgroundColor: const Color(0xFFEF4444),
+                              ),
+                            );
+                          }
                         }
-                      }
-                    } catch (e) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(loc('Fotoğraf eklenirken bir hata oluştu: $e', 'Error adding photo: $e')),
-                            backgroundColor: const Color(0xFFEF4444),
+                      },
+                      onSelectMemoryAlbum: () {
+                        showModalBottomSheet(
+                          context: context,
+                          backgroundColor: Colors.transparent,
+                          isScrollControlled: true,
+                          builder: (mCtx) => MemoryBackgroundPickerSheet(
+                            coupleId: coupleId,
+                            target: 'chat',
+                            onSingleImageSelected: (base64Str) async {
+                              final myName = ref.read(userNameProvider);
+                              // Tekil anı fotoğrafı seçildiğinde slideshow'u durdur
+                              await BackgroundSlideshowService().stopSlideshow('chat');
+                              await DatabaseService().updateChatBackground(coupleId, base64Str, myName.isEmpty ? 'Partnerin' : myName);
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(loc('Sohbet arka planı güncellendi! 💕', 'Chat background updated! 💕')),
+                                    backgroundColor: LoveraColors.secondary,
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
+                            },
+                            onSlideshowConfigured: (config) {
+                              // Slideshow başlat
+                              DatabaseService().getMemoriesOnce(coupleId).then((mems) {
+                                BackgroundSlideshowService().startChatSlideshow(
+                                  coupleId: coupleId,
+                                  memories: mems,
+                                  config: config,
+                                  onBgChanged: (newImg) {
+                                    // Canlı UI güncellemesi
+                                    if (mounted) setState(() {});
+                                  },
+                                );
+                              });
+                            },
                           ),
                         );
-                      }
-                    }
+                      },
+                    );
                   },
                 ),
                 if (currentChatBg != null && currentChatBg.isNotEmpty) ...[
@@ -344,6 +460,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                     onTap: () async {
                       Navigator.pop(ctx);
                       try {
+                        await BackgroundSlideshowService().stopSlideshow('chat');
                         await DatabaseService().removeChatBackground(coupleId);
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -573,7 +690,15 @@ class _ChatViewState extends ConsumerState<ChatView> {
         final coupleData = coupleSnapshot.data?.data();
         final chatBackgroundUrl = coupleData?['chatBackgroundUrl'] as String?;
 
-        return GestureDetector(
+        return ValueListenableBuilder<String?>(
+          valueListenable: BackgroundSlideshowService().currentChatBgUrl,
+          builder: (context, slideshowBgUrl, _) {
+            // Eğer slideshow arka planı varsa ve hafızada aktifse onu kullan, yoksa Firestore'daki kalıcı url'i kullan
+            final effectiveChatBg = (slideshowBgUrl != null && slideshowBgUrl.isNotEmpty)
+                ? slideshowBgUrl
+                : chatBackgroundUrl;
+
+            return GestureDetector(
           onTap: () => FocusScope.of(context).unfocus(),
           behavior: HitTestBehavior.opaque,
           child: Scaffold(
@@ -771,12 +896,41 @@ class _ChatViewState extends ConsumerState<ChatView> {
             ),
 
             // Ortak Sohbet Fotoğrafı (Eğer ayarlandıysa tema üzerinde şık bir şekilde durur)
-            if (chatBackgroundUrl != null && chatBackgroundUrl.isNotEmpty) ...[
+            if (effectiveChatBg != null && effectiveChatBg.isNotEmpty) ...[
               Positioned.fill(
-                child: Image(
-                  image: AvatarCache.getProvider(chatBackgroundUrl)!,
-                  fit: BoxFit.cover,
-                  gaplessPlayback: true,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 900),
+                  layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
+                    return Stack(
+                      fit: StackFit.expand,
+                      children: <Widget>[
+                        ...previousChildren,
+                        if (currentChild != null) currentChild,
+                      ],
+                    );
+                  },
+                  switchInCurve: Curves.easeInOutCubic,
+                  switchOutCurve: Curves.easeInOutCubic,
+                  transitionBuilder: (child, animation) {
+                    return FadeTransition(
+                      opacity: animation,
+                      child: ScaleTransition(
+                        scale: Tween<double>(begin: 1.04, end: 1.0).animate(animation),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: SizedBox.expand(
+                    key: ValueKey<String>(effectiveChatBg),
+                    child: Image(
+                      image: AvatarCache.getProvider(effectiveChatBg)!,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: double.infinity,
+                      alignment: Alignment.center,
+                      gaplessPlayback: true,
+                    ),
+                  ),
                 ),
               ),
               // Fotoğrafı asla matlaştırmayan, sadece hafif derinlik katan minimal degrade
@@ -894,7 +1048,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                             return _ChatBubble(
                               message: msg,
                               isMe: isMe,
-                              hasCustomBg: chatBackgroundUrl != null && chatBackgroundUrl.isNotEmpty,
+                              hasCustomBg: effectiveChatBg != null && effectiveChatBg.isNotEmpty,
                               onReply: () {
                                 setState(() => _replyingTo = msg);
                               },
@@ -1163,9 +1317,11 @@ class _ChatViewState extends ConsumerState<ChatView> {
   ),
 ),
 );
-      },
-    );
-  }
+              },
+            );
+          },
+        );
+      }
 }
 
 class _ChatBubble extends ConsumerWidget {
@@ -1499,6 +1655,8 @@ class _ChatBubble extends ConsumerWidget {
                             MaterialPageRoute(
                               builder: (_) => FullScreenImageViewer(
                                 imageBase64: message.mediaBase64!,
+                                messageId: message.id,
+                                timestamp: message.createdAt,
                               ),
                             ),
                           );
@@ -1632,16 +1790,66 @@ class _ChatImageBubble extends StatelessWidget {
 }
 
 /// Fotoğraf Büyütme ve Galeriye Kaydetme Ekranı
-class FullScreenImageViewer extends StatefulWidget {
-  const FullScreenImageViewer({super.key, required this.imageBase64});
+class FullScreenImageViewer extends ConsumerStatefulWidget {
+  const FullScreenImageViewer({
+    super.key,
+    required this.imageBase64,
+    this.messageId,
+    this.timestamp,
+  });
   final String imageBase64;
+  final String? messageId;
+  final DateTime? timestamp;
 
   @override
-  State<FullScreenImageViewer> createState() => _FullScreenImageViewerState();
+  ConsumerState<FullScreenImageViewer> createState() => _FullScreenImageViewerState();
 }
 
-class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
+class _FullScreenImageViewerState extends ConsumerState<FullScreenImageViewer> {
   bool _isSaving = false;
+  bool _isAddingToAlbum = false;
+
+  Future<void> _saveToMemoriesAlbum() async {
+    final coupleId = ref.read(coupleIdProvider) ?? ref.read(currentUserProvider)?.coupleId;
+    if (coupleId == null || coupleId.isEmpty) return;
+
+    setState(() => _isAddingToAlbum = true);
+    HapticFeedback.heavyImpact();
+
+    try {
+      final myName = ref.read(userNameProvider);
+      await DatabaseService().addMemory(
+        coupleId: coupleId,
+        imageBase64: widget.imageBase64,
+        caption: loc('Sohbetten kaydedilen anı 💌', 'Memory saved from chat 💌'),
+        locationTitle: '',
+        date: widget.timestamp ?? DateTime.now(),
+        createdByName: myName.isNotEmpty ? myName : 'Partnerin',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(loc('Ortak Anı Albümüne mühürlendi! 💖✨', 'Saved to Shared Memories! 💖✨')),
+            backgroundColor: LoveraColors.primary,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(loc('Albüme eklenirken hata: $e', 'Error adding to album: $e')),
+            backgroundColor: const Color(0xFFEF4444),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isAddingToAlbum = false);
+    }
+  }
 
   Future<void> _saveToGallery() async {
     setState(() => _isSaving = true);
@@ -1694,6 +1902,20 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
         ),
         title: Text(loc('Fotoğraf', 'Photo'), style: const TextStyle(color: Colors.white, fontSize: 16)),
         actions: [
+          _isAddingToAlbum
+              ? const Padding(
+                  padding: EdgeInsets.all(14),
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  ),
+                )
+              : IconButton(
+                  icon: const Icon(Icons.favorite_rounded, color: Colors.white),
+                  tooltip: loc('Ortak Anı Albümüne Kaydet 💖', 'Save to Shared Memories 💖'),
+                  onPressed: _saveToMemoriesAlbum,
+                ),
           _isSaving
               ? const Padding(
                   padding: EdgeInsets.all(14),

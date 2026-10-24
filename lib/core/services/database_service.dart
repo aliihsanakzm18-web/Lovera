@@ -2313,6 +2313,21 @@ class DatabaseService {
         .asBroadcastStream();
   }
 
+  Future<List<MemoryItem>> getMemoriesOnce(String coupleId) async {
+    if (coupleId.isEmpty) return [];
+    try {
+      final snap = await _db
+          .collection('couples')
+          .doc(coupleId)
+          .collection('memories')
+          .orderBy('date', descending: true)
+          .get();
+      return snap.docs.map((d) => MemoryItem.fromJson(d.data(), d.id)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
   Stream<List<MemoryAlbum>> albumsStream(String coupleId) {
     if (coupleId.isEmpty) return const Stream.empty();
     return _db

@@ -28,6 +28,7 @@ class LoveQuestionsGameView extends ConsumerStatefulWidget {
 class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> with WidgetsBindingObserver {
   final TextEditingController _answerController = TextEditingController();
   String _selectedCategory = 'all';
+  bool _sortByAnsweredFirst = false;
   bool _isSubmittingAnswer = false;
   bool _isFlippingCoinLocal = false;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _gameSub;
@@ -43,8 +44,10 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
-      _leaveGame(reason: 'paused');
+    // SADECE kullanıcı uygulamayı tamamen kapattığında veya arka plandan kaldırdığında (detached / kill)
+    // oyunu sonlandır. Uygulama içinde dolaşırken veya geçici ekran kilitlerinde oyun kapanmaz.
+    if (state == AppLifecycleState.detached) {
+      _leaveGame(reason: 'app_detached');
     }
   }
 
@@ -161,7 +164,7 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _leaveGame(reason: 'screen_dispose');
+    // Uygulama içinde geri çıkıldığında oyun durumunu sıfırlama, kullanıcı istediği zaman kaldığı yerden geri dönebilir
     _gameSub?.cancel();
     _answerController.dispose();
     super.dispose();
@@ -661,9 +664,8 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
     return PopScope(
       canPop: true,
       onPopInvokedWithResult: (didPop, result) {
-        if (didPop) {
-          _leaveGame(reason: 'back_press');
-        }
+        // Kullanıcı oyun ekranından geri tuşuyla uygulama içinde başka yere gittiğinde oyunu sonlandırmıyoruz.
+        // Partner oyundan atılmaz, veriler korunur. İki taraf da istediği an "Oyuna Devam Et" ile devam edebilir.
       },
       child: Scaffold(
         backgroundColor: isDark ? LoveraColors.darkBg : LoveraColors.lightBg,
@@ -673,7 +675,6 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
             onPressed: () {
-              _leaveGame(reason: 'app_bar_back');
               Navigator.of(context).maybePop();
             },
           ),
@@ -1559,6 +1560,33 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
 
     final int totalAnsweredCount = answeredMap.length;
 
+    final List<QuestionCard> sortedQuestions = List<QuestionCard>.from(questions);
+    final myUid = DatabaseService().uid;
+    if (_sortByAnsweredFirst) {
+      int getScore(QuestionCard q) {
+        if (!answeredMap.containsKey(q.id)) return 0;
+        final entry = answeredMap[q.id];
+        List<dynamic> answers = [];
+        if (entry is Map) {
+          if (entry['answers'] is List) {
+            answers = entry['answers'] as List;
+          } else if (entry['answerText'] != null) {
+            answers.add(entry);
+          }
+        }
+        final bool hasMy = answers.any((a) => (a is Map) && a['answeredByUid'] == myUid);
+        final bool hasPartner = answers.any((a) => (a is Map) && a['answeredByUid'] != myUid);
+        if (hasMy && hasPartner) return 2; // İkiniz de cevapladınız -> En üstte (2)
+        return 1; // Tek kişi cevapladı -> Ortada (1)
+      }
+
+      sortedQuestions.sort((a, b) {
+        final aScore = getScore(a);
+        final bScore = getScore(b);
+        return bScore.compareTo(aScore); // 2 > 1 > 0
+      });
+    }
+
     return Column(
       children: [
         // KATEGORİ ÇUBUĞU
@@ -1607,18 +1635,44 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
                   fontSize: 12,
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  loc('$totalAnsweredCount Cevaplandı 💖', '$totalAnsweredCount Answered 💖'),
-                  style: const TextStyle(
-                    color: Color(0xFF10B981),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
+              InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  setState(() {
+                    _sortByAnsweredFirst = !_sortByAnsweredFirst;
+                  });
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: _sortByAnsweredFirst
+                        ? const Color(0xFF10B981)
+                        : const Color(0xFF10B981).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: const Color(0xFF10B981).withValues(alpha: _sortByAnsweredFirst ? 1.0 : 0.4),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _sortByAnsweredFirst ? Icons.arrow_upward_rounded : Icons.sort_rounded,
+                        size: 13,
+                        color: _sortByAnsweredFirst ? Colors.white : const Color(0xFF10B981),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        loc('$totalAnsweredCount Cevaplandı 💖', '$totalAnsweredCount Answered 💖'),
+                        style: TextStyle(
+                          color: _sortByAnsweredFirst ? Colors.white : const Color(0xFF10B981),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -1630,10 +1684,10 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
         Expanded(
           child: ListView.separated(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
-            itemCount: questions.length,
+            itemCount: sortedQuestions.length,
             separatorBuilder: (_, __) => const SizedBox(height: 10),
             itemBuilder: (context, index) {
-              final q = questions[index];
+              final q = sortedQuestions[index];
               final isAnswered = answeredMap.containsKey(q.id);
               final answeredData = isAnswered ? answeredMap[q.id] : null;
 
@@ -1793,7 +1847,10 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (isAnswered) ...[
-                    Row(
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 2,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
@@ -1805,7 +1862,7 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
                             bothAnswered
                                 ? loc('İKİNİZ DE CEVAPLADINIZ 💑', 'BOTH ANSWERED 💑')
                                 : (hasMyAnswer
-                                    ? loc('SEN CEVAPLADIN (PARTNERE SORABİLİRSİN) 💌', 'YOU ANSWERED (CAN ASK PARTNER) 💌')
+                                    ? loc('SEN CEVAPLADIN 💌', 'YOU ANSWERED 💌')
                                     : loc('PARTNERİN CEVAPLADI ✨', 'PARTNER ANSWERED ✨')),
                             style: TextStyle(
                               color: bothAnswered ? const Color(0xFF10B981) : LoveraColors.primary,
@@ -1815,7 +1872,6 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
                             ),
                           ),
                         ),
-                        const SizedBox(width: 6),
                         Text(
                           loc('(Detay için tıkla)', '(Tap for details)'),
                           style: TextStyle(color: LoveraColors.textMuted, fontSize: 10),

@@ -11,6 +11,7 @@ import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/lovera_theme_background.dart';
 import 'love_questions_game_view.dart';
+import 'question_archive_view.dart';
 
 class GamesView extends ConsumerStatefulWidget {
   const GamesView({super.key, this.onBackToHome});
@@ -414,6 +415,34 @@ class _GamesViewState extends ConsumerState<GamesView> {
                             ),
                           ),
                         ],
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 44,
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              side: BorderSide(color: Colors.white.withValues(alpha: 0.4), width: 1.2),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              backgroundColor: Colors.black.withValues(alpha: 0.15),
+                            ),
+                            onPressed: () {
+                              HapticFeedback.selectionClick();
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const QuestionArchiveView(),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.menu_book_rounded, size: 18),
+                            label: Text(
+                              loc('Soru & Cevap Arşivi 📖', 'Question Archive 📖'),
+                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.08),

@@ -9,10 +9,13 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/localization/app_strings.dart';
+import '../../../core/services/background_slideshow_service.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/widget_sync_service.dart';
 import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../common/presentation/widgets/background_source_selection_sheet.dart';
+import '../../common/presentation/widgets/memory_background_picker_sheet.dart';
 import '../../drawing/presentation/drawing_screen.dart';
 import '../../../core/widgets/lovera_theme_background.dart';
 
@@ -134,75 +137,174 @@ class _WidgetSettingsViewState extends ConsumerState<WidgetSettingsView> {
 
   Future<void> _pickImage() async {
     HapticFeedback.lightImpact();
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 75,
-      maxWidth: 800,
-      maxHeight: 800,
+    final coupleId = ref.read(coupleIdProvider) ?? ref.read(currentUserProvider)?.coupleId ?? '';
+
+    BackgroundSourceSelectionSheet.show(
+      context: context,
+      title: loc('Widget Arka Planı', 'Widget Background'),
+      onSelectDevice: () async {
+        final picker = ImagePicker();
+        final pickedFile = await picker.pickImage(
+          source: ImageSource.gallery,
+          imageQuality: 75,
+          maxWidth: 800,
+          maxHeight: 800,
+        );
+
+        if (pickedFile == null) return;
+
+        try {
+          setState(() => _isLoading = true);
+          // Cihazdan tekil fotoğraf seçilirse var olan slideshow'u durdur
+          await BackgroundSlideshowService().stopSlideshow('widget');
+
+          final appDir = await getApplicationDocumentsDirectory();
+          final targetPath = '${appDir.path}/widget_bg_custom.jpg';
+
+          final targetFile = File(targetPath);
+          if (targetFile.existsSync()) {
+            targetFile.deleteSync();
+          }
+          await File(pickedFile.path).copy(targetPath);
+
+          PaintingBinding.instance.imageCache.clear();
+          PaintingBinding.instance.imageCache.clearLiveImages();
+          await FileImage(File(targetPath)).evict();
+
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('widget_custom_bg_path', targetPath);
+
+          // Widget'a yerel senkronize et
+          await WidgetSyncService.setWidgetBackgroundImage(targetPath);
+
+          final imageBytes = await File(targetPath).readAsBytes();
+          final base64Str = 'data:image/jpeg;base64,${base64Encode(imageBytes)}';
+          await DatabaseService().updateWidgetBg(base64Str);
+
+          setState(() {
+            _savedImagePath = targetPath;
+            _lastUpdated = DateTime.now().millisecondsSinceEpoch;
+            _isLoading = false;
+          });
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(loc('Widget fotoğrafın başarıyla güncellendi! 💕', 'Widget photo updated successfully! 💕')),
+                backgroundColor: LoveraColors.secondary,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        } catch (e) {
+          setState(() => _isLoading = false);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(loc('Fotoğraf eklenirken bir hata oluştu: $e', 'An error occurred while adding photo: $e')),
+                backgroundColor: Colors.redAccent,
+              ),
+            );
+          }
+        }
+      },
+      onSelectMemoryAlbum: () {
+        if (coupleId.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(loc('Anı albümünü kullanmak için eşleşmeniz gerekir.', 'You must pair to use the memory album.')),
+              backgroundColor: LoveraColors.primary,
+            ),
+          );
+          return;
+        }
+
+        showModalBottomSheet(
+          context: context,
+          backgroundColor: Colors.transparent,
+          isScrollControlled: true,
+          builder: (mCtx) => MemoryBackgroundPickerSheet(
+            coupleId: coupleId,
+            target: 'widget',
+            onSingleImageSelected: (base64Str) async {
+              try {
+                setState(() => _isLoading = true);
+                await BackgroundSlideshowService().stopSlideshow('widget');
+
+                final appDir = await getApplicationDocumentsDirectory();
+                final targetPath = '${appDir.path}/widget_bg_custom.jpg';
+                final targetFile = File(targetPath);
+
+                String raw = base64Str;
+                if (raw.contains(',')) raw = raw.split(',').last;
+                final bytes = base64Decode(raw);
+                await targetFile.writeAsBytes(bytes, flush: true);
+
+                PaintingBinding.instance.imageCache.clear();
+                PaintingBinding.instance.imageCache.clearLiveImages();
+                await FileImage(File(targetPath)).evict();
+
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setString('widget_custom_bg_path', targetPath);
+
+                await WidgetSyncService.setWidgetBackgroundImage(targetPath);
+                await DatabaseService().updateWidgetBg(base64Str);
+
+                setState(() {
+                  _savedImagePath = targetPath;
+                  _lastUpdated = DateTime.now().millisecondsSinceEpoch;
+                  _isLoading = false;
+                });
+
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(loc('Widget fotoğrafı anı albümünden güncellendi! 💕', 'Widget photo updated from memory album! 💕')),
+                      backgroundColor: LoveraColors.secondary,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              } catch (e) {
+                setState(() => _isLoading = false);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(loc('Hata oluştu: $e', 'An error occurred: $e')),
+                      backgroundColor: Colors.redAccent,
+                    ),
+                  );
+                }
+              }
+            },
+            onSlideshowConfigured: (config) async {
+              // Timer'ı ve ilk rotasyonu hemen başlat
+              final mems = await DatabaseService().getMemoriesOnce(coupleId);
+              BackgroundSlideshowService().startWidgetTimer(
+                coupleId: coupleId,
+                memories: mems,
+                config: config,
+              );
+              final appDir = await getApplicationDocumentsDirectory();
+              final targetPath = '${appDir.path}/widget_bg_custom.jpg';
+              if (mounted) {
+                setState(() {
+                  _savedImagePath = targetPath;
+                  _lastUpdated = DateTime.now().millisecondsSinceEpoch;
+                });
+              }
+            },
+          ),
+        );
+      },
     );
-
-    if (pickedFile == null) return;
-
-    try {
-      setState(() => _isLoading = true);
-      final appDir = await getApplicationDocumentsDirectory();
-      final targetPath = '${appDir.path}/widget_bg_custom.jpg';
-
-      final targetFile = File(targetPath);
-      if (targetFile.existsSync()) {
-        targetFile.deleteSync();
-      }
-      await File(pickedFile.path).copy(targetPath);
-
-      // Flutter image cache'ini temizle ki eski görsel yerine yenisi hemen görünsün
-      PaintingBinding.instance.imageCache.clear();
-      PaintingBinding.instance.imageCache.clearLiveImages();
-      await FileImage(File(targetPath)).evict();
-
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('widget_custom_bg_path', targetPath);
-
-      // Widget'a yerel senkronize et
-      await WidgetSyncService.setWidgetBackgroundImage(targetPath);
-
-      // Yalnızca kullanıcının kendi hesabına kaydet (Kişisel widget arka planı)
-      final imageBytes = await File(targetPath).readAsBytes();
-      final base64Str = 'data:image/jpeg;base64,${base64Encode(imageBytes)}';
-      await DatabaseService().updateWidgetBg(base64Str);
-
-      setState(() {
-        _savedImagePath = targetPath;
-        _lastUpdated = DateTime.now().millisecondsSinceEpoch;
-        _isLoading = false;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(loc('Widget fotoğrafın başarıyla güncellendi! 💕', 'Widget photo updated successfully! 💕')),
-            backgroundColor: LoveraColors.secondary,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } catch (e) {
-      setState(() => _isLoading = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(loc('Fotoğraf eklenirken bir hata oluştu: $e', 'An error occurred while adding photo: $e')),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
-      }
-    }
   }
 
   Future<void> _removeImage() async {
     HapticFeedback.lightImpact();
     try {
       setState(() => _isLoading = true);
+      await BackgroundSlideshowService().stopSlideshow('widget');
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('widget_custom_bg_path');
 

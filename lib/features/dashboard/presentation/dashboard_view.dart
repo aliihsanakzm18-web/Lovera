@@ -29,6 +29,7 @@ import '../../onboarding/presentation/onboarding_flow.dart';
 import '../../settings/presentation/settings_view.dart';
 import '../../drawing/presentation/drawing_screen.dart';
 import 'package:path_provider/path_provider.dart';
+import '../../../core/services/background_slideshow_service.dart';
 import '../../../core/services/widget_sync_service.dart';
 import '../../../core/widgets/avatar_cache.dart';
 import '../../../core/widgets/lovera_theme_background.dart';
@@ -492,8 +493,21 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
     DeviceService().startContinuousLocationTracking();
     NotificationService().updateFcmTokenInFirestore();
 
-    // İlk açılışta uygulamada olduğumuzu bildir
-    DatabaseService().setAppPresence(true);
+    // İlk açılışta veya geri dönüldüğünde aktif widget slideshow varsa timer'ını canlandır
+    final coupleId = ref.read(coupleIdProvider) ?? ref.read(currentUserProvider)?.coupleId;
+    if (coupleId != null && coupleId.isNotEmpty) {
+      BackgroundSlideshowService().getConfig('widget').then((wCfg) {
+        if (wCfg.isEnabled) {
+          DatabaseService().getMemoriesOnce(coupleId).then((mems) {
+            BackgroundSlideshowService().startWidgetTimer(
+              coupleId: coupleId,
+              memories: mems,
+              config: wCfg,
+            );
+          });
+        }
+      });
+    }
 
     // Periyodik olarak durumu kontrol et (yalnızca pil/konum değiştiyse yazılır)
     _statusSyncTimer = Timer.periodic(const Duration(seconds: 15), (_) {
@@ -502,8 +516,13 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
 
     // Her dakika başı masaüstü widget'larını veritabanını hiç yormadan yerel saat ile yeniden tetikle
     _widgetRefreshTimer?.cancel();
-    _widgetRefreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+    _widgetRefreshTimer = Timer.periodic(const Duration(minutes: 1), (_) async {
       WidgetSyncService.updateWidgetFromLocalCache();
+      final cId = ref.read(coupleIdProvider) ?? ref.read(currentUserProvider)?.coupleId;
+      if (cId != null && cId.isNotEmpty) {
+        final mems = await DatabaseService().getMemoriesOnce(cId);
+        await BackgroundSlideshowService().rotateWidgetSlideshowIfNeeded(mems);
+      }
     });
 
     // Uygulama alta atıldığında veya kapatılmak üzereyken durumu güncelle
@@ -526,8 +545,13 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
           DeviceService().syncStatusToFirebase();
         });
         _widgetRefreshTimer?.cancel();
-        _widgetRefreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+        _widgetRefreshTimer = Timer.periodic(const Duration(minutes: 1), (_) async {
           WidgetSyncService.updateWidgetFromLocalCache();
+          final cId = ref.read(coupleIdProvider) ?? ref.read(currentUserProvider)?.coupleId;
+          if (cId != null && cId.isNotEmpty) {
+            final mems = await DatabaseService().getMemoriesOnce(cId);
+            await BackgroundSlideshowService().rotateWidgetSlideshowIfNeeded(mems);
+          }
         });
         // Ayarlardan izin değiştirilip geri dönüldüyse anında algıla ve gerekirse izin iste
         _checkAndRequestPermissionsSequentially();
