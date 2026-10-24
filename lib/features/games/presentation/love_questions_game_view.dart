@@ -8,11 +8,13 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/localization/app_strings.dart';
+import '../../../core/models/models.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/notification_service.dart';
 import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/lovera_theme_background.dart';
+import '../../chat/presentation/chat_view.dart';
 import '../data/question_bank.dart';
 import 'widgets/coin_flip_3d.dart';
 
@@ -145,7 +147,8 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
             onPressed: () {
               Navigator.pop(dCtx); // dialog
               if (mounted) {
-                Navigator.of(context).maybePop(); // game screen
+                // Partneri doğrudan oyun dışına ve ana ekrana döndür
+                Navigator.of(context).popUntil((route) => route.isFirst);
               }
             },
             child: Text(loc('Tamam', 'OK'), style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -539,9 +542,14 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
     final bool isMyTurn = turnUid == myUid;
     final bool amIAnswering = answeringUid == myUid && activeQuestionId.isNotEmpty;
 
-    final p1Name = gameData?['player1Name']?.toString() ?? myName;
-    final p2Name = gameData?['player2Name']?.toString() ?? (partner?.name ?? 'Partner');
+    final String p1Uid = gameData?['player1Uid']?.toString() ?? (myUid ?? '');
+    final String p1Name = gameData?['player1Name']?.toString() ?? myName;
+    final String p2Uid = gameData?['player2Uid']?.toString() ?? (partner?.id ?? '');
+    final String p2Name = gameData?['player2Name']?.toString() ?? (partner?.name ?? 'Partner');
+    final coinWinnerUid = gameData?['coinWinnerUid']?.toString() ?? turnUid;
     final coinWinnerName = gameData?['coinWinnerName']?.toString() ?? turnName;
+    final coupleId = ref.watch(coupleIdProvider) ?? '';
+    final isRoomCreator = p1Uid == myUid;
 
     return PopScope(
       canPop: true,
@@ -590,6 +598,18 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
             ),
           ],
         ),
+        actions: [
+          if (coupleId.isNotEmpty)
+            StreamBuilder<List<ChatMessage>>(
+              stream: DatabaseService().messagesStream(coupleId),
+              builder: (context, snapshot) {
+                final messages = snapshot.data ?? [];
+                final unreadCount = messages.where((m) => m.senderId != myUid && !m.isRead).length;
+                return _buildChatActionButton(context, unreadCount);
+              },
+            ),
+          const SizedBox(width: 6),
+        ],
       ),
       body: LoveraThemeBackground(
         child: SafeArea(
@@ -615,9 +635,13 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
                       )
                     : (step == 'coin_flip' || step == 'flipping_coin' || step == 'coin_result')
                         ? _buildCoinFlipSection(
+                            p1Uid: p1Uid,
                             p1Name: p1Name,
+                            p2Uid: p2Uid,
                             p2Name: p2Name,
+                            winnerUid: coinWinnerUid,
                             winnerName: coinWinnerName,
+                            isRoomCreator: isRoomCreator,
                             isFlipping: _isFlippingCoinLocal || step == 'flipping_coin',
                             isResult: step == 'coin_result',
                             isDark: isDark,
@@ -711,11 +735,80 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
     );
   }
 
+  Widget _buildChatActionButton(BuildContext context, int unreadCount) {
+    return IconButton(
+      tooltip: loc('Sohbet 💬', 'Chat 💬'),
+      icon: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(
+              color: unreadCount > 0
+                  ? LoveraColors.primary.withValues(alpha: 0.18)
+                  : LoveraColors.primarySoft.withValues(alpha: 0.2),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.chat_bubble_rounded,
+              color: unreadCount > 0 ? LoveraColors.primary : LoveraColors.primaryDeep,
+              size: 20,
+            ),
+          ),
+          if (unreadCount > 0)
+            Positioned(
+              right: -2,
+              top: -2,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(
+                  color: LoveraColors.primary,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  unreadCount > 9 ? '9+' : '$unreadCount',
+                  style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900),
+                ),
+              ),
+            ),
+        ],
+      ),
+      onPressed: () => _openInGameChatSheet(context),
+    );
+  }
+
+  void _openInGameChatSheet(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        height: MediaQuery.of(ctx).size.height * 0.85,
+        decoration: BoxDecoration(
+          color: isDark ? LoveraColors.darkBg : const Color(0xFFF7F8FA),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          child: ChatView(
+            isEmbedded: true,
+            onBackToHome: () => Navigator.pop(ctx),
+          ),
+        ),
+      ),
+    );
+  }
+
   // --- YAZI TURA BÖLÜMÜ ---
   Widget _buildCoinFlipSection({
+    required String p1Uid,
     required String p1Name,
+    required String p2Uid,
     required String p2Name,
+    required String winnerUid,
     required String winnerName,
+    required bool isRoomCreator,
     required bool isFlipping,
     required bool isResult,
     required bool isDark,
@@ -746,10 +839,13 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
             ),
             const SizedBox(height: 36),
 
-            // 3D Animasyonlu Para
+            // 3D Animasyonlu Para (İki tarafta %100 aynı sonucu ve aynı yüzü göstermesi için UID'ler bağlandı)
             CoinFlip3D(
               player1Name: p1Name,
               player2Name: p2Name,
+              player1Uid: p1Uid,
+              player2Uid: p2Uid,
+              winnerUid: winnerUid,
               winnerName: winnerName,
               isFlipping: isFlipping,
             ),
@@ -764,13 +860,13 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      const Color(0xFFFB8500).withValues(alpha: 0.18),
-                      const Color(0xFFF72585).withValues(alpha: 0.14),
+                      LoveraColors.primary.withValues(alpha: 0.18),
+                      LoveraColors.primarySoft.withValues(alpha: 0.14),
                     ],
                   ),
                   borderRadius: BorderRadius.circular(22),
                   border: Border.all(
-                    color: const Color(0xFFFB8500).withValues(alpha: 0.4),
+                    color: LoveraColors.primary.withValues(alpha: 0.4),
                     width: 1.6,
                   ),
                 ),
@@ -783,8 +879,8 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
                         const SizedBox(width: 8),
                         Text(
                           loc('KAZANAN: $winnerName', 'WINNER: $winnerName'),
-                          style: const TextStyle(
-                            color: Color(0xFFFB8500),
+                          style: TextStyle(
+                            color: LoveraColors.primary,
                             fontSize: 17,
                             fontWeight: FontWeight.w900,
                             letterSpacing: 0.8,
@@ -812,7 +908,7 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
                       height: 46,
                       child: FilledButton.icon(
                         style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFFFB8500),
+                          backgroundColor: LoveraColors.primary,
                           foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                           elevation: 3,
@@ -829,24 +925,49 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
                 ),
               ).animate().fadeIn(duration: 400.ms).scale(begin: const Offset(0.9, 0.9)),
             ] else if (!isFlipping) ...[
-              SizedBox(
-                width: 220,
-                height: 48,
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFFFB8500),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    elevation: 4,
+              if (isRoomCreator)
+                SizedBox(
+                  width: 220,
+                  height: 48,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: LoveraColors.primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      elevation: 4,
+                    ),
+                    onPressed: _startCoinFlip,
+                    icon: const Icon(Icons.casino_rounded, size: 20),
+                    label: Text(
+                      loc('Parayı Fırlat! 🪙', 'Flip The Coin! 🪙'),
+                      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                    ),
                   ),
-                  onPressed: _startCoinFlip,
-                  icon: const Icon(Icons.casino_rounded, size: 20),
-                  label: Text(
-                    loc('Parayı Fırlat! 🪙', 'Flip The Coin! 🪙'),
-                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                ).animate().fadeIn().scale()
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: LoveraColors.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: LoveraColors.primary.withValues(alpha: 0.25)),
                   ),
-                ),
-              ).animate().fadeIn().scale(),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('⏳', style: TextStyle(fontSize: 18)),
+                      const SizedBox(width: 8),
+                      Text(
+                        loc('Odayı kuran parayı atacak...', 'Host will flip the coin...'),
+                        style: TextStyle(
+                          color: isDark ? Colors.white70 : LoveraColors.textDark,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ).animate(onPlay: (controller) => controller.repeat(reverse: true)).fadeIn(duration: 600.ms),
             ] else ...[
               Text(
                 loc('Para havada dönüyor...', 'Coin is flipping in the air...'),

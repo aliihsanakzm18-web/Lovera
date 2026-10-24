@@ -28,6 +28,9 @@ class _GamesViewState extends ConsumerState<GamesView> {
     required dynamic partner,
     required String myName,
     required String? currentStatus,
+    required bool isIncomingInvite,
+    required bool isActive,
+    required bool isMyPendingInvite,
   }) async {
     HapticFeedback.mediumImpact();
     if (coupleId == null || coupleId.isEmpty || partner == null) {
@@ -41,12 +44,65 @@ class _GamesViewState extends ConsumerState<GamesView> {
     }
 
     final partnerUid = (partner.id ?? '').toString();
-    final isAlreadyActiveOrPending = currentStatus == 'active' ||
-        currentStatus == 'waiting_ready' ||
-        currentStatus == 'invitation_pending';
 
-    // Eğer bekleyen davet veya aktif oyun yoksa yeni istek gönder
-    if (!isAlreadyActiveOrPending && partnerUid.isNotEmpty && !_isSendingInvite) {
+    // 1. Zaten aktif bir oyun varsa doğrudan oyuna gir
+    if (isActive) {
+      Navigator.of(context).push(
+        PageRouteBuilder(
+          pageBuilder: (context, animation, secondaryAnimation) => const LoveQuestionsGameView(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            const begin = Offset(1.0, 0.0);
+            const end = Offset.zero;
+            const curve = Curves.easeInOutCubic;
+            final tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+            return SlideTransition(position: animation.drive(tween), child: child);
+          },
+        ),
+      );
+      return;
+    }
+
+    // 2. Partnerden gelen bir davet varsa kabul edip oyuna gir
+    if (isIncomingInvite) {
+      final name = myName.isNotEmpty ? myName : loc('Partnerin', 'Partner');
+      await DatabaseService().respondGameRequest(
+        coupleId: coupleId,
+        gameType: 'love_questions',
+        fromUid: partnerUid,
+        accepted: true,
+        responderName: name,
+      );
+      if (mounted) {
+        Navigator.of(context).push(
+          PageRouteBuilder(
+            pageBuilder: (context, animation, secondaryAnimation) => const LoveQuestionsGameView(),
+            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+              const begin = Offset(1.0, 0.0);
+              const end = Offset.zero;
+              const curve = Curves.easeInOutCubic;
+              final tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+              return SlideTransition(position: animation.drive(tween), child: child);
+            },
+          ),
+        );
+      }
+      return;
+    }
+
+    // 3. Karşı taraftan yanıt bekleniyorsa kullanıcıya bilgi ver
+    if (isMyPendingInvite) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(loc('Davet gönderildi, partnerinin kabul etmesi bekleniyor... ⏳', 'Invite sent, waiting for partner to accept... ⏳')),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFFFB8500),
+        ),
+      );
+      return;
+    }
+
+    // 4. Yeni oyun başlatma isteği gönder (Henüz oyuna GİRMİYOR, bekleme durumunda kalıyor)
+    if (partnerUid.isNotEmpty && !_isSendingInvite) {
       setState(() => _isSendingInvite = true);
       try {
         final senderName = myName.isNotEmpty ? myName : loc('Partnerin', 'Your Partner');
@@ -77,6 +133,16 @@ class _GamesViewState extends ConsumerState<GamesView> {
           bodyEn: '$senderName wants to play Heart to Heart with you!',
           data: {'type': 'game_request', 'game': 'love_questions'},
         );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(loc('Davet partnerine iletildi! Kabul edince oyun otomatik açılacak 💕', 'Invite sent! The game will launch once accepted 💕')),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: const Color(0xFF10B981),
+            ),
+          );
+        }
       } catch (e) {
         debugPrint('[LOVE_QUESTIONS] sendGameRequest error: $e');
       } finally {
@@ -85,23 +151,6 @@ class _GamesViewState extends ConsumerState<GamesView> {
         }
       }
     }
-
-    if (!mounted) return;
-    Navigator.of(context).push(
-      PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) => const LoveQuestionsGameView(),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          const begin = Offset(1.0, 0.0);
-          const end = Offset.zero;
-          const curve = Curves.easeInOutCubic;
-          final tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-          return SlideTransition(
-            position: animation.drive(tween),
-            child: child,
-          );
-        },
-      ),
-    );
   }
 
   @override
@@ -152,6 +201,7 @@ class _GamesViewState extends ConsumerState<GamesView> {
               final fromUid = (data?['fromUid'] ?? data?['requestedBy']) as String?;
               final isInvitePending = status == 'invitation_pending';
               final isIncomingInvite = isInvitePending && fromUid != null && fromUid != myUid;
+              final isMyPendingInvite = isInvitePending && fromUid == myUid;
               final isActive = status == 'active';
               final answeredCount = (data?['answeredMap'] as Map?)?.length ?? 0;
 
@@ -205,7 +255,9 @@ class _GamesViewState extends ConsumerState<GamesView> {
                                     ? const Color(0xFF10B981)
                                     : (isActive
                                         ? const Color(0xFF10B981)
-                                        : Colors.white.withValues(alpha: 0.22)),
+                                        : (isMyPendingInvite
+                                            ? const Color(0xFFFB8500)
+                                            : Colors.white.withValues(alpha: 0.22))),
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
@@ -213,7 +265,9 @@ class _GamesViewState extends ConsumerState<GamesView> {
                                     ? loc('DAVET VAR 🔔', 'INVITATION 🔔')
                                     : (isActive
                                         ? loc('CANLI OYUN 🔥', 'LIVE GAME 🔥')
-                                        : loc('ÇİFT DÜELLOSU ✨', 'COUPLE DUEL ✨')),
+                                        : (isMyPendingInvite
+                                            ? loc('DAVET BEKLENİYOR ⏳', 'WAITING PARTNER ⏳')
+                                            : loc('ÇİFT DÜELLOSU ✨', 'COUPLE DUEL ✨'))),
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 10,
@@ -280,6 +334,9 @@ class _GamesViewState extends ConsumerState<GamesView> {
                                       partner: partner,
                                       myName: myName,
                                       currentStatus: status,
+                                      isIncomingInvite: isIncomingInvite,
+                                      isActive: isActive,
+                                      isMyPendingInvite: isMyPendingInvite,
                                     ),
                             icon: _isSendingInvite
                                 ? SizedBox(
@@ -293,7 +350,9 @@ class _GamesViewState extends ConsumerState<GamesView> {
                                 : Icon(
                                     isIncomingInvite
                                         ? Icons.notifications_active_rounded
-                                        : (isActive ? Icons.play_arrow_rounded : Icons.rocket_launch_rounded),
+                                        : (isActive
+                                            ? Icons.play_arrow_rounded
+                                            : (isMyPendingInvite ? Icons.hourglass_top_rounded : Icons.rocket_launch_rounded)),
                                     size: 20,
                                   ),
                             label: Text(
@@ -301,7 +360,9 @@ class _GamesViewState extends ConsumerState<GamesView> {
                                   ? loc('Daveti Kabul Et & Oyna 🚀', 'Accept & Play 🚀')
                                   : (isActive
                                       ? loc('Oyuna Devam Et 🔥', 'Resume Game 🔥')
-                                      : loc('Oyuna Başla 🚀', 'Start Game 🚀')),
+                                      : (isMyPendingInvite
+                                          ? loc('Davet Bekleniyor... ⏳', 'Waiting for Partner... ⏳')
+                                          : loc('Oyuna Başla 🚀', 'Start Game 🚀'))),
                               style: const TextStyle(
                                 fontWeight: FontWeight.w900,
                                 fontSize: 15,

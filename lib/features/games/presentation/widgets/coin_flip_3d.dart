@@ -6,6 +6,9 @@ import 'package:flutter/services.dart';
 class CoinFlip3D extends StatefulWidget {
   final String player1Name;
   final String player2Name;
+  final String? player1Uid;
+  final String? player2Uid;
+  final String? winnerUid;
   final String? winnerName;
   final bool isFlipping;
   final VoidCallback? onFlipComplete;
@@ -14,6 +17,9 @@ class CoinFlip3D extends StatefulWidget {
     super.key,
     required this.player1Name,
     required this.player2Name,
+    this.player1Uid,
+    this.player2Uid,
+    this.winnerUid,
     this.winnerName,
     this.isFlipping = false,
     this.onFlipComplete,
@@ -43,7 +49,9 @@ class _CoinFlip3DState extends State<CoinFlip3D> with SingleTickerProviderStateM
       _startFlip();
     } else {
       // Eğer dönmüyorsa ama kazanan zaten belliyse doğrudan kazanan yüzü göster
-      final bool winnerIsPlayer2 = widget.winnerName != null && widget.winnerName == widget.player2Name;
+      final bool winnerIsPlayer2 = widget.winnerUid != null && widget.player2Uid != null
+          ? (widget.winnerUid == widget.player2Uid)
+          : (widget.winnerName != null && widget.winnerName == widget.player2Name);
       _controller.value = 1.0;
       final double targetAngle = winnerIsPlayer2 ? (11 * math.pi) : (12 * math.pi);
       _rotationAnimation = AlwaysStoppedAnimation(targetAngle);
@@ -55,7 +63,9 @@ class _CoinFlip3DState extends State<CoinFlip3D> with SingleTickerProviderStateM
   void _setupAnimations() {
     // Kazanan player2 ise açı tam (pi) radyan tek katı (örn: 11 * pi) olmalı -> cos(angle) = -1 -> Player 2
     // Kazanan player1 ise açı çift (2*pi) radyan katı (örn: 12 * pi) olmalı -> cos(angle) = +1 -> Player 1
-    final bool winnerIsPlayer2 = widget.winnerName != null && widget.winnerName == widget.player2Name;
+    final bool winnerIsPlayer2 = widget.winnerUid != null && widget.player2Uid != null
+        ? (widget.winnerUid == widget.player2Uid)
+        : (widget.winnerName != null && widget.winnerName == widget.player2Name);
     final double targetAngle = winnerIsPlayer2 ? (11 * math.pi) : (12 * math.pi);
 
     _rotationAnimation = Tween<double>(
@@ -103,8 +113,12 @@ class _CoinFlip3DState extends State<CoinFlip3D> with SingleTickerProviderStateM
     if (widget.isFlipping && !oldWidget.isFlipping) {
       _setupAnimations();
       _startFlip();
-    } else if (!widget.isFlipping && widget.winnerName != oldWidget.winnerName && widget.winnerName != null) {
-      final bool winnerIsPlayer2 = widget.winnerName == widget.player2Name;
+    } else if (!widget.isFlipping &&
+        (widget.winnerUid != oldWidget.winnerUid || widget.winnerName != oldWidget.winnerName) &&
+        (widget.winnerUid != null || widget.winnerName != null)) {
+      final bool winnerIsPlayer2 = widget.winnerUid != null && widget.player2Uid != null
+          ? (widget.winnerUid == widget.player2Uid)
+          : (widget.winnerName == widget.player2Name);
       final double targetAngle = winnerIsPlayer2 ? (11 * math.pi) : (12 * math.pi);
       setState(() {
         _rotationAnimation = AlwaysStoppedAnimation(targetAngle);
