@@ -145,9 +145,11 @@ class BackgroundSlideshowService {
     if (target == 'chat') {
       _chatTimer?.cancel();
       _chatTimer = null;
+      currentChatBgUrl.value = null; // Bellekteki geçici döngü görselini sıfırla ki tekil görseller anında görünsün
     } else {
       _widgetTimer?.cancel();
       _widgetTimer = null;
+      currentWidgetBgPath.value = null;
     }
     await saveConfig(target, const SlideshowConfig(isEnabled: false), coupleId: coupleId);
   }

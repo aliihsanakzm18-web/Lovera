@@ -9,6 +9,7 @@ import '../../../../core/models/models.dart';
 import '../../../../core/services/database_service.dart';
 import '../../../../core/state/app_state.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/widgets/lovera_theme_background.dart';
 
 /// Mesajlaşma kısmından paylaşılan tüm fotoğrafların tarih sıralı listelendiği,
 /// toplu seçim (indirme, albüme kaydetme, silme) ve tekil detay modallarına sahip alt menü bileşeni.
@@ -474,42 +475,51 @@ class _ChatMediaGallerySheetState extends ConsumerState<ChatMediaGallerySheet> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.85,
-      decoration: BoxDecoration(
-        color: isDark ? LoveraColors.darkSurface : LoveraColors.lightSurface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.25),
-            blurRadius: 20,
-            offset: const Offset(0, -6),
-          ),
-        ],
-      ),
-      child: StreamBuilder<List<ChatMessage>>(
-        stream: DatabaseService().messagesStream(widget.coupleId),
-        builder: (context, snapshot) {
-          final allMessages = snapshot.data ?? [];
-          // Sadece görsel içeren mesajları filtrele ve kronolojik olarak (en yeniden eskiye) sırala
-          final photoMessages = allMessages
-              .where((m) => m.type == 'image' && m.mediaBase64 != null && m.mediaBase64!.isNotEmpty)
-              .toList();
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.85,
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF0D0E15) : LoveraColors.lightSurface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.25),
+              blurRadius: 20,
+              offset: const Offset(0, -6),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            // Lovera'nın özel aurora ve desen teması (Düz siyah görüntüyü ortadan kaldırır)
+            const Positioned.fill(
+              child: LoveraThemeBackground(),
+            ),
+            // İçerik katmanı
+            StreamBuilder<List<ChatMessage>>(
+              stream: DatabaseService().messagesStream(widget.coupleId),
+              builder: (context, snapshot) {
+                final allMessages = snapshot.data ?? [];
+                // Sadece görsel içeren mesajları filtrele ve kronolojik olarak (en yeniden eskiye) sırala
+                final photoMessages = allMessages
+                    .where((m) => m.type == 'image' && m.mediaBase64 != null && m.mediaBase64!.isNotEmpty)
+                    .toList();
 
-          photoMessages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+                photoMessages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-          return Column(
-            children: [
-              // Üst Sürükleme Çubuğu
-              const SizedBox(height: 12),
-              Container(
-                width: 44,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: Colors.grey.withValues(alpha: 0.35),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
+                return Column(
+                  children: [
+                    // Üst Sürükleme Çubuğu
+                    const SizedBox(height: 12),
+                    Container(
+                      width: 44,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.white24 : Colors.grey.withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
 
               // Başlık & Çoklu Seçim Aksiyonları
               Padding(
@@ -776,6 +786,9 @@ class _ChatMediaGallerySheetState extends ConsumerState<ChatMediaGallerySheet> {
             ],
           );
         },
+      ),
+          ],
+        ),
       ),
     );
   }

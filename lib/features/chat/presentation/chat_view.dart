@@ -365,8 +365,9 @@ class _ChatViewState extends ConsumerState<ChatView> {
                             final base64Str = 'data:image/jpeg;base64,${base64Encode(bytes)}';
                             final myName = ref.read(userNameProvider);
                             // Cihazdan tekil fotoğraf seçildiğinde varsa slideshow'u durdur
-                            await BackgroundSlideshowService().stopSlideshow('chat');
+                            await BackgroundSlideshowService().stopSlideshow('chat', coupleId: coupleId);
                             await DatabaseService().updateChatBackground(coupleId, base64Str, myName.isEmpty ? 'Partnerin' : myName);
+                            if (mounted) setState(() {});
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
@@ -399,8 +400,9 @@ class _ChatViewState extends ConsumerState<ChatView> {
                             onSingleImageSelected: (base64Str) async {
                               final myName = ref.read(userNameProvider);
                               // Tekil anı fotoğrafı seçildiğinde slideshow'u durdur
-                              await BackgroundSlideshowService().stopSlideshow('chat');
+                              await BackgroundSlideshowService().stopSlideshow('chat', coupleId: coupleId);
                               await DatabaseService().updateChatBackground(coupleId, base64Str, myName.isEmpty ? 'Partnerin' : myName);
+                              if (mounted) setState(() {});
                               if (mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
@@ -460,8 +462,9 @@ class _ChatViewState extends ConsumerState<ChatView> {
                     onTap: () async {
                       Navigator.pop(ctx);
                       try {
-                        await BackgroundSlideshowService().stopSlideshow('chat');
+                        await BackgroundSlideshowService().stopSlideshow('chat', coupleId: coupleId);
                         await DatabaseService().removeChatBackground(coupleId);
+                        if (mounted) setState(() {});
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
@@ -689,12 +692,19 @@ class _ChatViewState extends ConsumerState<ChatView> {
       builder: (context, coupleSnapshot) {
         final coupleData = coupleSnapshot.data?.data();
         final chatBackgroundUrl = coupleData?['chatBackgroundUrl'] as String?;
+        final cloudChatSlideshowMap = coupleData?['chatSlideshowConfig'] as Map<String, dynamic>?;
+        final isCloudSlideshowEnabled = cloudChatSlideshowMap != null && (cloudChatSlideshowMap['isEnabled'] as bool? ?? false);
+
+        // Eğer partner tarafında veya bu cihazda döngü kapatılmışsa bellek görselini geçersiz kıl
+        if (!isCloudSlideshowEnabled && BackgroundSlideshowService().currentChatBgUrl.value != null) {
+          BackgroundSlideshowService().currentChatBgUrl.value = null;
+        }
 
         return ValueListenableBuilder<String?>(
           valueListenable: BackgroundSlideshowService().currentChatBgUrl,
           builder: (context, slideshowBgUrl, _) {
-            // Eğer slideshow arka planı varsa ve hafızada aktifse onu kullan, yoksa Firestore'daki kalıcı url'i kullan
-            final effectiveChatBg = (slideshowBgUrl != null && slideshowBgUrl.isNotEmpty)
+            // Eğer slideshow aktifse onu kullan; tekil bir fotoğraf atanmışsa veya sıfırlanmışsa doğrudan Firestore'daki chatBackgroundUrl'i kullan
+            final effectiveChatBg = (isCloudSlideshowEnabled && slideshowBgUrl != null && slideshowBgUrl.isNotEmpty)
                 ? slideshowBgUrl
                 : chatBackgroundUrl;
 
