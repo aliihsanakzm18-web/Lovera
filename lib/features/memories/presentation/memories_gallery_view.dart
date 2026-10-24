@@ -46,6 +46,19 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
   bool _isSelectionMode = false;
   final Set<String> _selectedMemoryIds = <String>{};
 
+  // Basılı tutulduğunda düzenleme butonunu gösteren aktif ID'ler
+  String? _longPressedAlbumId;
+  String? _longPressedMemoryId;
+
+  static final DateTime infinityDate = DateTime(9999, 12, 31);
+
+  bool _isInfinityDate(DateTime d) => d.year >= 9000;
+
+  String _formatMemoryDate(DateTime d) {
+    if (_isInfinityDate(d)) return '♾️ ${loc("Sonsuzluk", "Eternity")}';
+    return '${d.day}.${d.month}.${d.year}';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -338,64 +351,106 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                       ),
                     ),
                     const SizedBox(height: 12),
-                    InkWell(
-                      borderRadius: BorderRadius.circular(16),
-                      onTap: () async {
-                        final pickedDate = await showDatePicker(
-                          context: context,
-                          initialDate: selectedDate,
-                          firstDate: DateTime(2000),
-                          lastDate: DateTime.now(),
-                          helpText: loc('Anının Gerçekleştiği Tarih', 'Date of Memory'),
-                        );
-                        if (pickedDate != null) {
-                          setSheetState(() => selectedDate = pickedDate);
-                        }
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        decoration: BoxDecoration(
-                          color: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: wasAutoDetected ? LoveraColors.primary.withValues(alpha: 0.5) : theme.dividerColor,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              wasAutoDetected ? Icons.auto_awesome_rounded : Icons.calendar_month_rounded,
-                              color: LoveraColors.primary,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(16),
+                            onTap: () async {
+                              final pickedDate = await showDatePicker(
+                                context: context,
+                                initialDate: _isInfinityDate(selectedDate) ? DateTime.now() : selectedDate,
+                                firstDate: DateTime(2000),
+                                lastDate: DateTime.now(),
+                                helpText: loc('Anının Gerçekleştiği Tarih', 'Date of Memory'),
+                              );
+                              if (pickedDate != null) {
+                                setSheetState(() => selectedDate = pickedDate);
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                              decoration: BoxDecoration(
+                                color: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: wasAutoDetected ? LoveraColors.primary.withValues(alpha: 0.5) : theme.dividerColor,
+                                ),
+                              ),
+                              child: Row(
                                 children: [
-                                  Text(
-                                    '${loc("Tarih:", "Date:")} ${selectedDate.day}.${selectedDate.month}.${selectedDate.year}',
-                                    style: const TextStyle(fontWeight: FontWeight.w600),
+                                  Icon(
+                                    _isInfinityDate(selectedDate)
+                                        ? Icons.all_inclusive_rounded
+                                        : (wasAutoDetected ? Icons.auto_awesome_rounded : Icons.calendar_month_rounded),
+                                    color: LoveraColors.primary,
+                                    size: 20,
                                   ),
-                                  if (wasAutoDetected) ...[
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      loc('📸 Fotoğrafın çekildiği tarihten otomatik alındı', '📸 Automatically set from photo capture date'),
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w500,
-                                        color: LoveraColors.primary.withValues(alpha: 0.85),
-                                      ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          '${loc("Tarih:", "Date:")} ${_formatMemoryDate(selectedDate)}',
+                                          style: const TextStyle(fontWeight: FontWeight.w600),
+                                        ),
+                                        if (wasAutoDetected && !_isInfinityDate(selectedDate)) ...[
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            loc('📸 Fotoğrafın çekildiği tarihten otomatik alındı', '📸 Automatically set from photo capture date'),
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w500,
+                                              color: LoveraColors.primary.withValues(alpha: 0.85),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
                                     ),
-                                  ],
+                                  ),
+                                  Icon(Icons.edit_calendar_rounded, size: 18, color: LoveraColors.textMuted),
                                 ],
                               ),
                             ),
-                            Icon(Icons.edit_calendar_rounded, size: 18, color: LoveraColors.textMuted),
-                          ],
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 8),
+                        Tooltip(
+                          message: loc('Sonsuzluk / Tarihsiz', 'Infinity / No Date'),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(16),
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              setSheetState(() {
+                                if (_isInfinityDate(selectedDate)) {
+                                  selectedDate = DateTime.now();
+                                } else {
+                                  selectedDate = infinityDate;
+                                }
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                              decoration: BoxDecoration(
+                                color: _isInfinityDate(selectedDate)
+                                    ? LoveraColors.primary
+                                    : (isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: _isInfinityDate(selectedDate) ? LoveraColors.primary : theme.dividerColor,
+                                ),
+                              ),
+                              child: Icon(
+                                Icons.all_inclusive_rounded,
+                                color: _isInfinityDate(selectedDate) ? Colors.white : LoveraColors.primary,
+                                size: 22,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 20),
                     FilledButton(
@@ -746,40 +801,84 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                     ),
                   ),
                   const SizedBox(height: 12),
-                  // Tarih Seçici (İsteğe bağlı)
-                  InkWell(
-                    borderRadius: BorderRadius.circular(16),
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: albumDate,
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime.now(),
-                      );
-                      if (picked != null) {
-                        setDialogState(() => albumDate = picked);
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                      decoration: BoxDecoration(
-                        color: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: theme.dividerColor),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.calendar_month_rounded, color: LoveraColors.primary, size: 20),
-                          const SizedBox(width: 12),
-                          Text(
-                            '${loc("Tarih:", "Date:")} ${albumDate.day}.${albumDate.month}.${albumDate.year}',
-                            style: const TextStyle(fontWeight: FontWeight.w600),
+                  // Tarih Seçici (İsteğe bağlı) & Sonsuzluk İkonu
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(16),
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: _isInfinityDate(albumDate) ? DateTime.now() : albumDate,
+                              firstDate: DateTime(2000),
+                              lastDate: DateTime.now(),
+                            );
+                            if (picked != null) {
+                              setDialogState(() => albumDate = picked);
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                            decoration: BoxDecoration(
+                              color: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: theme.dividerColor),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  _isInfinityDate(albumDate) ? Icons.all_inclusive_rounded : Icons.calendar_month_rounded,
+                                  color: LoveraColors.primary,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  '${loc("Tarih:", "Date:")} ${_formatMemoryDate(albumDate)}',
+                                  style: const TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                                const Spacer(),
+                                Icon(Icons.edit_calendar_rounded, size: 18, color: LoveraColors.textMuted),
+                              ],
+                            ),
                           ),
-                          const Spacer(),
-                          Icon(Icons.edit_calendar_rounded, size: 18, color: LoveraColors.textMuted),
-                        ],
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      Tooltip(
+                        message: loc('Sonsuzluk / Tarihsiz', 'Infinity / No Date'),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(16),
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            setDialogState(() {
+                              if (_isInfinityDate(albumDate)) {
+                                albumDate = DateTime.now();
+                              } else {
+                                albumDate = infinityDate;
+                              }
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                            decoration: BoxDecoration(
+                              color: _isInfinityDate(albumDate)
+                                  ? LoveraColors.primary
+                                  : (isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: _isInfinityDate(albumDate) ? LoveraColors.primary : theme.dividerColor,
+                              ),
+                            ),
+                            child: Icon(
+                              Icons.all_inclusive_rounded,
+                              color: _isInfinityDate(albumDate) ? Colors.white : LoveraColors.primary,
+                              size: 22,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 22),
                   FilledButton(
@@ -943,40 +1042,84 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                     ),
                   ),
                   const SizedBox(height: 12),
-                  // Tarih Seçici
-                  InkWell(
-                    borderRadius: BorderRadius.circular(16),
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: albumDate,
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime.now(),
-                      );
-                      if (picked != null) {
-                        setDialogState(() => albumDate = picked);
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                      decoration: BoxDecoration(
-                        color: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: theme.dividerColor),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.calendar_month_rounded, color: LoveraColors.primary, size: 20),
-                          const SizedBox(width: 12),
-                          Text(
-                            '${loc("Tarih:", "Date:")} ${albumDate.day}.${albumDate.month}.${albumDate.year}',
-                            style: const TextStyle(fontWeight: FontWeight.w600),
+                  // Tarih Seçici & Sonsuzluk İkonu
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(16),
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: _isInfinityDate(albumDate) ? DateTime.now() : albumDate,
+                              firstDate: DateTime(2000),
+                              lastDate: DateTime.now(),
+                            );
+                            if (picked != null) {
+                              setDialogState(() => albumDate = picked);
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                            decoration: BoxDecoration(
+                              color: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: theme.dividerColor),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  _isInfinityDate(albumDate) ? Icons.all_inclusive_rounded : Icons.calendar_month_rounded,
+                                  color: LoveraColors.primary,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  '${loc("Tarih:", "Date:")} ${_formatMemoryDate(albumDate)}',
+                                  style: const TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                                const Spacer(),
+                                Icon(Icons.edit_calendar_rounded, size: 18, color: LoveraColors.textMuted),
+                              ],
+                            ),
                           ),
-                          const Spacer(),
-                          Icon(Icons.edit_calendar_rounded, size: 18, color: LoveraColors.textMuted),
-                        ],
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      Tooltip(
+                        message: loc('Sonsuzluk / Tarihsiz', 'Infinity / No Date'),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(16),
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            setDialogState(() {
+                              if (_isInfinityDate(albumDate)) {
+                                albumDate = DateTime.now();
+                              } else {
+                                albumDate = infinityDate;
+                              }
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                            decoration: BoxDecoration(
+                              color: _isInfinityDate(albumDate)
+                                  ? LoveraColors.primary
+                                  : (isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: _isInfinityDate(albumDate) ? LoveraColors.primary : theme.dividerColor,
+                              ),
+                            ),
+                            child: Icon(
+                              Icons.all_inclusive_rounded,
+                              color: _isInfinityDate(albumDate) ? Colors.white : LoveraColors.primary,
+                              size: 22,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 22),
                   FilledButton(
@@ -1583,116 +1726,151 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          Icon(Icons.favorite_rounded, color: LoveraColors.primary, size: 20),
-                          const SizedBox(width: 8),
-                          Text(
-                            '${memory.date.day}.${memory.date.month}.${memory.date.year}',
-                            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-                          ),
-                          if (memory.albumTitle != null && memory.albumTitle!.isNotEmpty) ...[
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Icon(
+                              _isInfinityDate(memory.date) ? Icons.all_inclusive_rounded : Icons.favorite_rounded,
+                              color: LoveraColors.primary,
+                              size: 20,
+                            ),
                             const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: LoveraColors.primary.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
+                            Flexible(
                               child: Text(
-                                '📁 ${memory.albumTitle}',
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: LoveraColors.primary),
+                                _formatMemoryDate(memory.date),
+                                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
+                            if (memory.albumTitle != null && memory.albumTitle!.isNotEmpty) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: LoveraColors.primary.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  '📁 ${memory.albumTitle}',
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: LoveraColors.primary),
+                                ),
+                              ),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
                       Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Bilgileri Düzenle (Tarih, Not, Mekan)
-                          IconButton(
-                            icon: Icon(Icons.edit_note_rounded, color: LoveraColors.primary),
-                            tooltip: loc('Bilgileri Düzenle', 'Edit Info'),
-                            onPressed: () {
-                              Navigator.pop(ctx);
-                              _editMemoryDialog(memory);
-                            },
-                          ),
-                          // Uygunsuz İçerik Bildir (UGC Moderation - Apple Guideline 1.2)
-                          IconButton(
-                            icon: const Icon(Icons.flag_outlined, color: Color(0xFFF59E0B)),
-                            tooltip: loc('İçeriği Şikayet Et', 'Report Content'),
-                            onPressed: () async {
-                              final confirm = await showDialog<bool>(
-                                context: context,
-                                builder: (dCtx) => AlertDialog(
-                                  title: Text(loc('Fotoğrafı Şikayet Et', 'Report Photo')),
-                                  content: Text(
-                                    loc('Bu fotoğrafın veya notun uygunsuz içerik barındırdığını düşünüyorsanız inceleme ekibimize bildirebilirsiniz. Bildirilen içerikler 24 saat içinde incelenir.', 'If you believe this photo or note contains inappropriate content, you can report it to our team. It will be reviewed within 24 hours.'),
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(dCtx, false),
-                                      child: Text(loc('İptal', 'Cancel')),
-                                    ),
-                                    FilledButton(
-                                      style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
-                                      onPressed: () => Navigator.pop(dCtx, true),
-                                      child: Text(loc('Şikayet Et', 'Report')),
-                                    ),
-                                  ],
-                                ),
-                              );
-                              if (confirm == true) {
-                                await DatabaseService().reportContent(
-                                  contentType: 'memory_photo',
-                                  contentId: memory.id,
-                                  coupleId: coupleId,
-                                  reason: loc('Anı galerisi üzerinden uygunsuz fotoğraf bildirimi', 'Inappropriate photo report from memories gallery'),
-                                );
-                                if (mounted) {
-                                  ScaffoldMessenger.of(this.context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(loc('Şikayetiniz güvenlik ekibimize iletildi. En geç 24 saat içinde incelenecektir.', 'Your report was sent to our safety team and will be reviewed within 24 hours.')),
-                                    ),
-                                  );
-                                }
-                              }
-                            },
-                          ),
-                          // Silme Butonu
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444)),
-                            onPressed: () async {
-                              final confirm = await showDialog<bool>(
-                                context: context,
-                                builder: (dCtx) => AlertDialog(
-                                  title: Text(ref.watch(stringsProvider).deleteMemoryTitle),
-                                  content: Text(ref.watch(stringsProvider).deleteMemoryDesc),
-                                  actions: [
-                                    TextButton(onPressed: () => Navigator.pop(dCtx, false), child: Text(loc('Vazgeç', 'Cancel'))),
-                                    FilledButton(
-                                      style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
-                                      onPressed: () => Navigator.pop(dCtx, true),
-                                      child: Text(loc('Sil', 'Delete')),
-                                    ),
-                                  ],
-                                ),
-                              );
-                              if (confirm == true) {
+                          // Üç Nokta Menüsü (Düzenle, Şikayet Et, Sil)
+                          PopupMenuButton<String>(
+                            icon: const Icon(Icons.more_vert_rounded),
+                            tooltip: loc('Seçenekler', 'Options'),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            onSelected: (value) async {
+                              if (value == 'edit') {
                                 Navigator.pop(ctx);
-                                await DatabaseService().deleteMemory(
-                                  coupleId: coupleId,
-                                  memoryId: memory.id,
-                                  albumId: memory.albumId,
+                                _editMemoryDialog(memory);
+                              } else if (value == 'report') {
+                                final confirm = await showDialog<bool>(
+                                  context: context,
+                                  builder: (dCtx) => AlertDialog(
+                                    title: Text(loc('Fotoğrafı Şikayet Et', 'Report Photo')),
+                                    content: Text(
+                                      loc('Bu fotoğrafın veya notun uygunsuz içerik barındırdığını düşünüyorsanız inceleme ekibimize bildirebilirsiniz. Bildirilen içerikler 24 saat içinde incelenir.', 'If you believe this photo or note contains inappropriate content, you can report it to our team. It will be reviewed within 24 hours.'),
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(dCtx, false),
+                                        child: Text(loc('İptal', 'Cancel')),
+                                      ),
+                                      FilledButton(
+                                        style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
+                                        onPressed: () => Navigator.pop(dCtx, true),
+                                        child: Text(loc('Şikayet Et', 'Report')),
+                                      ),
+                                    ],
+                                  ),
                                 );
-                                if (mounted) {
-                                  ScaffoldMessenger.of(this.context).showSnackBar(
-                                    SnackBar(content: Text(ref.read(stringsProvider).memoryDeletedMsg)),
+                                if (confirm == true) {
+                                  await DatabaseService().reportContent(
+                                    contentType: 'memory_photo',
+                                    contentId: memory.id,
+                                    coupleId: coupleId,
+                                    reason: loc('Anı galerisi üzerinden uygunsuz fotoğraf bildirimi', 'Inappropriate photo report from memories gallery'),
                                   );
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(this.context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(loc('Şikayetiniz güvenlik ekibimize iletildi. En geç 24 saat içinde incelenecektir.', 'Your report was sent to our safety team and will be reviewed within 24 hours.')),
+                                      ),
+                                    );
+                                  }
+                                }
+                              } else if (value == 'delete') {
+                                final confirm = await showDialog<bool>(
+                                  context: context,
+                                  builder: (dCtx) => AlertDialog(
+                                    title: Text(ref.watch(stringsProvider).deleteMemoryTitle),
+                                    content: Text(ref.watch(stringsProvider).deleteMemoryDesc),
+                                    actions: [
+                                      TextButton(onPressed: () => Navigator.pop(dCtx, false), child: Text(loc('Vazgeç', 'Cancel'))),
+                                      FilledButton(
+                                        style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
+                                        onPressed: () => Navigator.pop(dCtx, true),
+                                        child: Text(loc('Sil', 'Delete')),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (confirm == true) {
+                                  Navigator.pop(ctx);
+                                  await DatabaseService().deleteMemory(
+                                    coupleId: coupleId,
+                                    memoryId: memory.id,
+                                    albumId: memory.albumId,
+                                  );
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(this.context).showSnackBar(
+                                      SnackBar(content: Text(ref.read(stringsProvider).memoryDeletedMsg)),
+                                    );
+                                  }
                                 }
                               }
                             },
+                            itemBuilder: (popCtx) => [
+                              PopupMenuItem<String>(
+                                value: 'edit',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.edit_note_rounded, color: LoveraColors.primary, size: 20),
+                                    const SizedBox(width: 10),
+                                    Text(loc('Bilgileri Düzenle', 'Edit Info'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                                  ],
+                                ),
+                              ),
+                              PopupMenuItem<String>(
+                                value: 'report',
+                                child: const Row(
+                                  children: [
+                                    Icon(Icons.flag_outlined, color: Color(0xFFF59E0B), size: 20),
+                                    SizedBox(width: 10),
+                                    Text('Şikayet Et', style: TextStyle(fontWeight: FontWeight.w600)),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuDivider(),
+                              PopupMenuItem<String>(
+                                value: 'delete',
+                                child: const Row(
+                                  children: [
+                                    Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444), size: 20),
+                                    SizedBox(width: 10),
+                                    Text('Fotoğrafı Sil', style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.w700)),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                           IconButton(
                             icon: const Icon(Icons.close_rounded),
@@ -2071,36 +2249,80 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                   ),
                 ),
                 const SizedBox(height: 12),
-                InkWell(
-                  borderRadius: BorderRadius.circular(16),
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: editDate,
-                      firstDate: DateTime(2000),
-                      lastDate: DateTime.now(),
-                    );
-                    if (picked != null) {
-                      setEditState(() => editDate = picked);
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    decoration: BoxDecoration(
-                      color: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: theme.dividerColor),
+                Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: _isInfinityDate(editDate) ? DateTime.now() : editDate,
+                            firstDate: DateTime(2000),
+                            lastDate: DateTime.now(),
+                          );
+                          if (picked != null) {
+                            setEditState(() => editDate = picked);
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          decoration: BoxDecoration(
+                            color: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: theme.dividerColor),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                _isInfinityDate(editDate) ? Icons.all_inclusive_rounded : Icons.calendar_month_rounded,
+                                color: LoveraColors.primary,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 12),
+                              Text('${loc("Tarih:", "Date:")} ${_formatMemoryDate(editDate)}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                              const Spacer(),
+                              Icon(Icons.edit_calendar_rounded, size: 18, color: LoveraColors.textMuted),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.calendar_month_rounded, color: LoveraColors.primary, size: 20),
-                        const SizedBox(width: 12),
-                        Text('${loc("Tarih:", "Date:")} ${editDate.day}.${editDate.month}.${editDate.year}', style: const TextStyle(fontWeight: FontWeight.w600)),
-                        const Spacer(),
-                        Icon(Icons.edit_calendar_rounded, size: 18, color: LoveraColors.textMuted),
-                      ],
+                    const SizedBox(width: 8),
+                    Tooltip(
+                      message: loc('Sonsuzluk / Tarihsiz', 'Infinity / No Date'),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          setEditState(() {
+                            if (_isInfinityDate(editDate)) {
+                              editDate = DateTime.now();
+                            } else {
+                              editDate = infinityDate;
+                            }
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                          decoration: BoxDecoration(
+                            color: _isInfinityDate(editDate)
+                                ? LoveraColors.primary
+                                : (isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: _isInfinityDate(editDate) ? LoveraColors.primary : theme.dividerColor,
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.all_inclusive_rounded,
+                            color: _isInfinityDate(editDate) ? Colors.white : LoveraColors.primary,
+                            size: 22,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
                 const SizedBox(height: 20),
                 FilledButton(
@@ -2117,6 +2339,189 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text(loc('Anı bilgileri güncellendi! ✨', 'Memory details updated! ✨'))),
+                      );
+                    }
+                  },
+                  child: Text(loc('Değişiklikleri Kaydet', 'Save Changes'), style: const TextStyle(fontWeight: FontWeight.w700)),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// Klasör (Anı Grubu) Düzenleme Diyaloğu (Başlık, Açıklama, Konum, Tarih)
+  Future<void> _editAlbumDialog(MemoryAlbum album) async {
+    final coupleId = ref.read(coupleIdProvider) ?? '';
+    final titleController = TextEditingController(text: album.title);
+    final descController = TextEditingController(text: album.description);
+    final locationController = TextEditingController(text: album.locationTitle);
+    DateTime editDate = album.date;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (bCtx) => StatefulBuilder(
+        builder: (context, setEditState) {
+          final theme = Theme.of(context);
+          final isDark = theme.brightness == Brightness.dark;
+
+          return Container(
+            padding: EdgeInsets.fromLTRB(22, 16, 22, MediaQuery.of(context).viewInsets.bottom + 24),
+            decoration: BoxDecoration(
+              color: isDark ? LoveraColors.darkSurfaceAlt : Colors.white,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  loc('Klasörü Düzenle 📁', 'Edit Folder 📁'),
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 18),
+                TextField(
+                  controller: titleController,
+                  decoration: InputDecoration(
+                    labelText: loc('Klasör İsmi *', 'Folder Name *'),
+                    prefixIcon: Icon(Icons.folder_special_rounded, color: LoveraColors.primary),
+                    filled: true,
+                    fillColor: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: descController,
+                  maxLines: 2,
+                  decoration: InputDecoration(
+                    labelText: loc('Açıklama / Hikaye', 'Description / Story'),
+                    prefixIcon: Icon(Icons.edit_note_rounded, color: LoveraColors.primary),
+                    filled: true,
+                    fillColor: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: locationController,
+                  decoration: InputDecoration(
+                    labelText: loc('Mekan / Şehir', 'Place / City'),
+                    prefixIcon: Icon(Icons.location_on_rounded, color: LoveraColors.primary),
+                    filled: true,
+                    fillColor: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: _isInfinityDate(editDate) ? DateTime.now() : editDate,
+                            firstDate: DateTime(2000),
+                            lastDate: DateTime.now(),
+                          );
+                          if (picked != null) {
+                            setEditState(() => editDate = picked);
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          decoration: BoxDecoration(
+                            color: isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: theme.dividerColor),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                _isInfinityDate(editDate) ? Icons.all_inclusive_rounded : Icons.calendar_month_rounded,
+                                color: LoveraColors.primary,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 12),
+                              Text('${loc("Tarih:", "Date:")} ${_formatMemoryDate(editDate)}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                              const Spacer(),
+                              Icon(Icons.edit_calendar_rounded, size: 18, color: LoveraColors.textMuted),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Tooltip(
+                      message: loc('Sonsuzluk / Tarihsiz', 'Infinity / No Date'),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          setEditState(() {
+                            if (_isInfinityDate(editDate)) {
+                              editDate = DateTime.now();
+                            } else {
+                              editDate = infinityDate;
+                            }
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                          decoration: BoxDecoration(
+                            color: _isInfinityDate(editDate)
+                                ? LoveraColors.primary
+                                : (isDark ? LoveraColors.darkSurfaceAlt : LoveraColors.lightSurfaceAlt),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: _isInfinityDate(editDate) ? LoveraColors.primary : theme.dividerColor,
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.all_inclusive_rounded,
+                            color: _isInfinityDate(editDate) ? Colors.white : LoveraColors.primary,
+                            size: 22,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                FilledButton(
+                  style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
+                  onPressed: () async {
+                    if (titleController.text.trim().isEmpty) return;
+                    Navigator.pop(bCtx);
+                    await DatabaseService().updateMemoryAlbum(
+                      coupleId: coupleId,
+                      albumId: album.id,
+                      title: titleController.text,
+                      description: descController.text,
+                      locationTitle: locationController.text,
+                      date: editDate,
+                    );
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(loc('Klasör bilgileri güncellendi! ✨', 'Folder details updated! ✨'))),
                       );
                     }
                   },
@@ -2202,38 +2607,66 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                     ),
                   ] else ...[
                     IconButton(
-                      tooltip: loc('Çoklu Seç / Düzenle', 'Multi-Select / Edit'),
+                      tooltip: loc('Çoklu Seç', 'Multi-Select'),
                       icon: const Icon(Icons.checklist_rounded),
                       onPressed: () {
                         setDetailState(() => isAlbumSelectionMode = true);
                       },
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444)),
-                      tooltip: loc('Klasörü Sil', 'Delete Folder'),
-                      onPressed: () async {
-                        final confirm = await showDialog<bool>(
-                          context: context,
-                          builder: (dCtx) => AlertDialog(
-                            title: Text(loc('Klasörü Sil', 'Delete Folder')),
-                            content: Text(
-                              loc('Bu klasörü sildiğinizde içindeki fotoğraflar albümünüzden silinmez, yalnızca klasör bağı kaldırılır. Onaylıyor musunuz?', 'Deleting this folder will not delete its photos from your album; only the folder association is removed. Confirm?'),
-                            ),
-                            actions: [
-                              TextButton(onPressed: () => Navigator.pop(dCtx, false), child: Text(loc('Vazgeç', 'Cancel'))),
-                              FilledButton(
-                                style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
-                                onPressed: () => Navigator.pop(dCtx, true),
-                                child: Text(loc('Klasörü Kaldır', 'Remove Folder')),
+                    PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_vert_rounded),
+                      tooltip: loc('Seçenekler', 'Options'),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      onSelected: (value) async {
+                        if (value == 'edit') {
+                          _editAlbumDialog(album);
+                        } else if (value == 'delete') {
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (dCtx) => AlertDialog(
+                              title: Text(loc('Klasörü Sil', 'Delete Folder')),
+                              content: Text(
+                                loc('Bu klasörü sildiğinizde içindeki fotoğraflar albümünüzden silinmez, yalnızca klasör bağı kaldırılır. Onaylıyor musunuz?', 'Deleting this folder will not delete its photos from your album; only the folder association is removed. Confirm?'),
                               ),
-                            ],
-                          ),
-                        );
-                        if (confirm == true) {
-                          Navigator.pop(context); // Detail sayfasından çık
-                          await DatabaseService().deleteMemoryAlbum(coupleId: coupleId, albumId: album.id);
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(dCtx, false), child: Text(loc('Vazgeç', 'Cancel'))),
+                                FilledButton(
+                                  style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
+                                  onPressed: () => Navigator.pop(dCtx, true),
+                                  child: Text(loc('Klasörü Kaldır', 'Remove Folder')),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirm == true) {
+                            Navigator.pop(context); // Detail sayfasından çık
+                            await DatabaseService().deleteMemoryAlbum(coupleId: coupleId, albumId: album.id);
+                          }
                         }
                       },
+                      itemBuilder: (popCtx) => [
+                        PopupMenuItem<String>(
+                          value: 'edit',
+                          child: Row(
+                            children: [
+                              Icon(Icons.edit_note_rounded, color: LoveraColors.primary, size: 20),
+                              const SizedBox(width: 10),
+                              Text(loc('Klasörü Düzenle', 'Edit Folder'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuDivider(),
+                        PopupMenuItem<String>(
+                          value: 'delete',
+                          child: const Row(
+                            children: [
+                              Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444), size: 20),
+                              SizedBox(width: 10),
+                              Text('Klasörü Sil', style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.w700)),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ],
@@ -2292,10 +2725,14 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          Icon(Icons.calendar_month_rounded, size: 14, color: LoveraColors.textMuted),
+                                          Icon(
+                                            _isInfinityDate(album.date) ? Icons.all_inclusive_rounded : Icons.calendar_month_rounded,
+                                            size: 14,
+                                            color: LoveraColors.textMuted,
+                                          ),
                                           const SizedBox(width: 4),
                                           Text(
-                                            '${album.date.day}.${album.date.month}.${album.date.year}',
+                                            _formatMemoryDate(album.date),
                                             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                                           ),
                                         ],
@@ -2864,9 +3301,15 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
         final item = memories[index];
         final isSelected = _selectedMemoryIds.contains(item.id);
 
+        final isLongPressed = _longPressedMemoryId == item.id;
+
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () {
+            if (_longPressedMemoryId != null) {
+              setState(() => _longPressedMemoryId = null);
+              return;
+            }
             if (_isSelectionMode) {
               HapticFeedback.selectionClick();
               setState(() {
@@ -2886,15 +3329,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
           onLongPress: () {
             HapticFeedback.mediumImpact();
             setState(() {
-              _isSelectionMode = true;
-              if (isSelected) {
-                _selectedMemoryIds.remove(item.id);
-                if (_selectedMemoryIds.isEmpty) {
-                  _isSelectionMode = false;
-                }
-              } else {
-                _selectedMemoryIds.add(item.id);
-              }
+              _longPressedMemoryId = isLongPressed ? null : item.id;
             });
           },
           child: ClipRRect(
@@ -2919,6 +3354,35 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                       ),
                       child: const Icon(Icons.favorite_rounded, color: Color(0xFFEF4444), size: 12),
                     ),
+                  ),
+                // Basılı tutulduğunda sağ üstte çıkan Düzenleme/İşlem Butonu
+                if (isLongPressed && !_isSelectionMode)
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: GestureDetector(
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        setState(() => _longPressedMemoryId = null);
+                        _editMemoryDialog(item);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: LoveraColors.primary,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.35),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                          border: Border.all(color: Colors.white, width: 1.5),
+                        ),
+                        child: const Icon(Icons.edit_rounded, color: Colors.white, size: 14),
+                      ),
+                    ).animate().scale(duration: 200.ms, curve: Curves.easeOutBack),
                   ),
                 // Çoklu seçim kutucuğu
                 if (_isSelectionMode)
@@ -2989,7 +3453,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '${item.date.day}.${item.date.month}.${item.date.year}',
+                          _formatMemoryDate(item.date),
                           style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
                         ),
                         if (item.locationTitle.isNotEmpty)
@@ -3090,13 +3554,27 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
         final album = albums[index];
         final count = allMemories.where((m) => m.albumId == album.id).length;
 
+        final isLongPressed = _longPressedAlbumId == album.id;
+
         return GestureDetector(
-          onTap: () => _openAlbumDetail(album, allMemories),
+          onTap: () {
+            if (_longPressedAlbumId != null) {
+              setState(() => _longPressedAlbumId = null);
+              return;
+            }
+            _openAlbumDetail(album, allMemories);
+          },
+          onLongPress: () {
+            HapticFeedback.mediumImpact();
+            setState(() {
+              _longPressedAlbumId = isLongPressed ? null : album.id;
+            });
+          },
           child: Container(
             decoration: BoxDecoration(
               color: theme.colorScheme.surface,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: theme.dividerColor),
+              border: Border.all(color: isLongPressed ? LoveraColors.primary : theme.dividerColor, width: isLongPressed ? 2 : 1),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
@@ -3120,28 +3598,58 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                                 color: LoveraColors.primary.withValues(alpha: 0.1),
                                 child: Icon(Icons.folder_special_rounded, size: 48, color: LoveraColors.primary),
                               ),
-                        Positioned(
-                          top: 8,
-                          right: 8,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.65),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.photo_library_rounded, size: 12, color: Colors.white),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '$count',
-                                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                        // Basılı tutulduğunda sağ üstte çıkan Düzenleme Butonu
+                        if (isLongPressed)
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: GestureDetector(
+                              onTap: () {
+                                HapticFeedback.selectionClick();
+                                setState(() => _longPressedAlbumId = null);
+                                _editAlbumDialog(album);
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(7),
+                                decoration: BoxDecoration(
+                                  color: LoveraColors.primary,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.4),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                  border: Border.all(color: Colors.white, width: 2),
                                 ),
-                              ],
+                                child: const Icon(Icons.edit_rounded, color: Colors.white, size: 16),
+                              ),
+                            ).animate().scale(duration: 200.ms, curve: Curves.easeOutBack),
+                          )
+                        else
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.65),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.photo_library_rounded, size: 12, color: Colors.white),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '$count',
+                                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
                       ],
                     ),
                   ),
@@ -3159,7 +3667,7 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        '${album.date.day}.${album.date.month}.${album.date.year}',
+                        _formatMemoryDate(album.date),
                         style: TextStyle(fontSize: 11, color: LoveraColors.textMuted),
                       ),
                     ],

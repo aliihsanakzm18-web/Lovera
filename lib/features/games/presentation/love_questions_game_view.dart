@@ -23,18 +23,51 @@ class LoveQuestionsGameView extends ConsumerStatefulWidget {
   ConsumerState<LoveQuestionsGameView> createState() => _LoveQuestionsGameViewState();
 }
 
-class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> {
+class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> with WidgetsBindingObserver {
   final TextEditingController _answerController = TextEditingController();
   String _selectedCategory = 'all';
   bool _isSubmittingAnswer = false;
   bool _isFlippingCoinLocal = false;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _gameSub;
   Map<String, dynamic>? _lastGameData;
+  bool _hasHandledExit = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initGameStream();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      _leaveGame(reason: 'paused');
+    }
+  }
+
+  void _leaveGame({String reason = 'exit'}) {
+    if (_hasHandledExit) return;
+    _hasHandledExit = true;
+
+    final coupleId = ref.read(coupleIdProvider);
+    final myUid = DatabaseService().uid;
+    final myName = ref.read(userNameProvider);
+    final leaveName = myName.isNotEmpty ? myName : loc('Partnerin', 'Partner');
+
+    if (coupleId != null && coupleId.isNotEmpty && myUid != null) {
+      DatabaseService().updateGameState(
+        coupleId: coupleId,
+        gameType: 'love_questions',
+        updates: {
+          'status': 'partner_left',
+          'leftByUid': myUid,
+          'leftByName': leaveName,
+          'leftReason': reason,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+      ).catchError((_) {});
+    }
   }
 
   void _initGameStream() {
@@ -47,6 +80,18 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> {
         final data = snap.data()!;
         final oldData = _lastGameData;
         _lastGameData = data;
+
+        // Partner oyundan ayrıldıysa uyarı göster ve lobiye yönlendir
+        final status = data['status']?.toString();
+        final leftByUid = data['leftByUid']?.toString();
+        final myUid = DatabaseService().uid;
+
+        if (status == 'partner_left' && leftByUid != null && leftByUid != myUid && !_hasHandledExit) {
+          _hasHandledExit = true;
+          final leftByName = data['leftByName']?.toString() ?? loc('Partnerin', 'Partner');
+          _showPartnerLeftDialog(leftByName);
+          return;
+        }
 
         // Yazı-tura atışı tetiklendiyse yerel animasyonu oynat
         if (data['step'] == 'flipping_coin' && oldData?['step'] != 'flipping_coin') {
@@ -65,8 +110,55 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> {
     });
   }
 
+  void _showPartnerLeftDialog(String leftByName) {
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Row(
+          children: [
+            const Text('🚪', style: TextStyle(fontSize: 26)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                loc('Oyun Askıya Alındı', 'Game Suspended'),
+                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          loc(
+            '$leftByName oyundan veya uygulamadan ayrıldı.\n\nMerak etme! Tüm cevaplanan sorular ve anılarınız veritabanında güvende. Tekrar oynamak istediğinizde yeni bir davet göndererek kaldığınız yerden devam edebilirsiniz.',
+            '$leftByName left the game or app.\n\nDon\'t worry! All answered questions and memories are safe in the database. When you want to play again, you can resume right where you left off by sending a new invite.',
+          ),
+          style: const TextStyle(fontSize: 14, height: 1.4),
+        ),
+        actions: [
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: LoveraColors.primary,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+            onPressed: () {
+              Navigator.pop(dCtx); // dialog
+              if (mounted) {
+                Navigator.of(context).maybePop(); // game screen
+              }
+            },
+            child: Text(loc('Tamam', 'OK'), style: const TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _leaveGame(reason: 'screen_dispose');
     _gameSub?.cancel();
     _answerController.dispose();
     super.dispose();
@@ -451,15 +543,25 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> {
     final p2Name = gameData?['player2Name']?.toString() ?? (partner?.name ?? 'Partner');
     final coinWinnerName = gameData?['coinWinnerName']?.toString() ?? turnName;
 
-    return Scaffold(
-      backgroundColor: isDark ? LoveraColors.darkBg : LoveraColors.lightBg,
-      appBar: AppBar(
-        backgroundColor: isDark ? LoveraColors.darkSurface : LoveraColors.lightSurface,
-        elevation: 0.5,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) {
+          _leaveGame(reason: 'back_press');
+        }
+      },
+      child: Scaffold(
+        backgroundColor: isDark ? LoveraColors.darkBg : LoveraColors.lightBg,
+        appBar: AppBar(
+          backgroundColor: isDark ? LoveraColors.darkSurface : LoveraColors.lightSurface,
+          elevation: 0.5,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+            onPressed: () {
+              _leaveGame(reason: 'app_bar_back');
+              Navigator.of(context).maybePop();
+            },
+          ),
         title: Row(
           children: [
             Container(
@@ -536,8 +638,9 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildTopStatusBanner({
     required String step,

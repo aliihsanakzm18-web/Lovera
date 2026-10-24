@@ -2035,6 +2035,27 @@ class DatabaseService {
     if (myUid == null) return;
     final reqId = '${gameType}_${DateTime.now().millisecondsSinceEpoch}';
 
+    // Var olan oyun dokümanını kontrol et: Önceden cevaplanmış sorular varsa (answeredMap) koru
+    Map<String, dynamic> existingAnswered = {};
+    try {
+      final existingDoc = await _db.collection('couples').doc(coupleId).collection('games').doc(gameType).get();
+      if (existingDoc.exists && existingDoc.data() != null) {
+        final data = existingDoc.data()!;
+        if (data['answeredMap'] is Map) {
+          existingAnswered = Map<String, dynamic>.from(data['answeredMap'] as Map);
+        }
+      }
+    } catch (_) {}
+
+    final mergedData = Map<String, dynamic>.from(initialGameData);
+    if (existingAnswered.isNotEmpty) {
+      final initialMap = (mergedData['answeredMap'] as Map?) ?? {};
+      mergedData['answeredMap'] = {
+        ...existingAnswered,
+        ...initialMap,
+      };
+    }
+
     await _db.collection('couples').doc(coupleId).collection('games').doc(gameType).set({
       'id': reqId,
       'game': gameType,
@@ -2054,7 +2075,7 @@ class DatabaseService {
       'blackRematch': false,
       'winnerUid': null,
       'winnerReason': null,
-      ...initialGameData,
+      ...mergedData,
       'updatedAt': FieldValue.serverTimestamp(),
     });
 
@@ -2466,6 +2487,42 @@ class DatabaseService {
       'locationTitle': locationTitle.trim(),
       'date': date.toIso8601String(),
     });
+  }
+
+  /// Anı grubu (klasör) bilgilerini günceller
+  Future<void> updateMemoryAlbum({
+    required String coupleId,
+    required String albumId,
+    required String title,
+    required String description,
+    required String locationTitle,
+    required DateTime date,
+  }) async {
+    if (coupleId.isEmpty || albumId.isEmpty) return;
+    await _db.collection('couples').doc(coupleId).collection('memory_albums').doc(albumId).update({
+      'title': title.trim(),
+      'description': description.trim(),
+      'locationTitle': locationTitle.trim(),
+      'date': date.toIso8601String(),
+    });
+
+    // Bu klasöre bağlı anıların albumTitle bilgisini de senkronize güncelle
+    final snap = await _db
+        .collection('couples')
+        .doc(coupleId)
+        .collection('memories')
+        .where('albumId', isEqualTo: albumId)
+        .get();
+
+    if (snap.docs.isNotEmpty) {
+      final batch = _db.batch();
+      for (final doc in snap.docs) {
+        batch.update(doc.reference, {
+          'albumTitle': title.trim(),
+        });
+      }
+      await batch.commit();
+    }
   }
 
   /// Anı grubunu ve içindeki anıların grup bağını siler
