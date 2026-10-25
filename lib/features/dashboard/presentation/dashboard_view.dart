@@ -2833,13 +2833,29 @@ class _PartnerCard extends ConsumerWidget {
                     Builder(
                       builder: (_) {
                         final online = _isOnline(p);
-                        if (online) {
-                          return Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
+                        return Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // İnternet & Aktiflik Durum İkonu (Wifi / Mobil Veri / Çevrimdışı)
+                            Container(
+                              padding: const EdgeInsets.all(3.5),
+                              decoration: BoxDecoration(
+                                color: online
+                                    ? const Color(0xFF10B981).withValues(alpha: 0.15)
+                                    : Colors.grey.withValues(alpha: 0.15),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                online ? Icons.wifi_rounded : Icons.wifi_off_rounded,
+                                size: 12,
+                                color: online ? const Color(0xFF10B981) : LoveraColors.textMuted,
+                              ),
+                            ),
+                            const SizedBox(width: 5),
+                            if (online) ...[
                               Container(
-                                width: 7,
-                                height: 7,
+                                width: 6.5,
+                                height: 6.5,
                                 decoration: BoxDecoration(
                                   color: const Color(0xFF10B981),
                                   shape: BoxShape.circle,
@@ -2852,21 +2868,21 @@ class _PartnerCard extends ConsumerWidget {
                                   ],
                                 ),
                               ),
-                              const SizedBox(width: 5),
+                              const SizedBox(width: 4),
                               Text(
                                 ref.watch(stringsProvider).lastSeenJustNow,
-                                style: TextStyle(
+                                style: const TextStyle(
                                   color: Color(0xFF10B981),
                                   fontWeight: FontWeight.w700,
                                   fontSize: 12,
                                 ),
                               ),
-                            ],
-                          );
-                        }
-                        return Text(
-                          _lastSeen(p, ref),
-                          style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted),
+                            ] else
+                              Text(
+                                _lastSeen(p, ref),
+                                style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted, fontSize: 11.5),
+                              ),
+                          ],
                         );
                       },
                     ),
