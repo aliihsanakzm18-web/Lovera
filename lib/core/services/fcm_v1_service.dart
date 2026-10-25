@@ -109,6 +109,8 @@ class FcmV1Service {
         'https://fcm.googleapis.com/v1/projects/$_projectId/messages:send',
       );
 
+      final isHeartPing = data?['type'] == 'heart_ping';
+
       final payload = {
         'message': {
           'token': fcmToken,
@@ -125,10 +127,14 @@ class FcmV1Service {
           'android': {
             'priority': 'HIGH',
             'notification': {
-              'channel_id': 'lovera_partner',
+              'channel_id': isHeartPing ? 'lovera_heartbeat' : 'lovera_partner',
               'tag': data?['type'] ?? 'lovera_partner_alert',
               'default_sound': true,
-              'default_vibrate_timings': true,
+              'default_vibrate_timings': !isHeartPing,
+              if (isHeartPing)
+                'vibrate_timings': [
+                  '0s', '0.1s', '0.1s', '0.14s', '0.65s', '0.1s', '0.1s', '0.14s'
+                ],
               'notification_priority': 'PRIORITY_MAX',
             },
           },

@@ -14,6 +14,7 @@ import '../../firebase_options.dart';
 import '../models/models.dart';
 import 'device_service.dart';
 import 'fcm_v1_service.dart';
+import 'heartbeat_haptic_service.dart';
 import 'widget_sync_service.dart';
 import '../localization/app_strings.dart';
 import '../localization/notification_localizer.dart';
@@ -352,10 +353,28 @@ class NotificationService {
         },
       );
       if (requestPermissions) {
-      await _localPlugin
-          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-          ?.requestNotificationsPermission();
+        await _localPlugin
+            .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+            ?.requestNotificationsPermission();
       }
+
+      // Android için özel Kalp Atışı bildirim kanalını oluştur
+      try {
+        final androidPlugin = _localPlugin
+            .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+        if (androidPlugin != null) {
+          final heartbeatChannel = AndroidNotificationChannel(
+            'lovera_heartbeat',
+            loc('Kalp Atışı (Özledim)', 'Heartbeat (Thinking of You)'),
+            description: loc('Partnerinin kalp atışı ve özlem bildirimleri', 'Heartbeat and thinking of you alerts from partner'),
+            importance: Importance.max,
+            playSound: true,
+            enableVibration: true,
+            vibrationPattern: Int64List.fromList([0, 100, 100, 140, 650, 100, 100, 140]),
+          );
+          await androidPlugin.createNotificationChannel(heartbeatChannel);
+        }
+      } catch (_) {}
     } catch (_) {}
 
     // Bildirime tıklanarak uygulama kapalıyken veya arka plandayken açıldıysa:
@@ -445,8 +464,9 @@ class NotificationService {
           return;
         }
 
-        // Anlık Kalp (Özledim) push bildirimi geldiyse doğrudan ekranda patlat
+        // Anlık Kalp (Özledim) push bildirimi geldiyse doğrudan ekranda patlat ve kalp ritminde titret
         if (message.data['type'] == 'heart_ping') {
+          HeartbeatHapticService().playHeartbeat(pulses: 3);
           final senderName = message.data['fromName']?.toString() ?? 'Partnerin';
           onHeartPingReceived?.call(senderName);
         }
@@ -760,21 +780,35 @@ class NotificationService {
     if (title.trim().isEmpty && body.trim().isEmpty) return;
     if (isDuplicate(title, body, payload)) return;
     try {
+      final isHeartPing = payload == 'heart_ping';
+
       await _localPlugin.show(
         id,
         title,
         body,
         NotificationDetails(
-          android: AndroidNotificationDetails(
-            'lovera_partner',
-            loc('Partner Mesajları', 'Partner Messages'),
-            channelDescription: loc('Partnerinden gelen mesajlar', 'Messages from your partner'),
-            importance: Importance.max,
-            priority: Priority.max,
-            playSound: true,
-            enableVibration: true,
-            tag: payload,
-          ),
+          android: isHeartPing
+              ? AndroidNotificationDetails(
+                  'lovera_heartbeat',
+                  loc('Kalp Atışı (Özledim)', 'Heartbeat (Thinking of You)'),
+                  channelDescription: loc('Partnerinin kalp atışı ve özlem bildirimleri', 'Heartbeat and thinking of you alerts from partner'),
+                  importance: Importance.max,
+                  priority: Priority.max,
+                  playSound: true,
+                  enableVibration: true,
+                  vibrationPattern: Int64List.fromList([0, 100, 100, 140, 650, 100, 100, 140]),
+                  tag: payload,
+                )
+              : AndroidNotificationDetails(
+                  'lovera_partner',
+                  loc('Partner Mesajları', 'Partner Messages'),
+                  channelDescription: loc('Partnerinden gelen mesajlar', 'Messages from your partner'),
+                  importance: Importance.max,
+                  priority: Priority.max,
+                  playSound: true,
+                  enableVibration: true,
+                  tag: payload,
+                ),
           iOS: const DarwinNotificationDetails(presentAlert: true, presentSound: true),
         ),
         payload: payload,

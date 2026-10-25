@@ -16,6 +16,7 @@ import '../../../core/models/models.dart';
 import '../../../core/services/background_tracking_service.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/device_service.dart';
+import '../../../core/services/heartbeat_haptic_service.dart';
 import '../../../core/services/notification_service.dart';
 import '../../../core/state/app_state.dart';
 import '../../../core/services/auth_service.dart';
@@ -1303,7 +1304,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
   }
 
   void _receiveHeartPulse({String? senderName}) {
-    HapticFeedback.heavyImpact();
+    HeartbeatHapticService().playHeartbeat(pulses: 3);
     setState(() => _showHeart = true);
     _heartAnimController.forward(from: 0.0);
   }
@@ -2092,7 +2093,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
   }
 
   Future<void> _sendThought() async {
-    HapticFeedback.mediumImpact();
+    HeartbeatHapticService().playSinglePulse();
 
     // 1. Ekrandaki kalbi her basışta anında ve pürüzsüzce yeniden patlat
     setState(() => _showHeart = true);
