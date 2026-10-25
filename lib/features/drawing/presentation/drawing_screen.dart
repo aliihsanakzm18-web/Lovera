@@ -304,13 +304,13 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
         senderName: myName,
       );
 
-      // 4. Çizimi otomatik olarak sohbete de çıkartma/çizim mesajı olarak gönder
+      // 4. Çizimi otomatik olarak sohbete özel 'drawing' tipiyle gönder
       try {
         await DatabaseService().sendMessage(
           coupleId: coupleId,
           text: '',
           mediaBase64: 'data:image/png;base64,$base64Image',
-          type: 'sticker',
+          type: 'drawing',
         );
       } catch (e) {
         debugPrint('[DrawingScreen] Çizimi sohbete ekleme hatası: $e');

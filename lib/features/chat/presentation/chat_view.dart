@@ -1701,8 +1701,75 @@ class _ChatBubble extends ConsumerWidget {
                     if (message.text.isNotEmpty) const SizedBox(height: 8),
                   ],
 
-                    // Mesaj İçeriği: Görsel veya Metin
-                    if (message.type == 'image' && message.mediaBase64 != null) ...[
+                    // Mesaj İçeriği: Görsel veya Metin veya Çizim Widget'ı
+                    if (message.type == 'drawing' && message.mediaBase64 != null) ...[
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => FullScreenImageViewer(
+                                imageBase64: message.mediaBase64!,
+                                messageId: message.id,
+                                timestamp: message.createdAt,
+                              ),
+                            ),
+                          );
+                        },
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF141724) : Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: palette.primary.withValues(alpha: 0.35),
+                              width: 1.5,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: palette.primary.withValues(alpha: 0.15),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          padding: const EdgeInsets.all(8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.brush_rounded, size: 14, color: LoveraColors.primary),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    loc('Canlı Widget Çizimi 🎨', 'Live Widget Drawing 🎨'),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: isDark ? Colors.white70 : LoveraColors.primaryDark,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
+                                child: Container(
+                                  width: MediaQuery.of(context).size.width * 0.70,
+                                  height: MediaQuery.of(context).size.width * 0.70,
+                                  color: isDark ? const Color(0xFF1E212E) : const Color(0xFFF3F4F6),
+                                  child: Image.memory(
+                                    base64Decode(message.mediaBase64!.split(',').last),
+                                    fit: BoxFit.contain,
+                                    gaplessPlayback: true,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      if (message.text.isNotEmpty) const SizedBox(height: 6),
+                    ] else if (message.type == 'image' && message.mediaBase64 != null) ...[
                       GestureDetector(
                         onTap: () {
                           Navigator.of(context).push(
