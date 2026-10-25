@@ -2838,24 +2838,24 @@ class _PartnerCard extends ConsumerWidget {
                           children: [
                             // İnternet & Aktiflik Durum İkonu (Wifi / Mobil Veri / Çevrimdışı)
                             Container(
-                              padding: const EdgeInsets.all(3.5),
+                              padding: const EdgeInsets.all(5),
                               decoration: BoxDecoration(
                                 color: online
-                                    ? const Color(0xFF10B981).withValues(alpha: 0.15)
-                                    : Colors.grey.withValues(alpha: 0.15),
+                                    ? const Color(0xFF10B981).withValues(alpha: 0.16)
+                                    : Colors.grey.withValues(alpha: 0.16),
                                 shape: BoxShape.circle,
                               ),
                               child: Icon(
                                 online ? Icons.wifi_rounded : Icons.wifi_off_rounded,
-                                size: 12,
+                                size: 16,
                                 color: online ? const Color(0xFF10B981) : LoveraColors.textMuted,
                               ),
                             ),
-                            const SizedBox(width: 5),
+                            const SizedBox(width: 6),
                             if (online) ...[
                               Container(
-                                width: 6.5,
-                                height: 6.5,
+                                width: 7,
+                                height: 7,
                                 decoration: BoxDecoration(
                                   color: const Color(0xFF10B981),
                                   shape: BoxShape.circle,
@@ -2868,7 +2868,7 @@ class _PartnerCard extends ConsumerWidget {
                                   ],
                                 ),
                               ),
-                              const SizedBox(width: 4),
+                              const SizedBox(width: 5),
                               Text(
                                 ref.watch(stringsProvider).lastSeenJustNow,
                                 style: const TextStyle(
