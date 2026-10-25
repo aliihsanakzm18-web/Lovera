@@ -1424,6 +1424,19 @@ class _ChatBubble extends ConsumerWidget {
     final bool isSticker = message.type == 'sticker';
     final bool isPureSticker = isSticker && message.text.isEmpty;
 
+    // Tek veya birkaç emojiden oluşan mesajlar için WhatsApp tarzı şeffaf arka plan
+    final trimmedText = message.text.trim();
+    final bool isOnlyEmoji = (message.type == 'text' || message.type == 'heart') &&
+        message.mediaBase64 == null &&
+        message.replyToText == null &&
+        !hasLocation &&
+        trimmedText.isNotEmpty &&
+        trimmedText.characters.length <= 3 &&
+        trimmedText.characters.every((c) =>
+            RegExp(r'(\u00a9|\u00ae|[\u2000-\u3300]|\ud83c[\ud000-\udfff]|\ud83d[\ud000-\udfff]|\ud83e[\ud000-\udfff])').hasMatch(c));
+
+    final bool isTransparentBubble = isPureSticker || isOnlyEmoji;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
@@ -1526,11 +1539,11 @@ class _ChatBubble extends ConsumerWidget {
                 );
               },
               child: Container(
-                padding: isPureSticker ? EdgeInsets.zero : const EdgeInsets.all(12),
+                padding: isTransparentBubble ? EdgeInsets.zero : const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: isPureSticker ? Colors.transparent : bubbleColor,
-                  border: isPureSticker ? null : bubbleBorder,
-                  borderRadius: isPureSticker
+                  color: isTransparentBubble ? Colors.transparent : bubbleColor,
+                  border: isTransparentBubble ? null : bubbleBorder,
+                  borderRadius: isTransparentBubble
                       ? BorderRadius.circular(16)
                       : BorderRadius.only(
                           topLeft: const Radius.circular(18),
@@ -1538,7 +1551,7 @@ class _ChatBubble extends ConsumerWidget {
                           bottomLeft: Radius.circular(isMe ? 18 : 4),
                           bottomRight: Radius.circular(isMe ? 4 : 18),
                         ),
-                  boxShadow: isPureSticker
+                  boxShadow: isTransparentBubble
                       ? null
                       : [
                           BoxShadow(
@@ -1759,14 +1772,14 @@ class _ChatBubble extends ConsumerWidget {
                     ] else if (message.type == 'heart')
                       const Text(
                         '❤️',
-                        style: TextStyle(fontSize: 38),
+                        style: TextStyle(fontSize: 48),
                       )
                     else if (message.text.isNotEmpty)
                       Text(
                         message.text,
                         style: TextStyle(
-                          fontSize: 15,
-                          height: 1.35,
+                          fontSize: isOnlyEmoji ? 42 : 15,
+                          height: isOnlyEmoji ? 1.15 : 1.35,
                           color: textColor,
                           fontWeight: FontWeight.w500,
                         ),
@@ -1840,11 +1853,9 @@ class _ChatStickerBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bytes = _getBytes();
-    return ConstrainedBox(
-      constraints: const BoxConstraints(
-        maxWidth: 180,
-        maxHeight: 180,
-      ),
+    return SizedBox(
+      width: 155,
+      height: 155,
       child: Image.memory(
         bytes,
         fit: BoxFit.contain,
