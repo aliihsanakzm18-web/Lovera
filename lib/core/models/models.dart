@@ -19,6 +19,7 @@ class AppUser {
   final String? currentPlaceEmoji; // Örn. "🏠", "💼"
   final String? widgetBgUrl; // Hesaba kalıcı kayıtlı widget arka plan görseli (base64)
   final String? language; // 'tr' veya 'en'
+  final DateTime? lastNetPing; // Arka plan veya ön plandan en son başarılı veri/bağlantı zamanı
 
   const AppUser({
     required this.id,
@@ -38,6 +39,7 @@ class AppUser {
     this.currentPlaceEmoji,
     this.widgetBgUrl,
     this.language,
+    this.lastNetPing,
   });
 
   factory AppUser.fromJson(Map<String, dynamic> j) => AppUser(
@@ -68,6 +70,17 @@ class AppUser {
         currentPlaceTitle: j['currentPlaceTitle'] as String?,
         currentPlaceEmoji: j['currentPlaceEmoji'] as String?,
         language: j['language'] as String?,
+        lastNetPing: () {
+          final raw = j['lastNetPing'] ?? j['last_net_ping'];
+          if (raw == null) return null;
+          if (raw is DateTime) return raw;
+          if (raw is String) return DateTime.tryParse(raw);
+          try {
+            return (raw as dynamic).toDate();
+          } catch (_) {
+            return DateTime.tryParse(raw.toString());
+          }
+        }(),
       );
 
   Map<String, dynamic> toJson() => {

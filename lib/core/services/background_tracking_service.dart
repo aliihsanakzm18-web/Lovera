@@ -362,6 +362,8 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
       }
       updateData['currentPlaceTitle'] = currentMatchedPlace?.title ?? '';
       updateData['currentPlaceEmoji'] = currentMatchedPlace?.iconEmoji ?? '';
+      // Arka planda sunucuya ulaşıp veri eşitlediğimiz anı damgalıyoruz (lastActive'i bozmadan internet varlığını doğrular)
+      updateData['lastNetPing'] = FieldValue.serverTimestamp();
       // NOT: lastActive burada güncellenmemeli! Kullanıcı uygulamayı açmadığı veya ekran başında olmadığı sürece
       // arka plan GPS veya şarj kontrolleri partnerin son aktiflik saatini 'şimdi aktif' veya '1 dk önce' yapmamalıdır.
 

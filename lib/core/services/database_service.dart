@@ -1160,6 +1160,7 @@ class DatabaseService {
       data['currentPlaceEmoji'] = currentPlaceEmoji ?? '';
     }
     if (data.isNotEmpty) {
+      data['lastNetPing'] = FieldValue.serverTimestamp();
       try {
         await _db.collection('users').doc(targetUid).set(data, SetOptions(merge: true)).timeout(const Duration(seconds: 4));
       } catch (_) {}
@@ -1179,6 +1180,7 @@ class DatabaseService {
       await _db.collection('users').doc(targetUid).set({
         'isAppOpen': isOpen,
         'lastActive': FieldValue.serverTimestamp(),
+        'lastNetPing': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true)).timeout(const Duration(seconds: 4));
     } catch (_) {}
   }

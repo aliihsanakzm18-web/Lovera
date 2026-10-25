@@ -688,6 +688,13 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
           speed: (data['speed'] as num?)?.toDouble(),
           currentPlaceTitle: data['currentPlaceTitle'] as String?,
           currentPlaceEmoji: data['currentPlaceEmoji'] as String?,
+          lastNetPing: data['lastNetPing'] != null
+              ? (data['lastNetPing'] is DateTime
+                  ? data['lastNetPing']
+                  : (data['lastNetPing'] is String
+                      ? DateTime.tryParse(data['lastNetPing'])
+                      : (data['lastNetPing'] as dynamic).toDate?.call()))
+              : null,
         );
         ref.read(currentUserProvider.notifier).state = meUser;
 
@@ -1847,6 +1854,13 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
         currentPlaceTitle: data['currentPlaceTitle'] as String?,
         currentPlaceEmoji: data['currentPlaceEmoji'] as String?,
         language: data['language'] as String?,
+        lastNetPing: data['lastNetPing'] != null
+            ? (data['lastNetPing'] is DateTime
+                ? data['lastNetPing']
+                : (data['lastNetPing'] is String
+                    ? DateTime.tryParse(data['lastNetPing'])
+                    : (data['lastNetPing'] as dynamic).toDate?.call()))
+            : null,
       );
       ref.read(partnerProvider.notifier).state = partnerUser;
 
@@ -2619,6 +2633,24 @@ class _PartnerCard extends ConsumerWidget {
     return diff.inMinutes < 5;
   }
 
+  /// Partner cihazının interneti açık mı ve veri iletebiliyor mu?
+  /// Uygulama ekranda açıkken (isAppOpen) veya arka planda veri eşitlerken (lastNetPing veya lastActive)
+  /// partner ile bağlantı kurulabiliyorsa internet var (yeşil wifi) gösterilir.
+  /// Hiçbir bağlantı/veri akışı 2.5 dakikadan daha taze değilse internet yok (wifi_off) gösterilir.
+  bool _hasInternet(AppUser p) {
+    if (_isOnline(p)) return true;
+    final now = DateTime.now().toUtc();
+    if (p.lastNetPing != null) {
+      final diff = now.difference(p.lastNetPing!.toUtc()).abs();
+      if (diff.inSeconds < 150) return true;
+    }
+    if (p.lastActive != null) {
+      final diff = now.difference(p.lastActive!.toUtc()).abs();
+      if (diff.inSeconds < 150) return true;
+    }
+    return false;
+  }
+
   /// Partnerin anlık durumunu belirler: Kayıtlı yer (Ev, İş vb.) > Arabada > Yürüyor / Koşuyor
   Map<String, dynamic>? _getMovementOrPlaceStatus(AppUser p, WidgetRef ref) {
     // 1. Koordinat kontrolü: Şu an kayıtlı bir yerde mi? (<= 45m)
@@ -2833,22 +2865,23 @@ class _PartnerCard extends ConsumerWidget {
                     Builder(
                       builder: (_) {
                         final online = _isOnline(p);
+                        final hasNet = _hasInternet(p);
                         return Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            // İnternet & Aktiflik Durum İkonu (Wifi / Mobil Veri / Çevrimdışı)
+                            // İnternet Durum İkonu (Wifi / Mobil Veri / Çevrimdışı)
                             Container(
                               padding: const EdgeInsets.all(5),
                               decoration: BoxDecoration(
-                                color: online
+                                color: hasNet
                                     ? const Color(0xFF10B981).withValues(alpha: 0.16)
                                     : Colors.grey.withValues(alpha: 0.16),
                                 shape: BoxShape.circle,
                               ),
                               child: Icon(
-                                online ? Icons.wifi_rounded : Icons.wifi_off_rounded,
+                                hasNet ? Icons.wifi_rounded : Icons.wifi_off_rounded,
                                 size: 16,
-                                color: online ? const Color(0xFF10B981) : LoveraColors.textMuted,
+                                color: hasNet ? const Color(0xFF10B981) : LoveraColors.textMuted,
                               ),
                             ),
                             const SizedBox(width: 6),
