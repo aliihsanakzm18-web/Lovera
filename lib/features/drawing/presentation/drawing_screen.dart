@@ -304,7 +304,19 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
         senderName: myName,
       );
 
-      // 4. Partnere anında Push Bildirimi yolla (Partnere widget'ı anında güncellensin!)
+      // 4. Çizimi otomatik olarak sohbete de çıkartma/çizim mesajı olarak gönder
+      try {
+        await DatabaseService().sendMessage(
+          coupleId: coupleId,
+          text: '',
+          mediaBase64: 'data:image/png;base64,$base64Image',
+          type: 'sticker',
+        );
+      } catch (e) {
+        debugPrint('[DrawingScreen] Çizimi sohbete ekleme hatası: $e');
+      }
+
+      // 5. Partnere anında Push Bildirimi yolla (Partnere widget'ı anında güncellensin!)
       if (partnerUid != null && partnerUid.isNotEmpty) {
         NotificationService().sendPushToPartner(
           partnerUid: partnerUid,
