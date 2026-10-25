@@ -1421,6 +1421,9 @@ class _ChatBubble extends ConsumerWidget {
     final bool hasLocation = (message.locationLat != null && message.locationLng != null) ||
         (message.type == 'location');
 
+    final bool isSticker = message.type == 'sticker';
+    final bool isPureSticker = isSticker && message.text.isEmpty;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
@@ -1523,23 +1526,27 @@ class _ChatBubble extends ConsumerWidget {
                 );
               },
               child: Container(
-                padding: const EdgeInsets.all(12),
+                padding: isPureSticker ? EdgeInsets.zero : const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: bubbleColor,
-                  border: bubbleBorder,
-                  borderRadius: BorderRadius.only(
-                    topLeft: const Radius.circular(18),
-                    topRight: const Radius.circular(18),
-                    bottomLeft: Radius.circular(isMe ? 18 : 4),
-                    bottomRight: Radius.circular(isMe ? 4 : 18),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: hasCustomBg ? 0.12 : 0.04),
-                      blurRadius: hasCustomBg ? 8 : 6,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
+                  color: isPureSticker ? Colors.transparent : bubbleColor,
+                  border: isPureSticker ? null : bubbleBorder,
+                  borderRadius: isPureSticker
+                      ? BorderRadius.circular(16)
+                      : BorderRadius.only(
+                          topLeft: const Radius.circular(18),
+                          topRight: const Radius.circular(18),
+                          bottomLeft: Radius.circular(isMe ? 18 : 4),
+                          bottomRight: Radius.circular(isMe ? 4 : 18),
+                        ),
+                  boxShadow: isPureSticker
+                      ? null
+                      : [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: hasCustomBg ? 0.12 : 0.04),
+                            blurRadius: hasCustomBg ? 8 : 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                 ),
                 child: Column(
                   crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
@@ -1729,12 +1736,9 @@ class _ChatBubble extends ConsumerWidget {
 
                     if (message.type == 'sticker') ...[
                       if (message.mediaBase64 != null && message.mediaBase64!.isNotEmpty)
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: _ChatImageBubble(
-                            messageId: message.id,
-                            mediaBase64: message.mediaBase64!,
-                          ),
+                        _ChatStickerBubble(
+                          messageId: message.id,
+                          mediaBase64: message.mediaBase64!,
                         )
                       else
                         Text(
@@ -1806,6 +1810,45 @@ class _ChatBubble extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Şeffaf ve Çerçevesiz Özel Çıkartma Görseli Widget'ı
+class _ChatStickerBubble extends StatelessWidget {
+  const _ChatStickerBubble({
+    required this.messageId,
+    required this.mediaBase64,
+  });
+
+  final String messageId;
+  final String mediaBase64;
+
+  static final Map<String, Uint8List> _stickerCache = <String, Uint8List>{};
+
+  Uint8List _getBytes() {
+    if (_stickerCache.containsKey(messageId)) {
+      return _stickerCache[messageId]!;
+    }
+    final raw = mediaBase64.split(',').last;
+    final bytes = base64Decode(raw);
+    _stickerCache[messageId] = bytes;
+    return bytes;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bytes = _getBytes();
+    return ConstrainedBox(
+      constraints: const BoxConstraints(
+        maxWidth: 180,
+        maxHeight: 180,
+      ),
+      child: Image.memory(
+        bytes,
+        fit: BoxFit.contain,
+        gaplessPlayback: true,
       ),
     );
   }

@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -65,9 +67,9 @@ class _StickerPickerSheetState extends ConsumerState<StickerPickerSheet>
     final picker = ImagePicker();
     final picked = await picker.pickImage(
       source: ImageSource.gallery,
-      imageQuality: 75,
-      maxWidth: 400,
-      maxHeight: 400,
+      imageQuality: 95,
+      maxWidth: 1024,
+      maxHeight: 1024,
     );
 
     if (picked == null) return;
@@ -109,34 +111,54 @@ class _StickerPickerSheetState extends ConsumerState<StickerPickerSheet>
     }
   }
 
-  // Çıkartma Üret / Oluştur Dialogu
-  void _openStickerStudioDialog() {
+  // Fotoğraftan Çıkartma Üret / Metin Ekle Dialogu
+  Future<void> _openPhotoStickerEditor() async {
     HapticFeedback.lightImpact();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textController = TextEditingController();
-    String selectedEmoji = '💖';
-    Color stickerBgColor = LoveraColors.primary;
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 95,
+      maxWidth: 1024,
+      maxHeight: 1024,
+    );
 
-    final emojiList = ['💖', '🧸', '🥰', '😘', '💍', '💌', '🌸', '🐰', '✨', '🔥', '👑', '🐣'];
-    final colorList = [
+    if (picked == null || !mounted) return;
+
+    final imageFile = File(picked.path);
+    final GlobalKey previewKey = GlobalKey();
+    final textController = TextEditingController();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    Color textColor = Colors.white;
+    Color textBgColor = Colors.black.withValues(alpha: 0.6);
+    double fontSize = 18;
+    bool hasTextBg = true;
+    bool isSavingSticker = false;
+
+    final colorOptions = [
+      Colors.white,
+      Colors.black,
       LoveraColors.primary,
-      const Color(0xFFEC4899),
-      const Color(0xFF8B5CF6),
-      const Color(0xFFF59E0B),
-      const Color(0xFF10B981),
-      const Color(0xFF3B82F6),
-      const Color(0xFF1E293B),
+      const Color(0xFFFACC15), // Sarı
+      const Color(0xFF4ADE80), // Yeşil
+      const Color(0xFF38BDF8), // Mavi
+      const Color(0xFFF43F5E), // Kırmızı/Pembe
     ];
 
-    showDialog<void>(
+    if (!mounted) return;
+
+    await showDialog<void>(
       context: context,
       useRootNavigator: true,
+      barrierDismissible: false,
       builder: (dCtx) {
         return StatefulBuilder(
           builder: (ctx, setDialogState) {
             return AlertDialog(
-              backgroundColor: isDark ? LoveraColors.darkSurfaceAlt : Colors.white,
+              backgroundColor: isDark ? const Color(0xFF1E212E) : Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              titlePadding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
               title: Row(
                 children: [
                   Container(
@@ -145,12 +167,12 @@ class _StickerPickerSheetState extends ConsumerState<StickerPickerSheet>
                       color: LoveraColors.primary.withValues(alpha: 0.15),
                       shape: BoxShape.circle,
                     ),
-                    child: const Text('🎨', style: TextStyle(fontSize: 20)),
+                    child: Icon(Icons.auto_awesome_rounded, color: LoveraColors.primary, size: 20),
                   ),
                   const SizedBox(width: 10),
                   Text(
-                    loc('Çıkartma Üret', 'Create Sticker'),
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                    loc('Fotoğraftan Çıkartma Yap', 'Make Photo Sticker'),
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
                   ),
                 ],
               ),
@@ -158,43 +180,63 @@ class _StickerPickerSheetState extends ConsumerState<StickerPickerSheet>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Canlı Önizleme Kartı
-                    Container(
-                      width: 120,
-                      height: 120,
-                      decoration: BoxDecoration(
-                        color: stickerBgColor.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: stickerBgColor, width: 2),
-                        boxShadow: [
-                          BoxShadow(
-                            color: stickerBgColor.withValues(alpha: 0.25),
-                            blurRadius: 16,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(selectedEmoji, style: const TextStyle(fontSize: 44)),
-                          if (textController.text.trim().isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 6),
-                              child: Text(
-                                textController.text.trim(),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: isDark ? Colors.white : Colors.black87,
-                                ),
+                    const SizedBox(height: 10),
+                    // Çıkartma Önizleme & Render Kutusu
+                    Center(
+                      child: RepaintBoundary(
+                        key: previewKey,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(20),
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              Image.file(
+                                imageFile,
+                                width: 220,
+                                height: 220,
+                                fit: BoxFit.cover,
                               ),
-                            ),
-                          ],
-                        ],
+                              if (textController.text.trim().isNotEmpty)
+                                Positioned(
+                                  bottom: 16,
+                                  left: 12,
+                                  right: 12,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: hasTextBg ? textBgColor : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(12),
+                                      boxShadow: hasTextBg
+                                          ? [
+                                              BoxShadow(
+                                                color: Colors.black.withValues(alpha: 0.3),
+                                                blurRadius: 8,
+                                                offset: const Offset(0, 2),
+                                              ),
+                                            ]
+                                          : null,
+                                    ),
+                                    child: Text(
+                                      textController.text.trim(),
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: textColor,
+                                        fontSize: fontSize,
+                                        fontWeight: FontWeight.w900,
+                                        shadows: [
+                                          Shadow(
+                                            color: Colors.black.withValues(alpha: 0.8),
+                                            blurRadius: 6,
+                                            offset: const Offset(1, 1),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -202,73 +244,70 @@ class _StickerPickerSheetState extends ConsumerState<StickerPickerSheet>
                     // Metin Girişi
                     TextField(
                       controller: textController,
-                      maxLength: 15,
+                      maxLength: 35,
                       onChanged: (_) => setDialogState(() {}),
                       decoration: InputDecoration(
-                        hintText: loc('Çıkartma yazısı (örn: Seni Seviyorum)', 'Sticker text (e.g. Love You)'),
+                        hintText: loc('Çıkartmaya yazı ekle (örn: Çok Özledim!)', 'Add text (e.g. Miss you so much!)'),
                         hintStyle: TextStyle(fontSize: 12, color: LoveraColors.textMuted),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
                         isDense: true,
+                        counterText: '',
                       ),
                     ),
                     const SizedBox(height: 12),
 
-                    // Emoji Seçici
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(loc('İkon Seç:', 'Choose Icon:'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                    ),
-                    const SizedBox(height: 6),
-                    SizedBox(
-                      height: 44,
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: emojiList.map((em) {
-                            final isSel = selectedEmoji == em;
-                            return GestureDetector(
-                              onTap: () => setDialogState(() => selectedEmoji = em),
-                              child: Container(
-                                margin: const EdgeInsets.only(right: 8),
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: isSel ? LoveraColors.primary.withValues(alpha: 0.2) : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: isSel ? LoveraColors.primary : Colors.grey.withValues(alpha: 0.3)),
+                    // Yazı Rengi Seçici
+                    Row(
+                      children: [
+                        Text(loc('Yazı Rengi:', 'Text Color:'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        const Spacer(),
+                        InkWell(
+                          onTap: () => setDialogState(() => hasTextBg = !hasTextBg),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: hasTextBg ? LoveraColors.primary.withValues(alpha: 0.2) : Colors.transparent,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: hasTextBg ? LoveraColors.primary : Colors.grey.withValues(alpha: 0.3)),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.format_color_fill_rounded, size: 14, color: hasTextBg ? LoveraColors.primary : Colors.grey),
+                                const SizedBox(width: 4),
+                                Text(
+                                  loc('Arka Plan', 'Background'),
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: hasTextBg ? LoveraColors.primary : Colors.grey),
                                 ),
-                                child: Center(child: Text(em, style: const TextStyle(fontSize: 20))),
-                              ),
-                            );
-                          }).toList(),
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
 
-                    // Renk Seçici
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(loc('Tema Rengi:', 'Theme Color:'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                    ),
-                    const SizedBox(height: 6),
                     SizedBox(
                       height: 36,
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: Row(
-                          children: colorList.map((col) {
-                            final isSel = stickerBgColor == col;
+                          children: colorOptions.map((c) {
+                            final isSel = textColor == c;
                             return GestureDetector(
-                              onTap: () => setDialogState(() => stickerBgColor = col),
+                              onTap: () => setDialogState(() => textColor = c),
                               child: Container(
                                 margin: const EdgeInsets.only(right: 8),
                                 width: 32,
                                 height: 32,
                                 decoration: BoxDecoration(
-                                  color: col,
+                                  color: c,
                                   shape: BoxShape.circle,
-                                  border: Border.all(color: isSel ? Colors.white : Colors.transparent, width: 2.5),
+                                  border: Border.all(
+                                    color: isSel ? LoveraColors.primary : Colors.grey.shade400,
+                                    width: isSel ? 3 : 1.5,
+                                  ),
                                 ),
                               ),
                             );
@@ -279,21 +318,55 @@ class _StickerPickerSheetState extends ConsumerState<StickerPickerSheet>
                   ],
                 ),
               ),
+              actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(dCtx),
+                  onPressed: isSavingSticker ? null : () => Navigator.pop(dCtx),
                   child: Text(loc('Vazgeç', 'Cancel')),
                 ),
-                FilledButton(
+                FilledButton.icon(
                   style: FilledButton.styleFrom(backgroundColor: LoveraColors.primary),
-                  onPressed: () {
-                    Navigator.pop(dCtx);
-                    Navigator.pop(context); // Sheet'i kapat
-                    final fullText = textController.text.trim();
-                    final stickerContent = fullText.isNotEmpty ? '$selectedEmoji $fullText' : selectedEmoji;
-                    widget.onStickerSelected(stickerContent, isEmoji: true);
-                  },
-                  child: Text(loc('Kullan ve Gönder 🚀', 'Use & Send 🚀')),
+                  onPressed: isSavingSticker
+                      ? null
+                      : () async {
+                          setDialogState(() => isSavingSticker = true);
+                          try {
+                            await WidgetsBinding.instance.endOfFrame;
+                            final boundary = previewKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+                            if (boundary == null) return;
+
+                            final uiImage = await boundary.toImage(pixelRatio: 2.5);
+                            final byteData = await uiImage.toByteData(format: ui.ImageByteFormat.png);
+                            if (byteData == null) return;
+
+                            final pngBytes = byteData.buffer.asUint8List();
+                            final base64Str = 'data:image/png;base64,${base64Encode(pngBytes)}';
+                            final myName = ref.read(userNameProvider);
+
+                            // Firestore özel çıkartmalara ekle
+                            await StickerService().addCustomSticker(
+                              coupleId: widget.coupleId,
+                              imageBase64: base64Str,
+                              title: textController.text.trim().isNotEmpty ? textController.text.trim() : 'Özel Foto Çıkartma',
+                              createdBy: myName.isNotEmpty ? myName : 'Ben',
+                            );
+
+                            if (dCtx.mounted) Navigator.pop(dCtx);
+                            if (mounted) {
+                              _tabController.animateTo(1);
+                              Navigator.pop(context); // Sheet'i kapat
+                              widget.onStickerSelected(base64Str, isEmoji: false);
+                            }
+                          } catch (e) {
+                            debugPrint('[StickerStudio] Hata: $e');
+                          } finally {
+                            if (dCtx.mounted) setDialogState(() => isSavingSticker = false);
+                          }
+                        },
+                  icon: isSavingSticker
+                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.send_rounded, size: 16),
+                  label: Text(loc('Kaydet & Gönder 🚀', 'Save & Send 🚀')),
                 ),
               ],
             );
@@ -357,17 +430,17 @@ class _StickerPickerSheetState extends ConsumerState<StickerPickerSheet>
                       ),
                       const Spacer(),
 
-                      // Çıkartma Üret Butonu
+                      // Fotoğraftan Çıkartma Üret Butonu
                       OutlinedButton.icon(
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                           side: BorderSide(color: LoveraColors.primary.withValues(alpha: 0.5)),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
-                        onPressed: _openStickerStudioDialog,
+                        onPressed: _openPhotoStickerEditor,
                         icon: Icon(Icons.auto_awesome_rounded, size: 16, color: LoveraColors.primary),
                         label: Text(
-                          loc('Üret ✨', 'Create ✨'),
+                          loc('Fotoğraftan Üret ✨', 'From Photo ✨'),
                           style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: LoveraColors.primary),
                         ),
                       ),
