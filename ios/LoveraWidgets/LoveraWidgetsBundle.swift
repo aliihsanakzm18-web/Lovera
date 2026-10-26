@@ -108,6 +108,19 @@ struct LoveraFirestoreClient {
         }
     }
 
+    static func formatFirstNameOnly(from rawName: String) -> String {
+        let clean = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean.isEmpty { return "" }
+        if !clean.contains(" ") { return clean }
+        let parts = clean.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
+        if parts.count <= 1 { return clean }
+        if parts.count > 2 {
+            return parts.dropLast().joined(separator: " ")
+        } else {
+            return parts.first ?? clean
+        }
+    }
+
     /// Yerel önbellekten mevcut Partner Entry'sini senkron olarak okur
     static func cachedPartnerEntry() -> LoveraPartnerEntry {
         let stdDefaults = UserDefaults.standard
@@ -154,7 +167,9 @@ struct LoveraFirestoreClient {
             }
 
             let rawName = stringField(partnerFields, "name")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let partnerName = rawName.isEmpty ? "Ali_ihsan" : rawName
+            let rawPartner = rawName.isEmpty ? "Ali_ihsan" : rawName
+            let firstOnly = formatFirstNameOnly(from: rawPartner)
+            let partnerName = firstOnly.isEmpty ? rawPartner : firstOnly
 
             var batteryLevel = stdDefaults.string(forKey: "cached_battery_level") ?? "%100"
             if let bat = doubleField(partnerFields, "batteryLevel") {
@@ -266,7 +281,14 @@ struct LoveraFirestoreClient {
             let senderId = stringField(fields, "senderId") ?? ""
             let createdAt = timestampField(fields, "createdAt")
 
-            let senderName = (!meId.isEmpty && senderId == meId) ? "Sen" : rawSender
+            let isMe = (!meId.isEmpty && senderId == meId)
+            let senderName: String
+            if isMe {
+                senderName = "Sen"
+            } else {
+                let firstOnly = formatFirstNameOnly(from: rawSender)
+                senderName = firstOnly.isEmpty ? rawSender : firstOnly
+            }
             let timeAgo = formatTimeAgo(from: createdAt)
 
             if let b64 = imageBase64, !b64.isEmpty {

@@ -203,7 +203,13 @@ class LoveraDrawingWidgetProvider : HomeWidgetProvider() {
                                 // Gönderen rozeti
                                 setViewVisibility(R.id.widget_drawing_badge, View.VISIBLE)
                                 val defaultPartner = if (isEn) "Partner" else "Partnerin"
-                                setTextViewText(R.id.widget_drawing_sender_text, senderName ?: defaultPartner)
+                                val rawDisplay = senderName ?: defaultPartner
+                                val isSelf = rawDisplay.equals("sen", ignoreCase = true) || rawDisplay.equals("you", ignoreCase = true)
+                                val finalSenderName = if (isSelf) rawDisplay else {
+                                    val firstOnly = formatFirstNameOnly(rawDisplay)
+                                    if (firstOnly.isNotEmpty()) firstOnly else rawDisplay
+                                }
+                                setTextViewText(R.id.widget_drawing_sender_text, finalSenderName)
                                 setTextViewText(R.id.widget_drawing_time_text, "• $timeAgo")
                             } else {
                                 showPlaceholder()
@@ -229,6 +235,20 @@ class LoveraDrawingWidgetProvider : HomeWidgetProvider() {
             }
 
             appWidgetManager.updateAppWidget(appWidgetId, views)
+        }
+    }
+
+    private fun formatFirstNameOnly(rawName: String?): String {
+        if (rawName == null) return ""
+        val clean = rawName.trim()
+        if (clean.isEmpty()) return ""
+        if (!clean.contains(" ")) return clean
+        val parts = clean.split("\\s+".toRegex()).filter { it.isNotEmpty() }
+        if (parts.size <= 1) return clean
+        return if (parts.size > 2) {
+            parts.subList(0, parts.size - 1).joinToString(" ")
+        } else {
+            parts[0]
         }
     }
 

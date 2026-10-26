@@ -44,11 +44,8 @@ class WidgetSyncService {
         }
         final raw = (p?.name ?? '').trim();
         if (raw.isEmpty) return loc('Sevgilim', 'Partner');
-        if (!raw.contains(' ')) return raw;
-        final parts = raw.split(RegExp(r'\s+'));
-        return parts.length > 2
-            ? parts.sublist(0, parts.length - 1).join(' ')
-            : parts.first;
+        final firstOnly = formatFirstNameOnly(raw);
+        return firstOnly.isNotEmpty ? firstOnly : raw;
       }();
 
       // 3. Batarya Seviyesi
@@ -317,14 +314,19 @@ class WidgetSyncService {
         await HomeWidget.setAppGroupId(appGroupId);
       } catch (_) {}
 
+      // Soyisim ayıklaması: Eğer 'Sen' / 'You' değilse sadece ad(lar) gösterilsin
+      final effectiveSenderName = (senderName.toLowerCase() == 'sen' || senderName.toLowerCase() == 'you')
+          ? senderName
+          : (formatFirstNameOnly(senderName).isNotEmpty ? formatFirstNameOnly(senderName) : senderName);
+
       final effectiveTimeAgo = timeAgo ?? loc('Şimdi', 'Just now');
       await HomeWidget.saveWidgetData<String>('drawing_image_path', imagePath);
       if (imageBase64 != null && imageBase64.isNotEmpty) {
         // Base64 doğrudan App Group UserDefaults'a kaydedilerek iOS sandbox sınırı aşılır
         await HomeWidget.saveWidgetData<String>('drawing_image_base64', imageBase64);
       }
-      await HomeWidget.saveWidgetData<String>('drawing_sender', senderName);
-      await HomeWidget.saveWidgetData<String>('drawing_sender_name', senderName);
+      await HomeWidget.saveWidgetData<String>('drawing_sender', effectiveSenderName);
+      await HomeWidget.saveWidgetData<String>('drawing_sender_name', effectiveSenderName);
       await HomeWidget.saveWidgetData<String>('drawing_time_ago', effectiveTimeAgo);
       if (timestampMillis != null) {
         await HomeWidget.saveWidgetData<int>('drawing_timestamp_millis', timestampMillis);
@@ -337,7 +339,7 @@ class WidgetSyncService {
         androidName: androidDrawingWidgetName,
         iOSName: iOSDrawingWidgetName,
       );
-      debugPrint('[WidgetSyncService] Drawing widget updated: path=$imagePath, sender=$senderName, hasBase64=${imageBase64 != null}, ts=$timestampMillis');
+      debugPrint('[WidgetSyncService] Drawing widget updated: path=$imagePath, sender=$effectiveSenderName, hasBase64=${imageBase64 != null}, ts=$timestampMillis');
     } catch (e) {
       debugPrint('[WidgetSyncService] syncDrawingWidget error: $e');
     }

@@ -18,6 +18,22 @@ String loc(String tr, String en) => currentAppLanguage == AppLanguage.en ? en : 
 /// Kayıtlı mekan başlıklarını (Evim, İş Yeri vb.) seçili dile çevirir.
 String localizePlaceTitle(String raw) => AppStrings(currentAppLanguage).translatePlaceTitle(raw);
 
+/// Verilen isim veya soyad içeren tam adı soyadı ayıklayarak yalnızca ön isim(ler)i döner.
+/// Örnek: "Eda Nur Doğanoğlu" -> "Eda Nur"
+/// "Ali İhsan Aküzüm" -> "Ali İhsan"
+/// "Aliihsan" -> "Aliihsan"
+String formatFirstNameOnly(String rawName) {
+  final clean = rawName.trim();
+  if (clean.isEmpty) return '';
+  if (!clean.contains(' ')) return clean;
+  final parts = clean.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+  if (parts.length <= 1) return clean;
+  // Birden fazla isim varsa son parçayı (soyadını) at, geri kalanını birleştir
+  return parts.length > 2
+      ? parts.sublist(0, parts.length - 1).join(' ')
+      : parts.first;
+}
+
 /// Arka plan isolate'larında dili SharedPreferences'tan yükler.
 Future<void> loadAppLanguageFromPrefs() async {
   try {
@@ -201,14 +217,7 @@ class AppStrings {
 
   // Dashboard
   String greeting(String name) {
-    final cleanName = name.trim();
-    final firstName = cleanName.isEmpty
-        ? ''
-        : (cleanName.contains(' ')
-            ? (cleanName.split(RegExp(r'\s+')).length > 2
-                ? cleanName.split(RegExp(r'\s+')).sublist(0, cleanName.split(RegExp(r'\s+')).length - 1).join(' ')
-                : cleanName.split(RegExp(r'\s+')).first)
-            : cleanName);
+    final firstName = formatFirstNameOnly(name);
     return isEn
         ? (firstName.isEmpty ? 'Hello 👋' : 'Hello $firstName 👋')
         : (firstName.isEmpty ? 'Merhaba 👋' : 'Merhaba $firstName 👋');

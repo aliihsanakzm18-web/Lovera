@@ -239,9 +239,11 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
 
     final coupleId = ref.read(coupleIdProvider);
     final partnerUid = ref.read(partnerUidProvider);
-    final myName = ref.read(userNameProvider).isNotEmpty
-        ? ref.read(userNameProvider)
-        : 'Partnerin';
+    final rawUserName = ref.read(userNameProvider);
+    final firstOnly = formatFirstNameOnly(rawUserName);
+    final myName = firstOnly.isNotEmpty
+        ? firstOnly
+        : (rawUserName.isNotEmpty ? rawUserName : loc('Partnerin', 'Partner'));
 
     if (coupleId == null || coupleId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
