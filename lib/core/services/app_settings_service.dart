@@ -126,6 +126,39 @@ class AppSettingsService {
           notifMemories = notifs['notif_memories'] as bool? ?? true;
           await prefs.setBool(keyNotifMemories, notifMemories);
         }
+      } else {
+        if (data.containsKey('notif_heart')) {
+          notifHeart = data['notif_heart'] as bool? ?? true;
+          await prefs.setBool(keyNotifHeart, notifHeart);
+        }
+        if (data.containsKey('notif_chat_messages')) {
+          notifChat = data['notif_chat_messages'] as bool? ?? true;
+          await prefs.setBool(keyNotifChat, notifChat);
+        }
+        if (data.containsKey('notif_drawings')) {
+          notifDrawing = data['notif_drawings'] as bool? ?? true;
+          await prefs.setBool(keyNotifDrawing, notifDrawing);
+        }
+        if (data.containsKey('notif_battery')) {
+          notifBattery = data['notif_battery'] as bool? ?? true;
+          await prefs.setBool(keyNotifBattery, notifBattery);
+        }
+        if (data.containsKey('notif_distance')) {
+          notifDistance = data['notif_distance'] as bool? ?? true;
+          await prefs.setBool(keyNotifDistance, notifDistance);
+        }
+        if (data.containsKey('notif_milestones')) {
+          notifMilestones = data['notif_milestones'] as bool? ?? true;
+          await prefs.setBool(keyNotifMilestones, notifMilestones);
+        }
+        if (data.containsKey('notif_games')) {
+          notifGames = data['notif_games'] as bool? ?? true;
+          await prefs.setBool(keyNotifGames, notifGames);
+        }
+        if (data.containsKey('notif_memories')) {
+          notifMemories = data['notif_memories'] as bool? ?? true;
+          await prefs.setBool(keyNotifMemories, notifMemories);
+        }
       }
 
       if (privacy != null) {
@@ -190,7 +223,7 @@ class AppSettingsService {
           break;
       }
 
-      _syncNotifSettingsToCloud();
+      await _syncNotifSettingsToCloud();
     } catch (e) {
       debugPrint('[AppSettingsService] setNotificationSetting error: $e');
     }
@@ -202,18 +235,29 @@ class AppSettingsService {
 
     try {
       await FirebaseFirestore.instance.collection('users').doc(uid).set({
+        keyNotifHeart: notifHeart,
+        keyNotifChat: notifChat,
+        keyNotifDrawing: notifDrawing,
+        keyNotifBattery: notifBattery,
+        keyNotifDistance: notifDistance,
+        keyNotifMilestones: notifMilestones,
+        keyNotifGames: notifGames,
+        keyNotifMemories: notifMemories,
         'notificationSettings': {
-          'notif_heart': notifHeart,
-          'notif_chat_messages': notifChat,
-          'notif_drawings': notifDrawing,
-          'notif_battery': notifBattery,
-          'notif_distance': notifDistance,
-          'notif_milestones': notifMilestones,
-          'notif_games': notifGames,
-          'notif_memories': notifMemories,
+          keyNotifHeart: notifHeart,
+          keyNotifChat: notifChat,
+          keyNotifDrawing: notifDrawing,
+          keyNotifBattery: notifBattery,
+          keyNotifDistance: notifDistance,
+          keyNotifMilestones: notifMilestones,
+          keyNotifGames: notifGames,
+          keyNotifMemories: notifMemories,
         },
       }, SetOptions(merge: true));
-    } catch (_) {}
+      debugPrint('[AppSettingsService] Bildirim ayarları buluta eşitlendi: notif_heart=$notifHeart, notif_chat=$notifChat');
+    } catch (e) {
+      debugPrint('[AppSettingsService] _syncNotifSettingsToCloud error: $e');
+    }
   }
 
   // --- GİZLİLİK AYARLARI GÜNCELLEME ---
@@ -271,6 +315,47 @@ class AppSettingsService {
   }
 
   // --- BİLDİRİM FİLTRELEME MANTIĞI ---
+
+  /// Bildirim tipine ('heart_ping', 'chat_message' vb.) karşılık gelen ayar anahtarını döner
+  static String? getSettingKeyForType(String? type) {
+    if (type == null || type.isEmpty) return null;
+    switch (type) {
+      case 'heart_ping':
+      case 'heartPing':
+      case 'heart_pulse':
+        return keyNotifHeart;
+      case 'chat_message':
+      case 'chatMessage':
+      case 'chat':
+        return keyNotifChat;
+      case 'drawing_sent':
+      case 'drawing':
+        return keyNotifDrawing;
+      case 'charge_ping':
+      case 'chargePing':
+      case 'lowBattery':
+      case 'low_battery':
+      case 'battery_ping':
+        return keyNotifBattery;
+      case 'proximity':
+      case 'place_enter':
+      case 'place_exit':
+      case 'status_update':
+        return keyNotifDistance;
+      case 'milestone':
+      case 'anniversary':
+      case 'birthday':
+        return keyNotifMilestones;
+      case 'game_request':
+      case 'game_result':
+        return keyNotifGames;
+      case 'memory_added':
+      case 'memory':
+        return keyNotifMemories;
+      default:
+        return null;
+    }
+  }
 
   /// Gelen bir bildirim türünün kullanıcının ayarlarına göre izinli olup olmadığını döner
   static bool isNotificationTypeEnabledSync(String? type) {

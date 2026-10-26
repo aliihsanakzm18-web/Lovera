@@ -1598,11 +1598,12 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
     if (partnerUid.isEmpty) return;
     final name = myName.isNotEmpty ? myName : 'Partnerin';
 
+    final cleanName = AppUser.extractFirstName(name);
     await DatabaseService().sendGameRequest(
       gameType: 'backgammon',
       gameTitle: 'Klasik Tavla 🎲',
       partnerUid: partnerUid,
-      fromName: name,
+      fromName: cleanName,
       coupleId: coupleId,
       initialGameData: buildInitialGameData(),
     );
@@ -1610,11 +1611,11 @@ class _BackgammonGameViewState extends ConsumerState<BackgammonGameView>
     NotificationService().sendPushToPartner(
       partnerUid: partnerUid,
       title: loc('Tavla Daveti 🎲', 'Backgammon Invitation 🎲'),
-      body: loc('$name seninle tavla oynamak istiyor!', '$name wants to play backgammon with you!'),
+      body: loc('$cleanName seninle tavla oynamak istiyor!', '$cleanName wants to play backgammon with you!'),
       titleTr: 'Tavla Daveti 🎲',
       titleEn: 'Backgammon Invitation 🎲',
-      bodyTr: '$name seninle tavla oynamak istiyor!',
-      bodyEn: '$name wants to play backgammon with you!',
+      bodyTr: '$cleanName seninle tavla oynamak istiyor!',
+      bodyEn: '$cleanName wants to play backgammon with you!',
       data: {'type': 'game_request', 'game': 'backgammon'},
     );
   }

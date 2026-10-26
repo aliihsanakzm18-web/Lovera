@@ -840,8 +840,9 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
         note: note,
       );
 
-      String pushBodyTr = '$name seni "$title" konumunda buluşmaya çağırıyor.';
-      String pushBodyEn = '$name invites you to meet up at "${localizePlaceTitle(title)}".';
+      final cleanName = AppUser.extractFirstName(name);
+      String pushBodyTr = '$cleanName seni "$title" konumunda buluşmaya çağırıyor.';
+      String pushBodyEn = '$cleanName invites you to meet up at "${localizePlaceTitle(title)}".';
       if (meetingTime != null && meetingTime.isNotEmpty) {
         pushBodyTr += ' (Saat: $meetingTime)';
         pushBodyEn += ' (Time: $meetingTime)';

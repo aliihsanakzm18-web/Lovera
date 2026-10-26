@@ -5,6 +5,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/localization/app_strings.dart';
+import '../../../core/models/models.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/notification_service.dart';
 import '../../../core/state/app_state.dart';
@@ -128,7 +129,8 @@ class _GamesViewState extends ConsumerState<GamesView> {
     if (partnerUid.isNotEmpty && !_isSendingInvite) {
       setState(() => _isSendingInvite = true);
       try {
-        final senderName = myName.isNotEmpty ? myName : loc('Partnerin', 'Your Partner');
+        final cleanMyName = AppUser.extractFirstName(myName);
+        final senderName = cleanMyName.isNotEmpty ? cleanMyName : loc('Partnerin', 'Your Partner');
         await DatabaseService().sendGameRequest(
           gameType: 'love_questions',
           gameTitle: loc('Aşk Sandığı: Kalp Kalbe', 'Love Chest: Heart to Heart'),
@@ -140,7 +142,7 @@ class _GamesViewState extends ConsumerState<GamesView> {
             'player1Uid': DatabaseService().uid,
             'player1Name': senderName,
             'player2Uid': partnerUid,
-            'player2Name': partner.name ?? 'Partner',
+            'player2Name': partner.displayName.isNotEmpty ? partner.displayName : 'Partner',
             'activeQuestionId': null,
             'answeredMap': {},
           },

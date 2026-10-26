@@ -197,15 +197,16 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
 
     // Partnere bildirim gönder
     if (partnerUid.isNotEmpty) {
+      final cleanMyName = AppUser.extractFirstName(myName);
       NotificationService().sendPushToPartner(
         partnerUid: partnerUid,
         title: loc('Yeni Bir Soru Geldi! 💌', 'New Question Arrived! 💌'),
-        body: loc('$myName sana bir soru sordu, yanıtlamanı bekliyor!', '$myName asked you a question, waiting for your answer!'),
+        body: loc('$cleanMyName sana bir soru sordu, yanıtlamanı bekliyor!', '$cleanMyName asked you a question, waiting for your answer!'),
         titleTr: 'Yeni Bir Soru Geldi! 💌',
         titleEn: 'New Question Arrived! 💌',
-        bodyTr: '$myName sana bir soru sordu, yanıtlamanı bekliyor!',
-        bodyEn: '$myName asked you a question, waiting for your answer!',
-        data: {'type': 'game_action', 'game': 'love_questions'},
+        bodyTr: '$cleanMyName sana bir soru sordu, yanıtlamanı bekliyor!',
+        bodyEn: '$cleanMyName asked you a question, waiting for your answer!',
+        data: {'type': 'game_request', 'game': 'love_questions'},
       );
     }
   }
@@ -366,15 +367,16 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
       },
     );
 
+    final cleanMyName = AppUser.extractFirstName(myName);
     NotificationService().sendPushToPartner(
       partnerUid: partnerUid,
       title: loc('Aynı Soruyu Partnerin Sana Sordu! 💌', 'Partner Asked You The Same Question! 💌'),
-      body: loc('$myName bu sorunun cevabını senin için de merak ediyor!', '$myName wants to know your answer to this question too!'),
+      body: loc('$cleanMyName bu sorunun cevabını senin için de merak ediyor!', '$cleanMyName wants to know your answer to this question too!'),
       titleTr: 'Aynı Soruyu Partnerin Sana Sordu! 💌',
       titleEn: 'Partner Asked You The Same Question! 💌',
-      bodyTr: '$myName bu sorunun cevabını senin için de merak ediyor!',
-      bodyEn: '$myName wants to know your answer to this question too!',
-      data: {'type': 'game_action', 'game': 'love_questions'},
+      bodyTr: '$cleanMyName bu sorunun cevabını senin için de merak ediyor!',
+      bodyEn: '$cleanMyName wants to know your answer to this question too!',
+      data: {'type': 'game_request', 'game': 'love_questions'},
     );
   }
 

@@ -281,18 +281,19 @@ class DatabaseService {
 
     // Hedef kullanıcıya anlık Push Bildirim gönder (Uygulama kapalı olsa bile!)
     try {
+      final cleanMyName = AppUser.extractFirstName(myName);
       NotificationService().sendPushToPartner(
         partnerUid: targetUid,
         title: loc('💕 Yeni Eşleşme İsteği!', '💕 New Pairing Request!'),
-        body: loc('$myName seninle eşleşmek istiyor! Bağlantıyı onaylamak için dokun.', '$myName wants to pair with you! Tap to confirm connection.'),
+        body: loc('$cleanMyName seninle eşleşmek istiyor! Bağlantıyı onaylamak için dokun.', '$cleanMyName wants to pair with you! Tap to confirm connection.'),
         titleTr: '💕 Yeni Eşleşme İsteği!',
         titleEn: '💕 New Pairing Request!',
-        bodyTr: '$myName seninle eşleşmek istiyor! Bağlantıyı onaylamak için dokun.',
-        bodyEn: '$myName wants to pair with you! Tap to confirm connection.',
+        bodyTr: '$cleanMyName seninle eşleşmek istiyor! Bağlantıyı onaylamak için dokun.',
+        bodyEn: '$cleanMyName wants to pair with you! Tap to confirm connection.',
         data: {
           'type': 'pair_request',
           'fromUid': uid ?? '',
-          'fromName': myName,
+          'fromName': cleanMyName,
         },
       );
     } catch (_) {}

@@ -201,8 +201,9 @@ class _ChatViewState extends ConsumerState<ChatView> {
         if (msgId != null) {
           dataPayload['messageId'] = msgId;
         }
-        final effectiveSenderTr = myName.isNotEmpty ? myName : 'Partnerin';
-        final effectiveSenderEn = myName.isNotEmpty ? myName : 'Partner';
+        final cleanSenderName = AppUser.extractFirstName(myName);
+        final effectiveSenderTr = cleanSenderName.isNotEmpty ? cleanSenderName : 'Partnerin';
+        final effectiveSenderEn = cleanSenderName.isNotEmpty ? cleanSenderName : 'Partner';
         NotificationService().sendPushToPartner(
           partnerUid: partnerUid,
           title: loc(effectiveSenderTr, effectiveSenderEn),

@@ -1451,7 +1451,8 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                     HapticFeedback.mediumImpact();
                     final partnerUid = ref.read(partnerUidProvider);
                     final myName = ref.read(userNameProvider);
-                    final senderName = myName.isEmpty ? 'Partnerin' : myName;
+                    final cleanMyName = AppUser.extractFirstName(myName);
+                    final senderName = cleanMyName.isEmpty ? 'Partnerin' : cleanMyName;
                     await DatabaseService().sendChargeReminder(
                       partnerUid,
                       fromName: senderName,
@@ -1511,7 +1512,8 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                     HapticFeedback.mediumImpact();
                     final partnerUid = ref.read(partnerUidProvider);
                     final myName = ref.read(userNameProvider);
-                    final senderName = myName.isEmpty ? loc('Partnerin', 'Partner') : myName;
+                    final cleanMyName = AppUser.extractFirstName(myName);
+                    final senderName = cleanMyName.isEmpty ? loc('Partnerin', 'Partner') : cleanMyName;
                     if (partnerUid != null && partnerUid.isNotEmpty) {
                       NotificationService().sendPushToPartner(
                         partnerUid: partnerUid,
@@ -1521,6 +1523,10 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                         titleEn: '🔌 Don\'t Forget Your Charger!',
                         bodyTr: '$senderName şarj aletini yanına almanı hatırlatıyor 🔌💕',
                         bodyEn: '$senderName reminds you to take your charger 🔌💕',
+                        data: {
+                          'type': 'charge_ping',
+                          'fromName': senderName,
+                        },
                       );
                     }
                     if (!mounted) return;
@@ -1563,7 +1569,8 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                     HapticFeedback.mediumImpact();
                     final partnerUid = ref.read(partnerUidProvider);
                     final myName = ref.read(userNameProvider);
-                    final senderName = myName.isEmpty ? loc('Partnerin', 'Partner') : myName;
+                    final cleanMyName = AppUser.extractFirstName(myName);
+                    final senderName = cleanMyName.isEmpty ? loc('Partnerin', 'Partner') : cleanMyName;
                     if (partnerUid != null && partnerUid.isNotEmpty) {
                       NotificationService().sendPushToPartner(
                         partnerUid: partnerUid,
@@ -1573,6 +1580,10 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                         titleEn: '🔋 Power Bank Reminder!',
                         bodyTr: '$senderName powerbank\'ini yanına almanı hatırlatıyor 🔋⚡',
                         bodyEn: '$senderName reminds you to take your power bank 🔋⚡',
+                        data: {
+                          'type': 'charge_ping',
+                          'fromName': senderName,
+                        },
                       );
                     }
                     if (!mounted) return;
@@ -2223,8 +2234,9 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
     _lastHeartSentTime = now;
 
     await DatabaseService().sendHeart(partnerUid);
-    final senderNameTr = myName.isEmpty ? 'Partnerin' : myName;
-    final senderNameEn = myName.isEmpty ? 'Your partner' : myName;
+    final cleanSenderName = AppUser.extractFirstName(myName);
+    final senderNameTr = cleanSenderName.isEmpty ? 'Partnerin' : cleanSenderName;
+    final senderNameEn = cleanSenderName.isEmpty ? 'Your partner' : cleanSenderName;
     NotificationService().sendPushToPartner(
       partnerUid: partnerUid,
       title: loc('🥺 Seni Çok Özledim!', '🥺 I Miss You So Much!'),
@@ -2235,7 +2247,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
       bodyEn: '$senderNameEn just sent you lots of love 💕',
       data: {
         'type': 'heart_ping',
-        'fromName': myName.isEmpty ? loc('Partnerin', 'Partner') : myName,
+        'fromName': cleanSenderName.isEmpty ? loc('Partnerin', 'Partner') : cleanSenderName,
       },
     );
   }

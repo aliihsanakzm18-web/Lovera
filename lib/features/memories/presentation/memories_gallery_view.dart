@@ -473,8 +473,9 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                           );
                           final partnerUid = ref.read(partnerUidProvider);
                           if (partnerUid != null && partnerUid.isNotEmpty) {
-                            final titleTr = myName.isNotEmpty ? myName : 'Partnerin';
-                            final titleEn = myName.isNotEmpty ? myName : 'Partner';
+                            final cleanMyName = AppUser.extractFirstName(myName);
+                            final titleTr = cleanMyName.isNotEmpty ? cleanMyName : 'Partnerin';
+                            final titleEn = cleanMyName.isNotEmpty ? cleanMyName : 'Partner';
                             final bodyTr = 'Ortak albüme yeni bir anı ekledi 📸✨';
                             final bodyEn = 'Added a new memory to shared album 📸✨';
                             NotificationService().sendPushToPartner(
@@ -1675,8 +1676,9 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
       // Partner bildirimi
       if (partnerUid != null && partnerUid.isNotEmpty) {
         final myName = ref.read(userNameProvider);
-        final titleTr = myName.isNotEmpty ? myName : 'Partnerin';
-        final titleEn = myName.isNotEmpty ? myName : 'Partner';
+        final cleanMyName = AppUser.extractFirstName(myName);
+        final titleTr = cleanMyName.isNotEmpty ? cleanMyName : 'Partnerin';
+        final titleEn = cleanMyName.isNotEmpty ? cleanMyName : 'Partner';
         final bodyTr = 'Albümden bir anı paylaştı 📸: $caption';
         final bodyEn = 'Shared a memory from album 📸: $caption';
         NotificationService().sendPushToPartner(

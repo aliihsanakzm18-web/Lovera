@@ -24,6 +24,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:home_widget/home_widget.dart';
+import '../../../core/models/models.dart';
 import '../../../core/services/app_settings_service.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/notification_service.dart';
@@ -722,10 +723,11 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
           meetingTime: meetingTime,
           note: note,
         );
+        final cleanName = AppUser.extractFirstName(name);
         final titleTr = accepted ? 'Buluşma kabul edildi 💕' : 'Buluşma talebi';
         final titleEn = accepted ? 'Meetup accepted 💕' : 'Meetup request';
-        final bodyTr = accepted ? '$name "$title" buluşmasını kabul etti!' : '$name bu sefer buluşamayacağını söyledi.';
-        final bodyEn = accepted ? '$name accepted the "$title" meetup!' : '$name said they can\'t make it this time.';
+        final bodyTr = accepted ? '$cleanName "$title" buluşmasını kabul etti!' : '$cleanName bu sefer buluşamayacağını söyledi.';
+        final bodyEn = accepted ? '$cleanName accepted the "$title" meetup!' : '$cleanName said they can\'t make it this time.';
         NotificationService().sendPushToPartner(
           partnerUid: fromUid,
           title: loc(titleTr, titleEn),
@@ -1077,10 +1079,11 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
         responderName: name,
       );
 
+      final cleanName = AppUser.extractFirstName(name);
       final titleTr = accepted ? 'Oyun Daveti Kabul Edildi 🎉' : 'Oyun Daveti';
       final titleEn = accepted ? 'Game Invitation Accepted 🎉' : 'Game Invitation';
-      final bodyTr = accepted ? '$name $gameLabel davetini kabul etti! Hazırlan...' : '$name davetini reddetti.';
-      final bodyEn = accepted ? '$name accepted the $gameLabel invitation! Get ready...' : '$name declined your invitation.';
+      final bodyTr = accepted ? '$cleanName $gameLabel davetini kabul etti! Hazırlan...' : '$cleanName davetini reddetti.';
+      final bodyEn = accepted ? '$cleanName accepted the $gameLabel invitation! Get ready...' : '$cleanName declined your invitation.';
       NotificationService().sendPushToPartner(
         partnerUid: fromUid,
         title: loc(titleTr, titleEn),

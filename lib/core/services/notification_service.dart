@@ -644,34 +644,48 @@ class NotificationService {
   }) async {
     try {
       debugPrint('[FCM-SEND] Partner FCM aranıyor: $partnerUid');
+      final type = data?['type'];
+      final settingKey = AppSettingsService.getSettingKeyForType(type);
+
       final prefs = await SharedPreferences.getInstance();
       String? fcmToken = prefs.getString('cached_partner_fcm_token_$partnerUid');
       String? partnerLanguage = prefs.getString('cached_partner_language_$partnerUid');
 
-      // 1. Önce yerel bellekteki token ve dile bak, eksikse Firestore'dan çek
-      if (fcmToken == null || fcmToken.isEmpty || partnerLanguage == null || partnerLanguage.isEmpty) {
-        try {
-          final partnerDoc = await FirebaseFirestore.instance
-              .collection('users')
-              .doc(partnerUid)
-              .get(const GetOptions(source: Source.serverAndCache))
-              .timeout(const Duration(seconds: 5));
-          if (partnerDoc.exists && partnerDoc.data() != null) {
-            final docData = partnerDoc.data()!;
-            final fetchedToken = docData['fcmToken'] as String?;
-            if (fetchedToken != null && fetchedToken.isNotEmpty) {
-              fcmToken = fetchedToken;
-              await prefs.setString('cached_partner_fcm_token_$partnerUid', fcmToken);
-            }
-            final fetchedLang = docData['language'] as String?;
-            if (fetchedLang != null && fetchedLang.isNotEmpty) {
-              partnerLanguage = fetchedLang;
-              await prefs.setString('cached_partner_language_$partnerUid', partnerLanguage);
+      // 1. Partnerin dokümanını Firestore'dan sorgula:
+      // Hem bildirim izinlerini (kapatıldıysa push göndermeme) hem de güncel token ve dili al
+      try {
+        final partnerDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(partnerUid)
+            .get(const GetOptions(source: Source.serverAndCache))
+            .timeout(const Duration(seconds: 4));
+
+        if (partnerDoc.exists && partnerDoc.data() != null) {
+          final docData = partnerDoc.data()!;
+
+          // Partner bu bildirim türünü kapattıysa push gönderimini tamamen durdur!
+          if (settingKey != null) {
+            final notifs = docData['notificationSettings'] as Map<String, dynamic>?;
+            final isEnabled = (notifs?[settingKey] as bool?) ?? (docData[settingKey] as bool?) ?? true;
+            if (!isEnabled) {
+              debugPrint('[FCM-SEND] Partner ($partnerUid) "$settingKey" bildirimlerini kapattığı için push gönderilmedi 🔕');
+              return;
             }
           }
-        } catch (e) {
-          debugPrint('[FCM-SEND] Partner dokümanı okunurken hata oluştu: $e');
+
+          final fetchedToken = docData['fcmToken'] as String?;
+          if (fetchedToken != null && fetchedToken.isNotEmpty) {
+            fcmToken = fetchedToken;
+            await prefs.setString('cached_partner_fcm_token_$partnerUid', fcmToken);
+          }
+          final fetchedLang = docData['language'] as String?;
+          if (fetchedLang != null && fetchedLang.isNotEmpty) {
+            partnerLanguage = fetchedLang;
+            await prefs.setString('cached_partner_language_$partnerUid', partnerLanguage);
+          }
         }
+      } catch (e) {
+        debugPrint('[FCM-SEND] Partner dokümanı okunurken hata/zaman aşımı: $e');
       }
 
       partnerLanguage ??= 'tr'; // Varsayılan Türkçe

@@ -442,10 +442,11 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
                     prefs.getBool('notify_enter_${currentMatchedPlace.id}') ?? true;
 
                 if (shouldNotifyEnter && partnerUid != null && partnerUid.isNotEmpty) {
-                  final titleTr = '$placeEmoji $myName Konuma Ulaştı';
-                  final titleEn = '$placeEmoji $myName Arrived at Location';
-                  final bodyTr = '$myName "$placeTitle" konumuna vardı. 💕';
-                  final bodyEn = '$myName arrived at "${localizePlaceTitle(placeTitle)}". 💕';
+                  final cleanMyName = AppUser.extractFirstName(myName);
+                  final titleTr = '$placeEmoji $cleanMyName Konuma Ulaştı';
+                  final titleEn = '$placeEmoji $cleanMyName Arrived at Location';
+                  final bodyTr = '$cleanMyName "$placeTitle" konumuna vardı. 💕';
+                  final bodyEn = '$cleanMyName arrived at "${localizePlaceTitle(placeTitle)}". 💕';
                   NotificationService().sendPushToPartner(
                     partnerUid: partnerUid,
                     title: loc(titleTr, titleEn),
@@ -489,10 +490,11 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
                       prefs.getBool('notify_exit_${oldPlace.id}') ?? true;
 
                   if (shouldNotifyExit && partnerUid != null && partnerUid.isNotEmpty) {
-                    final titleTr = '🚶 $myName Konumdan Ayrıldı';
-                    final titleEn = '🚶 $myName Left Location';
-                    final bodyTr = '$myName "$oldTitle" konumundan ayrıldı.';
-                    final bodyEn = '$myName left "${localizePlaceTitle(oldTitle)}".';
+                    final cleanMyName = AppUser.extractFirstName(myName);
+                    final titleTr = '🚶 $cleanMyName Konumdan Ayrıldı';
+                    final titleEn = '🚶 $cleanMyName Left Location';
+                    final bodyTr = '$cleanMyName "$oldTitle" konumundan ayrıldı.';
+                    final bodyEn = '$cleanMyName left "${localizePlaceTitle(oldTitle)}".';
                     NotificationService().sendPushToPartner(
                       partnerUid: partnerUid,
                       title: loc(titleTr, titleEn),

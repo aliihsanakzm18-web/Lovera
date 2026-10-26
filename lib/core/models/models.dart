@@ -28,6 +28,27 @@ class AppUser {
   final bool? shareBattery; // Pil yüzdesi paylaşımı
   final bool? shareSpeed; // Hız ve hareket paylaşımı
   final bool? sharePlaces; // Özel mekan isimleri paylaşımı
+  final Map<String, dynamic>? notificationSettings;
+
+  /// İsimden soyismi arındırarak sadece adı (çift isimler dahil) döner
+  static String extractFirstName(String? fullName) {
+    if (fullName == null) return '';
+    final trimmed = fullName.trim();
+    if (trimmed.isEmpty) return '';
+    final parts = trimmed.split(RegExp(r'\s+'));
+    if (parts.length > 1) {
+      return parts.sublist(0, parts.length - 1).join(' ');
+    }
+    return trimmed;
+  }
+
+  /// Görüntülenecek ad: varsa ayrık ad, yoksa tam addan soyad arındırılmış ad
+  String get displayName {
+    if (firstName != null && firstName!.trim().isNotEmpty) {
+      return firstName!.trim();
+    }
+    return extractFirstName(name);
+  }
 
   const AppUser({
     required this.id,
@@ -56,6 +77,7 @@ class AppUser {
     this.shareBattery,
     this.shareSpeed,
     this.sharePlaces,
+    this.notificationSettings,
   });
 
   factory AppUser.fromJson(Map<String, dynamic> j) => AppUser(
@@ -105,6 +127,9 @@ class AppUser {
         shareBattery: j['shareBattery'] as bool? ?? j['share_battery'] as bool? ?? true,
         shareSpeed: j['shareSpeed'] as bool? ?? j['share_speed'] as bool? ?? true,
         sharePlaces: j['sharePlaces'] as bool? ?? j['share_places'] as bool? ?? true,
+        notificationSettings: j['notificationSettings'] is Map
+            ? Map<String, dynamic>.from(j['notificationSettings'] as Map)
+            : null,
       );
 
   Map<String, dynamic> toJson() => {
@@ -133,6 +158,7 @@ class AppUser {
         'shareBattery': shareBattery,
         'shareSpeed': shareSpeed,
         'sharePlaces': sharePlaces,
+        if (notificationSettings != null) 'notificationSettings': notificationSettings,
       };
 }
 

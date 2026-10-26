@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/models/models.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/notification_service.dart';
 import '../../../core/state/app_state.dart';
@@ -47,7 +48,9 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
 
     try {
       final myName = ref.read(userNameProvider);
-      final effectiveName = myName.isEmpty ? 'Partnerin' : myName;
+      final cleanName = AppUser.extractFirstName(myName);
+      final effectiveName = cleanName.isEmpty ? 'Partnerin' : cleanName;
+      final effectiveNameEn = cleanName.isEmpty ? 'Partner' : cleanName;
 
       await DatabaseService().updateRelationshipDateDirectly(
         newDate: picked,
@@ -57,7 +60,6 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
       );
 
       // Partnere push bildirim gönder
-      final effectiveNameEn = myName.isEmpty ? 'Partner' : myName;
       NotificationService().sendPushToPartner(
         partnerUid: partnerUid,
         title: loc('🗓️ Birliktelik Tarihi Güncellendi', '🗓️ Relationship Date Updated'),
@@ -332,8 +334,9 @@ class _CoupleManagementViewState extends ConsumerState<CoupleManagementView> {
       );
 
       // Partnere anlık bilgi bildirimi
-      final partnerSenderNameTr = myName.isEmpty ? 'Partnerin' : myName;
-      final partnerSenderNameEn = myName.isEmpty ? 'Partner' : myName;
+      final cleanMyName = AppUser.extractFirstName(myName);
+      final partnerSenderNameTr = cleanMyName.isEmpty ? 'Partnerin' : cleanMyName;
+      final partnerSenderNameEn = cleanMyName.isEmpty ? 'Partner' : cleanMyName;
       NotificationService().sendPushToPartner(
         partnerUid: partnerUid,
         title: loc('💔 Eşleşme Sonlandırıldı', '💔 Pairing Ended'),

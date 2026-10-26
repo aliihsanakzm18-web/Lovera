@@ -10,6 +10,26 @@ function coupleMembers(c) {
   return [...new Set([...list, c.user1, c.user2].filter(Boolean))];
 }
 
+function extractFirstName(name) {
+  if (!name) return "";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length > 1) {
+    return parts.slice(0, parts.length - 1).join(" ");
+  }
+  return name.trim();
+}
+
+function isNotifAllowed(userData, key) {
+  if (!userData) return true;
+  if (userData.notificationSettings && userData.notificationSettings[key] !== undefined) {
+    return userData.notificationSettings[key] !== false;
+  }
+  if (userData[key] !== undefined) {
+    return userData[key] !== false;
+  }
+  return true;
+}
+
 /**
  * Kullanıcı belgesi güncellendiğinde (Şarj pingi, Kalp pingi veya Düşük Pil)
  * partnerin kapalı olan telefonuna doğrudan Google FCM HTTP v1 üzerinden Push Bildirimi yollar.
@@ -25,26 +45,30 @@ exports.onUserUpdated = onDocumentUpdated("users/{userId}", async (event) => {
   const beforeCharge = beforeData?.chargePing;
   const afterCharge = afterData?.chargePing;
   if (afterCharge && (!beforeCharge || afterCharge.timestamp !== beforeCharge.timestamp)) {
-    const fcmToken = afterData.fcmToken;
-    if (fcmToken) {
-      const isEn = afterData.language === "en";
-      const fromName = afterCharge.fromName || (isEn ? "Partner" : "Partnerin");
-      const titleTr = "🔋 Şarj Hatırlatması!";
-      const titleEn = "🔋 Battery Reminder!";
-      const bodyTr = `${fromName} şarjını doldurmanı hatırlatıyor 💕`;
-      const bodyEn = `${fromName} reminds you to charge your phone 💕`;
-      await sendFcmPush(
-        fcmToken,
-        isEn ? titleEn : titleTr,
-        isEn ? bodyEn : bodyTr,
-        {
-          type: "chargePing",
-          title_tr: titleTr,
-          title_en: titleEn,
-          body_tr: bodyTr,
-          body_en: bodyEn,
-        }
-      );
+    if (!isNotifAllowed(afterData, "notif_battery")) {
+      console.log("chargePing: alıcı pil bildirimlerini kapatmış, gönderilmedi.");
+    } else {
+      const fcmToken = afterData.fcmToken;
+      if (fcmToken) {
+        const isEn = afterData.language === "en";
+        const fromName = extractFirstName(afterCharge.fromName) || (isEn ? "Partner" : "Partnerin");
+        const titleTr = "🔋 Şarj Hatırlatması!";
+        const titleEn = "🔋 Battery Reminder!";
+        const bodyTr = `${fromName} şarjını doldurmanı hatırlatıyor 💕`;
+        const bodyEn = `${fromName} reminds you to charge your phone 💕`;
+        await sendFcmPush(
+          fcmToken,
+          isEn ? titleEn : titleTr,
+          isEn ? bodyEn : bodyTr,
+          {
+            type: "chargePing",
+            title_tr: titleTr,
+            title_en: titleEn,
+            body_tr: bodyTr,
+            body_en: bodyEn,
+          }
+        );
+      }
     }
   }
 
@@ -52,25 +76,29 @@ exports.onUserUpdated = onDocumentUpdated("users/{userId}", async (event) => {
   const beforeHeart = beforeData?.heartPing;
   const afterHeart = afterData?.heartPing;
   if (afterHeart && (!beforeHeart || afterHeart.timestamp !== beforeHeart.timestamp)) {
-    const fcmToken = afterData.fcmToken;
-    if (fcmToken) {
-      const isEn = afterData.language === "en";
-      const titleTr = "💖 Seni Düşünüyor!";
-      const titleEn = "💖 Thinking of You!";
-      const bodyTr = "Partnerin şu an seni düşünüyor ve sana kalp gönderdi 💕";
-      const bodyEn = "Your partner is thinking of you and sent you a heart 💕";
-      await sendFcmPush(
-        fcmToken,
-        isEn ? titleEn : titleTr,
-        isEn ? bodyEn : bodyTr,
-        {
-          type: "heartPing",
-          title_tr: titleTr,
-          title_en: titleEn,
-          body_tr: bodyTr,
-          body_en: bodyEn,
-        }
-      );
+    if (!isNotifAllowed(afterData, "notif_heart")) {
+      console.log("heartPing: alıcı kalp bildirimlerini kapatmış, gönderilmedi.");
+    } else {
+      const fcmToken = afterData.fcmToken;
+      if (fcmToken) {
+        const isEn = afterData.language === "en";
+        const titleTr = "💖 Seni Düşünüyor!";
+        const titleEn = "💖 Thinking of You!";
+        const bodyTr = "Partnerin şu an seni düşünüyor ve sana kalp gönderdi 💕";
+        const bodyEn = "Your partner is thinking of you and sent you a heart 💕";
+        await sendFcmPush(
+          fcmToken,
+          isEn ? titleEn : titleTr,
+          isEn ? bodyEn : bodyTr,
+          {
+            type: "heartPing",
+            title_tr: titleTr,
+            title_en: titleEn,
+            body_tr: bodyTr,
+            body_en: bodyEn,
+          }
+        );
+      }
     }
   }
 
@@ -87,27 +115,31 @@ exports.onUserUpdated = onDocumentUpdated("users/{userId}", async (event) => {
     if (partnerUid) {
       const partnerDoc = await admin.firestore().collection("users").doc(partnerUid).get();
       const partnerData = partnerDoc.data();
-      const partnerToken = partnerData?.fcmToken;
-      if (partnerToken) {
-        const isEn = partnerData?.language === "en";
-        const userName = afterData.name || (isEn ? "Partner" : "Partnerinin");
-        const titleTr = "⚠️ Düşük Pil Uyarısı!";
-        const titleEn = "⚠️ Low Battery Warning!";
-        const bodyTr = `${userName} cihazının şarjı %${afterBattery} seviyesine indi.`;
-        const bodyEn = `${userName}'s battery dropped to ${afterBattery}%.`;
-        await sendFcmPush(
-          partnerToken,
-          isEn ? titleEn : titleTr,
-          isEn ? bodyEn : bodyTr,
-          {
-            type: "lowBattery",
-            battery: String(afterBattery),
-            title_tr: titleTr,
-            title_en: titleEn,
-            body_tr: bodyTr,
-            body_en: bodyEn,
-          }
-        );
+      if (!isNotifAllowed(partnerData, "notif_battery")) {
+        console.log("lowBattery: alıcı pil bildirimlerini kapatmış, gönderilmedi.");
+      } else {
+        const partnerToken = partnerData?.fcmToken;
+        if (partnerToken) {
+          const isEn = partnerData?.language === "en";
+          const userName = extractFirstName(afterData.name) || (isEn ? "Partner" : "Partnerin");
+          const titleTr = "⚠️ Düşük Pil Uyarısı!";
+          const titleEn = "⚠️ Low Battery Warning!";
+          const bodyTr = `${userName} cihazının şarjı %${afterBattery} seviyesine indi.`;
+          const bodyEn = `${userName}'s battery dropped to ${afterBattery}%.`;
+          await sendFcmPush(
+            partnerToken,
+            isEn ? titleEn : titleTr,
+            isEn ? bodyEn : bodyTr,
+            {
+              type: "lowBattery",
+              battery: String(afterBattery),
+              title_tr: titleTr,
+              title_en: titleEn,
+              body_tr: bodyTr,
+              body_en: bodyEn,
+            }
+          );
+        }
       }
     }
   }
@@ -135,12 +167,16 @@ exports.onNewMessage = onDocumentCreated("couples/{coupleId}/messages/{messageId
 
   const partnerDoc = await admin.firestore().collection("users").doc(partnerId).get();
   const partnerData = partnerDoc.data();
+  if (!isNotifAllowed(partnerData, "notif_chat_messages")) {
+    console.log("onNewMessage: alıcı sohbet bildirimlerini kapatmış, gönderilmedi.");
+    return null;
+  }
   const partnerToken = partnerData?.fcmToken;
   if (!partnerToken) return null;
 
   const isEn = partnerData?.language === "en";
   const senderDoc = await admin.firestore().collection("users").doc(senderId).get();
-  const senderName = senderDoc.data()?.name || (isEn ? "Partner" : "Partnerin");
+  const senderName = extractFirstName(senderDoc.data()?.name) || (isEn ? "Partner" : "Partnerin");
   const defaultPhotoText = isEn ? "Sent a photo 📷" : "Fotoğraf gönderdi 📷";
   const text = messageData.text || defaultPhotoText;
 
@@ -151,8 +187,8 @@ exports.onNewMessage = onDocumentCreated("couples/{coupleId}/messages/{messageId
     {
       type: "chatMessage",
       coupleId: coupleId,
-      title_tr: senderDoc.data()?.name || "Partnerin",
-      title_en: senderDoc.data()?.name || "Partner",
+      title_tr: senderName,
+      title_en: senderName,
       body_tr: messageData.text || "Fotoğraf gönderdi 📷",
       body_en: messageData.text || "Sent a photo 📷",
     }

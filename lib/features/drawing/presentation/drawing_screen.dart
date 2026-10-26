@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../../core/models/models.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/notification_service.dart';
 import '../../../core/services/widget_sync_service.dart';
@@ -320,18 +321,19 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
 
       // 5. Partnere anında Push Bildirimi yolla (Partnere widget'ı anında güncellensin!)
       if (partnerUid != null && partnerUid.isNotEmpty) {
+        final cleanMyName = AppUser.extractFirstName(myName);
         NotificationService().sendPushToPartner(
           partnerUid: partnerUid,
-          title: loc('🎨 $myName sana bir çizim gönderdi!', '🎨 $myName sent you a drawing!'),
+          title: loc('🎨 $cleanMyName sana bir çizim gönderdi!', '🎨 $cleanMyName sent you a drawing!'),
           body: loc('Ana ekranındaki Lovera Çizim Widget\'ına bak 💕', 'Check the Lovera Drawing Widget on your home screen 💕'),
-          titleTr: '🎨 $myName sana bir çizim gönderdi!',
-          titleEn: '🎨 $myName sent you a drawing!',
+          titleTr: '🎨 $cleanMyName sana bir çizim gönderdi!',
+          titleEn: '🎨 $cleanMyName sent you a drawing!',
           bodyTr: 'Ana ekranındaki Lovera Çizim Widget\'ına bak 💕',
           bodyEn: 'Check the Lovera Drawing Widget on your home screen 💕',
           data: {
             'type': 'drawing_sent',
             'coupleId': coupleId,
-            'senderName': myName,
+            'senderName': cleanMyName,
             'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
           },
         );
