@@ -572,9 +572,9 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
     }
     await performLiveSync();
 
-    // Her 60 saniyede bir (4 x 15 sn) veritabanına HİÇ gitmeden yerel saat ile widget sürelerini ilerlet
+    // Her 30 saniyede bir (2 x 15 sn) veritabanına HİÇ gitmeden yerel saat ile widget sürelerini ilerlet
     bgTickCounter++;
-    if (bgTickCounter >= 4) {
+    if (bgTickCounter >= 2) {
       bgTickCounter = 0;
       await WidgetSyncService.updateWidgetFromLocalCache();
     }
@@ -704,24 +704,37 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
             await f.writeAsBytes(bytes);
 
             int tsMillis = DateTime.now().millisecondsSinceEpoch;
-            final rawTs = data['timestamp'];
+            final rawTs = data['createdAt'] ?? data['timestamp'];
             if (rawTs != null) {
               try {
-                if (rawTs is DateTime) {
+                if (rawTs is int) {
+                  tsMillis = rawTs;
+                } else if (rawTs is DateTime) {
                   tsMillis = rawTs.millisecondsSinceEpoch;
                 } else if (rawTs is String) {
-                  tsMillis = DateTime.tryParse(rawTs)?.millisecondsSinceEpoch ?? tsMillis;
+                  tsMillis = int.tryParse(rawTs) ?? DateTime.tryParse(rawTs)?.millisecondsSinceEpoch ?? tsMillis;
                 } else {
                   tsMillis = (rawTs as dynamic).toDate().millisecondsSinceEpoch;
                 }
               } catch (_) {}
+            } else {
+              final existingTs = prefs.getInt('drawing_timestamp_millis');
+              if (existingTs != null && existingTs > 0) {
+                tsMillis = existingTs;
+              }
             }
+
+            final diff = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(tsMillis));
+            final minutes = diff.inMinutes.abs();
+            final timeAgo = minutes < 1
+                ? loc('Şimdi', 'Just now')
+                : (minutes < 60 ? loc('$minutes dk önce', '${minutes}m ago') : loc('${diff.inHours.abs()} sa önce', '${diff.inHours.abs()}h ago'));
 
             await WidgetSyncService.syncDrawingWidget(
               imagePath: drawingPath,
               imageBase64: imageBase64,
               senderName: isMe ? loc('Sen', 'You') : senderName,
-              timeAgo: loc('Şimdi', 'Just now'),
+              timeAgo: timeAgo,
               timestampMillis: tsMillis,
             );
             debugPrint('[BG-DRAWING-WIDGET-SYNC] Uygulama kapalıyken yeni çizim widget\'a yazıldı: $senderName (isMe=$isMe)');

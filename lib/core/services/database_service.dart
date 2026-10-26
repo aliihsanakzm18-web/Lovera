@@ -2271,6 +2271,7 @@ class DatabaseService {
         'imageBase64': imageBase64,
         'note': note,
         'createdAt': FieldValue.serverTimestamp(),
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
       };
 
       // 1. Son çizimi anında partnerin erişebileceği ana referansa yaz

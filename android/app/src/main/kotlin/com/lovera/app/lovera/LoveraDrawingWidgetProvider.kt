@@ -52,14 +52,14 @@ class LoveraDrawingWidgetProvider : HomeWidgetProvider() {
             val triggerAtMillis = System.currentTimeMillis() + TICK_INTERVAL_MS
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
                 if (alarmManager.canScheduleExactAlarms()) {
-                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC, triggerAtMillis, pendingIntent)
+                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
                 } else {
-                    alarmManager.setAndAllowWhileIdle(AlarmManager.RTC, triggerAtMillis, pendingIntent)
+                    alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
                 }
             } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC, triggerAtMillis, pendingIntent)
+                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
             } else {
-                alarmManager.set(AlarmManager.RTC, triggerAtMillis, pendingIntent)
+                alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
             }
         } catch (_: Exception) {
             // Cihaz pil tasarrufu veya izin kısıtlaması durumunda sessizce geç
@@ -108,7 +108,7 @@ class LoveraDrawingWidgetProvider : HomeWidgetProvider() {
                 val isEn = widgetData.getString("app_language", "tr") == "en"
 
                 val timeAgo: String = if (timestampMillis > 0L) {
-                    val diffMillis = System.currentTimeMillis() - timestampMillis
+                    val diffMillis = Math.max(0L, System.currentTimeMillis() - timestampMillis)
                     val diffMinutes = (diffMillis / 60000).toInt()
                     val diffHours = diffMinutes / 60
                     val diffDays = diffHours / 24

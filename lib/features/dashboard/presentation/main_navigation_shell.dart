@@ -204,9 +204,16 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
 
                   final isMe = senderId == myUid;
                   DateTime? createdAt;
-                  final rawCreatedAt = data['createdAt'];
+                  final rawCreatedAt = data['createdAt'] ?? data['timestamp'];
                   if (rawCreatedAt is int) {
                     createdAt = DateTime.fromMillisecondsSinceEpoch(rawCreatedAt);
+                  } else if (rawCreatedAt is String) {
+                    final parsed = int.tryParse(rawCreatedAt);
+                    if (parsed != null) {
+                      createdAt = DateTime.fromMillisecondsSinceEpoch(parsed);
+                    } else {
+                      createdAt = DateTime.tryParse(rawCreatedAt);
+                    }
                   } else if (rawCreatedAt != null) {
                     try {
                       createdAt = (rawCreatedAt as dynamic).toDate();
@@ -214,19 +221,18 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                   }
 
                   String timeAgo = loc('Şimdi', 'Just now');
-                  int? tsMillis;
+                  int? tsMillis = createdAt?.millisecondsSinceEpoch;
                   if (createdAt != null) {
-                    tsMillis = createdAt.millisecondsSinceEpoch;
                     final diff = DateTime.now().difference(createdAt);
-                    final minutes = diff.inMinutes;
+                    final minutes = diff.inMinutes.abs();
                     if (minutes < 1) {
                       timeAgo = loc('Şimdi', 'Just now');
                     } else if (minutes < 60) {
                       timeAgo = loc('$minutes dk önce', '${minutes}m ago');
-                    } else if (diff.inHours < 24) {
-                      timeAgo = loc('${diff.inHours} sa önce', '${diff.inHours}h ago');
+                    } else if (diff.inHours.abs() < 24) {
+                      timeAgo = loc('${diff.inHours.abs()} sa önce', '${diff.inHours.abs()}h ago');
                     } else {
-                      timeAgo = loc('${diff.inDays} gün önce', '${diff.inDays}d ago');
+                      timeAgo = loc('${diff.inDays.abs()} gün önce', '${diff.inDays.abs()}d ago');
                     }
                   }
 

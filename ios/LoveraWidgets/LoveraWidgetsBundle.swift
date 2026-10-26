@@ -279,7 +279,7 @@ struct LoveraFirestoreClient {
             let imageBase64 = stringField(fields, "imageBase64")
             let rawSender = stringField(fields, "senderName") ?? "Ali_ihsan"
             let senderId = stringField(fields, "senderId") ?? ""
-            let createdAt = timestampField(fields, "createdAt")
+            let createdAt = timestampField(fields, "createdAt") ?? timestampField(fields, "timestamp")
 
             let isMe = (!meId.isEmpty && senderId == meId)
             let senderName: String

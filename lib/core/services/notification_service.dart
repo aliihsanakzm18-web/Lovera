@@ -207,7 +207,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       final cId = message.data['coupleId'] ?? prefs.getString('saved_couple_id');
       final senderName = message.data['senderName'] ?? 'Partnerin';
       final tsStr = message.data['timestamp'];
-      final tsMillis = tsStr != null ? int.tryParse(tsStr) : DateTime.now().millisecondsSinceEpoch;
+      final tsMillis = (tsStr != null ? int.tryParse(tsStr) : null) ?? DateTime.now().millisecondsSinceEpoch;
 
       if (cId != null && cId.isNotEmpty) {
         final doc = await FirebaseFirestore.instance
@@ -218,7 +218,8 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
             .get();
 
         if (doc.exists && doc.data() != null) {
-          final imageBase64 = doc.data()!['imageBase64'] as String?;
+          final docData = doc.data()!;
+          final imageBase64 = docData['imageBase64'] as String?;
           if (imageBase64 != null && imageBase64.isNotEmpty) {
             final raw = imageBase64.split(',').last;
             final bytes = base64Decode(raw);
@@ -228,12 +229,30 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
             final f = File(drawingPath);
             await f.writeAsBytes(bytes);
 
+            final rawCreatedAt = docData['createdAt'] ?? docData['timestamp'];
+            int actualTs = tsMillis;
+            if (rawCreatedAt is int) {
+              actualTs = rawCreatedAt;
+            } else if (rawCreatedAt is String) {
+              actualTs = int.tryParse(rawCreatedAt) ?? actualTs;
+            } else if (rawCreatedAt != null) {
+              try {
+                actualTs = (rawCreatedAt as dynamic).toDate().millisecondsSinceEpoch;
+              } catch (_) {}
+            }
+
+            final diff = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(actualTs));
+            final minutes = diff.inMinutes.abs();
+            final timeAgo = minutes < 1
+                ? loc('Şimdi', 'Just now')
+                : (minutes < 60 ? loc('$minutes dk önce', '${minutes}m ago') : loc('${diff.inHours.abs()} sa önce', '${diff.inHours.abs()}h ago'));
+
             await WidgetSyncService.syncDrawingWidget(
               imagePath: drawingPath,
               imageBase64: imageBase64,
               senderName: senderName,
-              timeAgo: loc('Şimdi', 'Just now'),
-              timestampMillis: tsMillis,
+              timeAgo: timeAgo,
+              timestampMillis: actualTs,
             );
             debugPrint('[FCM-BG-DRAWING-SYNC] Uygulama kapalıyken yeni çizim widget\'a başarıyla yazıldı: $senderName (base64 dahil)');
           }
