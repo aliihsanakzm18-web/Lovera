@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/models.dart';
+import 'app_settings_service.dart';
 import 'notification_service.dart';
 import '../localization/app_strings.dart';
 
@@ -1150,27 +1151,33 @@ class DatabaseService {
     }
     if (targetUid == null || targetUid.isEmpty) return;
 
+    final canShareLocation = AppSettingsService.shareLocation;
+    final canShareBattery = AppSettingsService.shareBattery;
+    final canShareSpeed = AppSettingsService.shareSpeed;
+    final canSharePlaces = AppSettingsService.sharePlaces;
+    final canShowOnline = AppSettingsService.showOnline;
+
     final Map<String, dynamic> data = {};
-    if (updateLastActive) {
+    if (updateLastActive && canShowOnline) {
       data['lastActive'] = FieldValue.serverTimestamp();
     }
-    if (lat != null && lng != null) {
+    if (canShareLocation && lat != null && lng != null) {
       data['lat'] = lat;
       data['lng'] = lng;
     }
-    if (batteryLevel != null) {
+    if (canShareBattery && batteryLevel != null) {
       data['batteryLevel'] = batteryLevel;
     }
-    if (weather != null && weather.isNotEmpty) {
+    if (canShareLocation && weather != null && weather.isNotEmpty) {
       data['weather'] = weather;
     }
-    if (city != null && city.isNotEmpty) {
+    if (canShareLocation && city != null && city.isNotEmpty) {
       data['city'] = city;
     }
-    if (speed != null) {
+    if (canShareSpeed && speed != null) {
       data['speed'] = speed;
     }
-    if (currentPlaceTitle != null) {
+    if (canSharePlaces && currentPlaceTitle != null) {
       data['currentPlaceTitle'] = currentPlaceTitle;
       data['currentPlaceEmoji'] = currentPlaceEmoji ?? '';
     }
@@ -1195,12 +1202,16 @@ class DatabaseService {
     }
 
     try {
-      debugPrint('[PRESENCE] setAppPresence($isOpen) yazılıyor: $targetUid');
-      await _db.collection('users').doc(targetUid).set({
-        'isAppOpen': isOpen,
-        'lastActive': FieldValue.serverTimestamp(),
+      final canShowOnline = AppSettingsService.showOnline;
+      debugPrint('[PRESENCE] setAppPresence($isOpen) yazılıyor: $targetUid (showOnline: $canShowOnline)');
+      final Map<String, dynamic> presenceData = {
+        'isAppOpen': canShowOnline ? isOpen : false,
         'lastNetPing': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true)).timeout(const Duration(seconds: 4));
+      };
+      if (canShowOnline) {
+        presenceData['lastActive'] = FieldValue.serverTimestamp();
+      }
+      await _db.collection('users').doc(targetUid).set(presenceData, SetOptions(merge: true)).timeout(const Duration(seconds: 4));
       debugPrint('[PRESENCE] setAppPresence($isOpen) başarılı: $targetUid');
     } catch (e) {
       debugPrint('[PRESENCE] setAppPresence($isOpen) hata: $e');

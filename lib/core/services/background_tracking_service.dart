@@ -16,6 +16,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../firebase_options.dart';
 import '../models/models.dart';
+import 'app_settings_service.dart';
 import 'device_service.dart';
 import 'notification_service.dart';
 import 'widget_sync_service.dart';
@@ -130,16 +131,22 @@ Future<bool> onIosBackground(ServiceInstance service) async {
         } catch (_) {}
       }
 
+      final canShareLocation = prefs.getBool(AppSettingsService.keyShareLocation) ?? true;
+      final canShareBattery = prefs.getBool(AppSettingsService.keyShareBattery) ?? true;
+      final canShareSpeed = prefs.getBool(AppSettingsService.keyShareSpeed) ?? true;
+
       final Map<String, dynamic> updateData = {};
-      if (batteryLevel != null) updateData['batteryLevel'] = batteryLevel;
-      if (pos != null) {
+      if (canShareBattery && batteryLevel != null) updateData['batteryLevel'] = batteryLevel;
+      if (canShareLocation && pos != null) {
         updateData['lat'] = pos.latitude;
         updateData['lng'] = pos.longitude;
-        updateData['speed'] = (pos.speed >= 0) ? pos.speed : 0.0;
         final city = await DeviceService().getCityForLocation(pos.latitude, pos.longitude);
         final weather = await DeviceService().getWeatherForLocation(pos.latitude, pos.longitude);
         if (city != null) updateData['city'] = city;
         if (weather != null) updateData['weather'] = weather;
+      }
+      if (canShareSpeed && pos != null) {
+        updateData['speed'] = (pos.speed >= 0) ? pos.speed : 0.0;
       }
 
       if (updateData.isNotEmpty) {
@@ -345,23 +352,32 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
         }
       }
 
+      final canShareLocation = prefs.getBool(AppSettingsService.keyShareLocation) ?? true;
+      final canShareBattery = prefs.getBool(AppSettingsService.keyShareBattery) ?? true;
+      final canShareSpeed = prefs.getBool(AppSettingsService.keyShareSpeed) ?? true;
+      final canSharePlaces = prefs.getBool(AppSettingsService.keySharePlaces) ?? true;
+
       final Map<String, dynamic> updateData = {};
-      if (batteryLevel != null) {
+      if (canShareBattery && batteryLevel != null) {
         updateData['batteryLevel'] = batteryLevel;
       }
-      if (lat != null && lng != null) {
+      if (canShareLocation && lat != null && lng != null) {
         updateData['lat'] = lat;
         updateData['lng'] = lng;
       }
-      updateData['speed'] = calculatedSpeed >= 0 ? calculatedSpeed : 0.0;
-      if (weather != null && weather.isNotEmpty) {
+      if (canShareSpeed) {
+        updateData['speed'] = calculatedSpeed >= 0 ? calculatedSpeed : 0.0;
+      }
+      if (canShareLocation && weather != null && weather.isNotEmpty) {
         updateData['weather'] = weather;
       }
-      if (city != null && city.isNotEmpty) {
+      if (canShareLocation && city != null && city.isNotEmpty) {
         updateData['city'] = city;
       }
-      updateData['currentPlaceTitle'] = currentMatchedPlace?.title ?? '';
-      updateData['currentPlaceEmoji'] = currentMatchedPlace?.iconEmoji ?? '';
+      if (canSharePlaces) {
+        updateData['currentPlaceTitle'] = currentMatchedPlace?.title ?? '';
+        updateData['currentPlaceEmoji'] = currentMatchedPlace?.iconEmoji ?? '';
+      }
       // Arka planda sunucuya ulaşıp veri eşitlediğimiz anı damgalıyoruz (lastActive'i bozmadan internet varlığını doğrular)
       updateData['lastNetPing'] = FieldValue.serverTimestamp();
       // NOT: lastActive burada güncellenmemeli! Kullanıcı uygulamayı açmadığı veya ekran başında olmadığı sürece
@@ -381,7 +397,7 @@ void onBackgroundTrackingStart(ServiceInstance service) async {
       }
 
       // 4. Arka Plan Geofence (Mekan Giriş / Çıkış) Kontrolü (Uygulama tamamen kapalıyken de çalışır)
-      if (lat != null && lng != null && coupleId != null && coupleId.isNotEmpty) {
+      if (canSharePlaces && canShareLocation && lat != null && lng != null && coupleId != null && coupleId.isNotEmpty) {
         try {
           // Eğer mekan durumu değiştiyse bildirimleri ateşle!
           if (currentPlaceId != previousPlaceId) {

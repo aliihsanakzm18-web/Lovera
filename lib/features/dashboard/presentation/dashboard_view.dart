@@ -630,9 +630,13 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
           );
         }
 
-        if (data['name'] != null && data['name'].toString().isNotEmpty) {
-          ref.read(userNameProvider.notifier).state = data['name'];
-          SharedPreferences.getInstance().then((p) => p.setString('saved_user_name', data['name']));
+        final String effectiveName = (data['firstName'] != null && data['firstName'].toString().trim().isNotEmpty)
+            ? data['firstName'].toString().trim()
+            : (data['name'] != null ? data['name'].toString().trim() : '');
+
+        if (effectiveName.isNotEmpty) {
+          ref.read(userNameProvider.notifier).state = effectiveName;
+          SharedPreferences.getInstance().then((p) => p.setString('saved_user_name', effectiveName));
         } else {
           // Eğer Firestore'daki isim boşsa yerel hafızadaki ismi Firestore'a eşitle
           final currentName = ref.read(userNameProvider);
@@ -1881,26 +1885,46 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
         } catch (_) {}
       }
 
+      final bool pShareLoc = data['shareLocation'] as bool? ?? data['privacySettings']?['shareLocation'] as bool? ?? true;
+      final bool pShowOnline = data['showOnline'] as bool? ?? data['privacySettings']?['showOnline'] as bool? ?? true;
+      final bool pShareBat = data['shareBattery'] as bool? ?? data['privacySettings']?['shareBattery'] as bool? ?? true;
+      final bool pShareSpeed = data['shareSpeed'] as bool? ?? data['privacySettings']?['shareSpeed'] as bool? ?? true;
+      final bool pSharePlaces = data['sharePlaces'] as bool? ?? data['privacySettings']?['sharePlaces'] as bool? ?? true;
+
+      final double? effectiveLat = pShareLoc ? (data['lat'] as num?)?.toDouble() : null;
+      final double? effectiveLng = pShareLoc ? (data['lng'] as num?)?.toDouble() : null;
+      final int? effectiveBattery = pShareBat ? (data['batteryLevel'] as int?) : null;
+      final double? effectiveSpeed = pShareSpeed ? (data['speed'] as num?)?.toDouble() : null;
+      final String? effectivePlaceTitle = pSharePlaces ? (data['currentPlaceTitle'] as String?) : null;
+      final String? effectivePlaceEmoji = pSharePlaces ? (data['currentPlaceEmoji'] as String?) : null;
+      final bool? effectiveAppOpen = pShowOnline ? (data['isAppOpen'] as bool?) : false;
+      final DateTime? effectiveLastActive = pShowOnline ? parsedLastActive : null;
+
       final partnerUser = AppUser(
         id: doc.id,
         name: data['name'] ?? 'Partnerin',
         avatarUrl: data['avatarUrl'],
-        batteryLevel: data['batteryLevel'] as int?,
-        weather: cleanWeather,
-        city: data['city'],
-        lat: (data['lat'] as num?)?.toDouble(),
-        lng: (data['lng'] as num?)?.toDouble(),
-        lastActive: parsedLastActive,
+        batteryLevel: effectiveBattery,
+        weather: pShareLoc ? cleanWeather : null,
+        city: pShareLoc ? data['city'] : null,
+        lat: effectiveLat,
+        lng: effectiveLng,
+        lastActive: effectiveLastActive,
         coupleId: data['coupleId'],
-        isAppOpen: data['isAppOpen'] as bool?,
+        isAppOpen: effectiveAppOpen,
         birthDate: data['birthDate'] as String?,
         hometown: data['hometown'] as String?,
         firstName: data['firstName'] as String?,
         lastName: data['lastName'] as String?,
-        speed: (data['speed'] as num?)?.toDouble(),
-        currentPlaceTitle: data['currentPlaceTitle'] as String?,
-        currentPlaceEmoji: data['currentPlaceEmoji'] as String?,
+        speed: effectiveSpeed,
+        currentPlaceTitle: effectivePlaceTitle,
+        currentPlaceEmoji: effectivePlaceEmoji,
         language: data['language'] as String?,
+        shareLocation: pShareLoc,
+        showOnline: pShowOnline,
+        shareBattery: pShareBat,
+        shareSpeed: pShareSpeed,
+        sharePlaces: pSharePlaces,
         lastNetPing: data['lastNetPing'] != null
             ? (data['lastNetPing'] is DateTime
                 ? data['lastNetPing']

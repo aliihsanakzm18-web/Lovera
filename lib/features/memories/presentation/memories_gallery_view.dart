@@ -471,6 +471,26 @@ class _MemoriesGalleryViewState extends ConsumerState<MemoriesGalleryView> with 
                             date: selectedDate,
                             createdByName: myName.isEmpty ? 'Partnerin' : myName,
                           );
+                          final partnerUid = ref.read(partnerUidProvider);
+                          if (partnerUid != null && partnerUid.isNotEmpty) {
+                            final titleTr = myName.isNotEmpty ? myName : 'Partnerin';
+                            final titleEn = myName.isNotEmpty ? myName : 'Partner';
+                            final bodyTr = 'Ortak albüme yeni bir anı ekledi 📸✨';
+                            final bodyEn = 'Added a new memory to shared album 📸✨';
+                            NotificationService().sendPushToPartner(
+                              partnerUid: partnerUid,
+                              title: loc(titleTr, titleEn),
+                              body: loc(bodyTr, bodyEn),
+                              titleTr: titleTr,
+                              titleEn: titleEn,
+                              bodyTr: bodyTr,
+                              bodyEn: bodyEn,
+                              data: {
+                                'type': 'memory_added',
+                                'coupleId': coupleId,
+                              },
+                            );
+                          }
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(

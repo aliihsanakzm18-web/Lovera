@@ -12,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../firebase_options.dart';
 import '../models/models.dart';
+import 'app_settings_service.dart';
 import 'device_service.dart';
 import 'fcm_v1_service.dart';
 import 'heartbeat_haptic_service.dart';
@@ -272,6 +273,14 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       ((message.data['title'] != null && message.data['title'].toString().trim().isNotEmpty) ||
        (message.data['title_tr'] != null && message.data['title_tr'].toString().trim().isNotEmpty) ||
        (message.data['title_en'] != null && message.data['title_en'].toString().trim().isNotEmpty))) {
+    final type = message.data['type']?.toString();
+    // Kullanıcı bildirim ayarlarında bu türü kapattıysa bildirimi gösterme!
+    final isAllowed = await AppSettingsService.isNotificationTypeEnabled(type);
+    if (!isAllowed) {
+      debugPrint('[FCM-BG] Bildirim türü ($type) kullanıcı ayarlarında kapalı olduğu için gösterilmedi.');
+      return;
+    }
+
     final isEn = currentAppLanguage == AppLanguage.en;
     final targetLang = isEn ? 'en' : 'tr';
     final rawTitle = (isEn ? message.data['title_en'] : message.data['title_tr'])?.toString() ??
@@ -485,15 +494,19 @@ class NotificationService {
 
         // Anlık Kalp (Özledim) push bildirimi geldiyse doğrudan ekranda patlat ve kalp ritminde titret
         if (message.data['type'] == 'heart_ping') {
-          HeartbeatHapticService().playHeartbeat(pulses: 3);
-          final senderName = message.data['fromName']?.toString() ?? 'Partnerin';
-          onHeartPingReceived?.call(senderName);
+          if (AppSettingsService.notifHeart) {
+            HeartbeatHapticService().playHeartbeat(pulses: 3);
+            final senderName = message.data['fromName']?.toString() ?? 'Partnerin';
+            onHeartPingReceived?.call(senderName);
+          }
         }
 
         // Anlık Şarj hatırlatması push bildirimi geldiyse UI'da göster
         if (message.data['type'] == 'charge_ping') {
-          final senderName = message.data['fromName']?.toString() ?? 'Partnerin';
-          onChargePingReceived?.call(senderName);
+          if (AppSettingsService.notifBattery) {
+            final senderName = message.data['fromName']?.toString() ?? 'Partnerin';
+            onChargePingReceived?.call(senderName);
+          }
         }
 
 
@@ -797,6 +810,10 @@ class NotificationService {
     String? payload,
   }) async {
     if (title.trim().isEmpty && body.trim().isEmpty) return;
+    if (payload != null && !AppSettingsService.isNotificationTypeEnabledSync(payload)) {
+      debugPrint('[NOTIFICATION-FILTER] Yerel bildirim ($payload) kullanıcı ayarlarında kapalı olduğu için gösterilmedi.');
+      return;
+    }
     if (isDuplicate(title, body, payload)) return;
     try {
       final isHeartPing = payload == 'heart_ping';

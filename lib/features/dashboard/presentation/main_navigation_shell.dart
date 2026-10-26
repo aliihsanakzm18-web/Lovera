@@ -24,10 +24,12 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:home_widget/home_widget.dart';
+import '../../../core/services/app_settings_service.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/notification_service.dart';
 import '../../../core/services/widget_sync_service.dart';
 import '../../../core/state/app_state.dart';
+import '../../../core/widgets/app_lock_screen.dart';
 import '../../drawing/presentation/drawing_screen.dart';
 
 class MainNavigationShell extends ConsumerStatefulWidget {
@@ -59,12 +61,41 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
   int _unreadCount = 0;
   String? _shownBreakupId;
   bool _breakupSheetOpen = false;
+  bool _isLockShowing = false;
+
+  void _checkAppLock() {
+    if (!AppSettingsService.appLockEnabled || AppSettingsService.isAppUnlocked || _isLockShowing) {
+      return;
+    }
+    _isLockShowing = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).push(
+        PageRouteBuilder(
+          opaque: true,
+          pageBuilder: (_, __, ___) => AppLockScreen(
+            mode: AppLockMode.unlock,
+            isDismissible: false,
+            onSuccess: () {
+              Navigator.of(context, rootNavigator: true).pop();
+              _isLockShowing = false;
+            },
+          ),
+        ),
+      ).then((_) {
+        _isLockShowing = false;
+      });
+    });
+  }
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialPage;
     _pageController = PageController(initialPage: widget.initialPage);
+
+    // Uygulama kilidi (PIN) kontrolü
+    _checkAppLock();
 
     // Widget'a tıklanarak uygulama açıldıysa yakala
     _checkWidgetLaunch();
@@ -75,12 +106,22 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
 
     _lifecycleListener = AppLifecycleListener(
       onResume: () {
-        DatabaseService().setAppPresence(true);
+        if (AppSettingsService.showOnline) {
+          DatabaseService().setAppPresence(true);
+        }
         _startHeartbeat();
+        final bgTime = AppSettingsService.lastBackgroundTime;
+        if (AppSettingsService.appLockEnabled && bgTime != null) {
+          if (DateTime.now().difference(bgTime).inSeconds >= 15) {
+            AppSettingsService.isAppUnlocked = false;
+            _checkAppLock();
+          }
+        }
       },
       onPause: () {
         _stopHeartbeat();
         DatabaseService().setAppPresence(false);
+        AppSettingsService.lastBackgroundTime = DateTime.now();
       },
       onDetach: () {
         _stopHeartbeat();

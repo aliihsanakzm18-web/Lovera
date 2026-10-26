@@ -164,10 +164,20 @@ class AppStrings {
   String get notifSettingsTitle => isEn ? 'Notification Settings' : 'Bildirim Ayarları';
   String get notifHeartTitle => isEn ? '“Thinking of You” Hearts' : '“Seni Düşünüyorum” Kalpleri';
   String get notifHeartSub => isEn ? 'Instant vibrating hearts from your partner' : 'Partnerinizden gelen anlık titreşimli kalpler';
+  String get notifChatTitle => isEn ? 'Chat & Message Notifications' : 'Sohbet ve Mesaj Bildirimleri';
+  String get notifChatSub => isEn ? 'New messages and photos from your partner' : 'Partnerinizden gelen yeni mesajlar ve fotoğraflar';
+  String get notifDrawingTitle => isEn ? 'Live Drawings & Notes' : 'Canlı Çizim ve Notlar';
+  String get notifDrawingSub => isEn ? 'New drawings sent to your canvas by partner' : 'Partnerinizin tuvalinize gönderdiği yeni çizimler';
+  String get notifBatteryTitle => isEn ? 'Battery & Charge Alerts' : 'Düşük Pil ve Şarj Uyarısı';
+  String get notifBatterySub => isEn ? 'When partner battery is low or charge reminder is received' : 'Partnerinizin şarjı azaldığında veya şarj hatırlatması geldiğinde';
+  String get notifDistanceTitle => isEn ? 'Distance & Proximity' : 'Mesafe ve Yakınlaşma';
+  String get notifDistanceSub => isEn ? 'Notify when you and your partner get close' : 'Partnerinizle birbirinize yaklaştığınızda veya mekana varıldığında';
   String get notifMilestoneTitle => isEn ? 'Special Day Reminders' : 'Özel Gün Hatırlatıcıları';
   String get notifMilestoneSub => isEn ? 'Notify when anniversary or birthdays approach' : 'Yıldönümü ve doğum günleri yaklaşınca haber ver';
-  String get notifDistanceTitle => isEn ? 'Distance & Proximity' : 'Mesafe ve Yakınlaşma';
-  String get notifDistanceSub => isEn ? 'Notify when you and your partner get close' : 'Partnerinizle birbirinize yaklaştığınızda bildir';
+  String get notifGamesTitle => isEn ? 'Game & Activity Invites' : 'Oyun ve Etkinlik Davetleri';
+  String get notifGamesSub => isEn ? 'Backgammon, chess, or couple game invites' : 'Tavla, satranç veya aşk oyunları davetleri';
+  String get notifMemoriesTitle => isEn ? 'New Memories & Photos' : 'Yeni Anı ve Fotoğraflar';
+  String get notifMemoriesSub => isEn ? 'When a new memory is added to your shared album' : 'Ortak albüme yeni bir anı veya fotoğraf eklendiğinde';
 
   // Privacy BottomSheet
   String get privacySettingsTitle => isEn ? 'Privacy and Security' : 'Gizlilik ve Güvenlik';
@@ -175,7 +185,28 @@ class AppStrings {
   String get privacyLocationSub => isEn ? 'Allow your partner to see your location on the map' : 'Partnerinizin harita üzerinde anlık konumunuzu görmesi';
   String get privacyOnlineTitle => isEn ? 'Show Online Status' : 'Çevrimiçi Durumunu Göster';
   String get privacyOnlineSub => isEn ? 'Last seen and real-time active status' : 'Son görülme ve anlık aktiflik bilgisi';
+  String get privacyBatteryTitle => isEn ? 'Share Battery Level' : 'Pil Seviyesini Paylaş';
+  String get privacyBatterySub => isEn ? 'Allow partner and widget to view your battery percentage' : 'Partnerinizin ve masaüstü widget\'ının şarj yüzdenizi görmesi';
+  String get privacySpeedTitle => isEn ? 'Share Speed & Movement' : 'Hız ve Hareket Durumunu Paylaş';
+  String get privacySpeedSub => isEn ? 'Show your speed and driving/walking activity on the map' : 'Haritada anlık hızınızı ve sürüş/yürüyüş aktivitenizi gösterme';
+  String get privacyPlacesTitle => isEn ? 'Share Custom Place Names' : 'Özel Mekan İsimlerini Paylaş';
+  String get privacyPlacesSub => isEn ? 'Share saved place tags like Home, Work with your partner' : 'Evim, İş Yeri gibi kayıtlı konum etiketlerini partnerinizle paylaşma';
+  String get privacyAppLockTitle => isEn ? 'App Lock (4-Digit PIN)' : 'Uygulama Kilidi (4 Haneli PIN)';
+  String get privacyAppLockSub => isEn ? 'Require security PIN when opening or resuming app' : 'Uygulama açılışında ve arka plandan dönüşte güvenlik PIN kodu sorulur';
+  String get privacyChangePinTitle => isEn ? 'Change PIN Code' : 'PIN Kodunu Değiştir';
+  String get privacyChangePinSub => isEn ? 'Update your current security PIN' : 'Mevcut güvenlik şifrenizi yenileyin';
   String get privacyNotice => isEn ? 'All your data is strictly accessible only to you and your paired partner.' : 'Tüm verileriniz uçtan uca sadece sizin ve eşleştiğiniz partnerinizin erişimine açıktır.';
+
+  // PIN Dialog
+  String get enterPin => isEn ? 'Enter PIN Code' : 'PIN Kodunu Girin';
+  String get enterNewPin => isEn ? 'Set New 4-Digit PIN' : 'Yeni 4 Haneli PIN Belirleyin';
+  String get confirmNewPin => isEn ? 'Confirm New PIN' : 'PIN Kodunu Tekrar Girin';
+  String get enterCurrentPin => isEn ? 'Enter Current PIN' : 'Mevcut PIN Kodunuzu Girin';
+  String get pinMismatch => isEn ? 'PIN codes do not match!' : 'PIN kodları birbiriyle eşleşmedi!';
+  String get pinIncorrect => isEn ? 'Incorrect PIN, please try again!' : 'Hatalı PIN kodu, lütfen tekrar deneyin!';
+  String get pinSetSuccess => isEn ? 'App lock enabled successfully! 🔒' : 'Uygulama kilidi başarıyla aktifleştirildi! 🔒';
+  String get pinChangedSuccess => isEn ? 'PIN updated successfully! 🔒' : 'PIN kodunuz başarıyla güncellendi! 🔒';
+  String get pinDisabledSuccess => isEn ? 'App lock disabled.' : 'Uygulama kilidi kaldırıldı.';
 
   // About Dialog
   String get aboutVersion => isEn ? 'Version 1.0.0' : 'Sürüm 1.0.0';

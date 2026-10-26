@@ -23,6 +23,11 @@ class AppUser {
   final String? widgetBgUrl; // Hesaba kalıcı kayıtlı widget arka plan görseli (base64)
   final String? language; // 'tr' veya 'en'
   final DateTime? lastNetPing; // Arka plan veya ön plandan en son başarılı veri/bağlantı zamanı
+  final bool? shareLocation; // Canlı konum paylaşımı
+  final bool? showOnline; // Çevrimiçi/aktiflik durumu
+  final bool? shareBattery; // Pil yüzdesi paylaşımı
+  final bool? shareSpeed; // Hız ve hareket paylaşımı
+  final bool? sharePlaces; // Özel mekan isimleri paylaşımı
 
   const AppUser({
     required this.id,
@@ -46,6 +51,11 @@ class AppUser {
     this.widgetBgUrl,
     this.language,
     this.lastNetPing,
+    this.shareLocation,
+    this.showOnline,
+    this.shareBattery,
+    this.shareSpeed,
+    this.sharePlaces,
   });
 
   factory AppUser.fromJson(Map<String, dynamic> j) => AppUser(
@@ -90,6 +100,11 @@ class AppUser {
             return DateTime.tryParse(raw.toString());
           }
         }(),
+        shareLocation: j['shareLocation'] as bool? ?? j['share_location'] as bool? ?? true,
+        showOnline: j['showOnline'] as bool? ?? j['show_online'] as bool? ?? true,
+        shareBattery: j['shareBattery'] as bool? ?? j['share_battery'] as bool? ?? true,
+        shareSpeed: j['shareSpeed'] as bool? ?? j['share_speed'] as bool? ?? true,
+        sharePlaces: j['sharePlaces'] as bool? ?? j['share_places'] as bool? ?? true,
       );
 
   Map<String, dynamic> toJson() => {
@@ -113,6 +128,11 @@ class AppUser {
         'currentPlaceEmoji': currentPlaceEmoji,
         'widget_bg_url': widgetBgUrl,
         'language': language,
+        'shareLocation': shareLocation,
+        'showOnline': showOnline,
+        'shareBattery': shareBattery,
+        'shareSpeed': shareSpeed,
+        'sharePlaces': sharePlaces,
       };
 }
 

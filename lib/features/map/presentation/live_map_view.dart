@@ -171,26 +171,46 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
         } catch (_) {}
       }
 
+      final bool pShareLoc = data['shareLocation'] as bool? ?? data['privacySettings']?['shareLocation'] as bool? ?? true;
+      final bool pShowOnline = data['showOnline'] as bool? ?? data['privacySettings']?['showOnline'] as bool? ?? true;
+      final bool pShareBat = data['shareBattery'] as bool? ?? data['privacySettings']?['shareBattery'] as bool? ?? true;
+      final bool pShareSpeed = data['shareSpeed'] as bool? ?? data['privacySettings']?['shareSpeed'] as bool? ?? true;
+      final bool pSharePlaces = data['sharePlaces'] as bool? ?? data['privacySettings']?['sharePlaces'] as bool? ?? true;
+
+      final double? effectiveLat = pShareLoc ? newLat : null;
+      final double? effectiveLng = pShareLoc ? newLng : null;
+      final int? effectiveBattery = pShareBat ? (data['batteryLevel'] as int?) : null;
+      final double? effectiveSpeed = pShareSpeed ? (data['speed'] as num?)?.toDouble() : null;
+      final String? effectivePlaceTitle = pSharePlaces ? (data['currentPlaceTitle'] as String?) : null;
+      final String? effectivePlaceEmoji = pSharePlaces ? (data['currentPlaceEmoji'] as String?) : null;
+      final bool? effectiveAppOpen = pShowOnline ? (data['isAppOpen'] as bool?) : false;
+      final DateTime? effectiveLastActive = pShowOnline ? parsedLastActive : null;
+
       final partnerUser = AppUser(
         id: doc.id,
         name: data['name'] ?? ref.read(partnerProvider)?.name ?? 'Partnerin',
         avatarUrl: data['avatarUrl'] ?? ref.read(partnerProvider)?.avatarUrl,
-        batteryLevel: data['batteryLevel'] as int?,
-        weather: data['weather'] as String?,
-        city: data['city'] as String?,
-        lat: newLat,
-        lng: newLng,
-        lastActive: parsedLastActive ?? DateTime.now(),
+        batteryLevel: effectiveBattery,
+        weather: pShareLoc ? (data['weather'] as String?) : null,
+        city: pShareLoc ? (data['city'] as String?) : null,
+        lat: effectiveLat,
+        lng: effectiveLng,
+        lastActive: effectiveLastActive ?? DateTime.now(),
         coupleId: data['coupleId'],
-        isAppOpen: data['isAppOpen'] as bool?,
+        isAppOpen: effectiveAppOpen,
         birthDate: data['birthDate'] as String?,
         hometown: data['hometown'] as String?,
         firstName: data['firstName'] as String?,
         lastName: data['lastName'] as String?,
-        speed: (data['speed'] as num?)?.toDouble(),
-        currentPlaceTitle: data['currentPlaceTitle'] as String?,
-        currentPlaceEmoji: data['currentPlaceEmoji'] as String?,
+        speed: effectiveSpeed,
+        currentPlaceTitle: effectivePlaceTitle,
+        currentPlaceEmoji: effectivePlaceEmoji,
         language: data['language'] as String?,
+        shareLocation: pShareLoc,
+        showOnline: pShowOnline,
+        shareBattery: pShareBat,
+        shareSpeed: pShareSpeed,
+        sharePlaces: pSharePlaces,
       );
 
       ref.read(partnerProvider.notifier).state = partnerUser;
@@ -198,8 +218,8 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
         SharedPreferences.getInstance().then((p) => p.setString('cached_partner_language_${doc.id}', data['language'].toString())).catchError((_) => false);
       }
 
-      if (newLat != null && newLng != null) {
-        final newPartnerLatLng = LatLng(newLat, newLng);
+      if (effectiveLat != null && effectiveLng != null) {
+        final newPartnerLatLng = LatLng(effectiveLat, effectiveLng);
         _smoothAnimatePartnerPos(newPartnerLatLng);
         if (!_hasInitialPartnerFocused && _highlightedTargetLocation == null) {
           _hasInitialPartnerFocused = true;
@@ -3711,9 +3731,11 @@ class _SnapMapBottomCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        distanceText ?? (partner == null ? loc('Partner bekleniyor', 'Waiting for partner') : loc('Mesafe hesaplanıyor...', 'Calculating distance...')),
+                        (partner != null && partner.shareLocation == false)
+                            ? loc('Partnerin konum paylaşımını durdurdu 🔒', 'Partner paused location sharing 🔒')
+                            : (distanceText ?? (partner == null ? loc('Partner bekleniyor', 'Waiting for partner') : loc('Mesafe hesaplanıyor...', 'Calculating distance...'))),
                         style: TextStyle(
-                          fontSize: 19,
+                          fontSize: (partner != null && partner.shareLocation == false) ? 14 : 19,
                           fontWeight: FontWeight.w900,
                           color: titleColor,
                           letterSpacing: -0.5,

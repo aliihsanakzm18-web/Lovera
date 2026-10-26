@@ -12,6 +12,7 @@ import 'package:home_widget/home_widget.dart';
 
 import 'core/localization/app_strings.dart';
 import 'core/models/models.dart';
+import 'core/services/app_settings_service.dart';
 import 'core/services/background_tracking_service.dart';
 import 'core/services/connectivity_service.dart';
 import 'core/services/notification_service.dart';
@@ -47,10 +48,12 @@ Future<void> main() async {
 
   final prefs = await SharedPreferences.getInstance();
   currentAppLanguage = prefs.getString('app_language') == 'en' ? AppLanguage.en : AppLanguage.tr;
+  await AppSettingsService.init();
   final currentUid = FirebaseAuth.instance.currentUser?.uid;
   // Not: Bildirim ve Konum izinleri kullanıcı hesaba giriş yaptıktan sonra (DashboardView içinde)
   // zarifçe ve sırayla istenir. Giriş öncesinde izin popup'ı ASLA açılmaz.
   if (currentUid != null && currentUid.isNotEmpty) {
+    AppSettingsService.syncFromCloud(currentUid);
     final langStr = currentAppLanguage == AppLanguage.en ? 'en' : 'tr';
     FirebaseFirestore.instance.collection('users').doc(currentUid).set({
       'language': langStr,
