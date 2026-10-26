@@ -36,10 +36,20 @@ class WidgetSyncService {
         daysCount = diff >= 0 ? diff.toString() : '0';
       }
 
-      // 2. Partner Adı
-      final partnerName = (partner?.name != null && partner!.name.trim().isNotEmpty)
-          ? partner.name.trim()
-          : loc('Sevgilim', 'Partner');
+      // 2. Partner Adı (Sadece isim, soyadı hariç)
+      final partnerName = () {
+        final p = partner;
+        if (p?.firstName != null && p!.firstName!.trim().isNotEmpty) {
+          return p.firstName!.trim();
+        }
+        final raw = (p?.name ?? '').trim();
+        if (raw.isEmpty) return loc('Sevgilim', 'Partner');
+        if (!raw.contains(' ')) return raw;
+        final parts = raw.split(RegExp(r'\s+'));
+        return parts.length > 2
+            ? parts.sublist(0, parts.length - 1).join(' ')
+            : parts.first;
+      }();
 
       // 3. Batarya Seviyesi
       final batteryLevel = partner?.batteryLevel != null

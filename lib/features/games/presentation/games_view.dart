@@ -48,23 +48,45 @@ class _GamesViewState extends ConsumerState<GamesView> {
 
     // 1. Zaten aktif bir oyun varsa doğrudan oyuna gir
     if (isActive) {
-      Navigator.of(context).push(
-        PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) => const LoveQuestionsGameView(),
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            const begin = Offset(1.0, 0.0);
-            const end = Offset.zero;
-            const curve = Curves.easeInOutCubic;
-            final tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-            return SlideTransition(position: animation.drive(tween), child: child);
+      final hasEnteredThisSession = ref.read(loveQuestionsEnteredThisSessionProvider);
+      if (!hasEnteredThisSession) {
+        // Kullanıcı uygulamayı tamamen kapatıp yeniden açmış ve "Oyuna Devam Et"e basmış!
+        // Oyunun tüm ilerlemesi ve cevaplanan soruları (answeredMap) aynen korunur.
+        // Sıranın kimde olduğunu belirlemek için tekrardan zar/yazı-tura (coin_flip) atılır.
+        ref.read(loveQuestionsEnteredThisSessionProvider.notifier).state = true;
+        await DatabaseService().updateGameState(
+          coupleId: coupleId,
+          gameType: 'love_questions',
+          updates: {
+            'step': 'coin_flip',
+            'activeQuestionId': null,
+            'answeringUid': null,
+            'isReturnedQuestion': false,
+            'updatedAt': FieldValue.serverTimestamp(),
           },
-        ),
-      );
+        );
+      }
+
+      if (mounted) {
+        Navigator.of(context).push(
+          PageRouteBuilder(
+            pageBuilder: (context, animation, secondaryAnimation) => const LoveQuestionsGameView(),
+            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+              const begin = Offset(1.0, 0.0);
+              const end = Offset.zero;
+              const curve = Curves.easeInOutCubic;
+              final tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+              return SlideTransition(position: animation.drive(tween), child: child);
+            },
+          ),
+        );
+      }
       return;
     }
 
     // 2. Partnerden gelen bir davet varsa kabul edip oyuna gir
     if (isIncomingInvite) {
+      ref.read(loveQuestionsEnteredThisSessionProvider.notifier).state = true;
       final name = myName.isNotEmpty ? myName : loc('Partnerin', 'Partner');
       await DatabaseService().respondGameRequest(
         coupleId: coupleId,
@@ -446,55 +468,6 @@ class _GamesViewState extends ConsumerState<GamesView> {
                       ],
                     ),
                   ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.08),
-
-                  const SizedBox(height: 28),
-
-                  // NASIL OYNANIR BİLGİ KARTLARI
-                  Text(
-                    loc('OYUN KURALLARI & ADIMLAR', 'HOW TO PLAY & STEPS'),
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: LoveraColors.textMuted,
-                      letterSpacing: 1.2,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  _buildStepCard(
-                    number: '1',
-                    emoji: '🪙',
-                    title: loc('3D İsimli Yazı-Tura', '3D Named Coin Flip'),
-                    desc: loc('Paranın yüzlerinde ikinizin ismi yazar. Atışı kazanan ilk soruyu sorma hakkını alır.', 'The coin has your names on both sides. The winner gets the first turn to ask.'),
-                    theme: theme,
-                    isDark: isDark,
-                  ),
-                  const SizedBox(height: 10),
-                  _buildStepCard(
-                    number: '2',
-                    emoji: '🎴',
-                    title: loc('Büyüyen Soru Kartı', 'Hero Question Card'),
-                    desc: loc('Seçtiğin kart iki ekranda da büyüyerek ekrana gelir ve soru mühürlenir.', 'The chosen card expands on both screens with beautiful animations.'),
-                    theme: theme,
-                    isDark: isDark,
-                  ),
-                  const SizedBox(height: 10),
-                  _buildStepCard(
-                    number: '3',
-                    emoji: '✍️',
-                    title: loc('Canlı Cevap & Sıra Değişimi', 'Live Answer & Turn Switch'),
-                    desc: loc('Partnerin cevabını yazıp mühürler. Kart arşive eklenir ve soru sorma sırası diğerine geçer!', 'Partner writes and seals the answer. The card is archived and turns switch!'),
-                    theme: theme,
-                    isDark: isDark,
-                  ),
-                  const SizedBox(height: 10),
-                  _buildStepCard(
-                    number: '4',
-                    emoji: '💖',
-                    title: loc('Ömürlük Anı Albümü', 'Eternal Memory Archive'),
-                    desc: loc('Cevaplanan sorular havuzda yeşil mühürle kalır. Üzerine dokunarak istediğin zaman partnerinin cevabını okuyabilirsin.', 'Answered questions remain with a green seal. Tap anytime to read your partner\'s response.'),
-                    theme: theme,
-                    isDark: isDark,
-                  ),
                 ],
               );
             },
@@ -519,66 +492,6 @@ class _GamesViewState extends ConsumerState<GamesView> {
           fontSize: 11,
           fontWeight: FontWeight.w700,
         ),
-      ),
-    );
-  }
-
-  Widget _buildStepCard({
-    required String number,
-    required String emoji,
-    required String title,
-    required String desc,
-    required ThemeData theme,
-    required bool isDark,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(AppTheme.radius),
-        border: Border.all(color: theme.dividerColor),
-        boxShadow: AppTheme.ambientShadow,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: LoveraColors.primary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Center(
-              child: Text(emoji, style: const TextStyle(fontSize: 20)),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: isDark ? Colors.white : LoveraColors.textDark,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  desc,
-                  style: TextStyle(
-                    color: LoveraColors.textMuted,
-                    fontSize: 12,
-                    height: 1.35,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

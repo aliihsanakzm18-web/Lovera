@@ -75,16 +75,21 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     WidgetsBinding.instance.addPostFrameCallback((_) {
       DeviceService().syncStatusToFirebase();
       _initInitialRoute();
-      final targetLoc = ref.read(targetMapFocusLocationProvider);
-      if (targetLoc != null) {
+      if (ref.read(focusPartnerOnMapProvider) > 0) {
         _hasInitialPartnerFocused = true;
-        _onTargetLocationRequested(targetLoc);
-        ref.read(targetMapFocusLocationProvider.notifier).state = null;
+        _focusOnPartner();
       } else {
-        final partner = ref.read(partnerProvider);
-        if (partner?.lat != null && partner?.lng != null) {
+        final targetLoc = ref.read(targetMapFocusLocationProvider);
+        if (targetLoc != null) {
           _hasInitialPartnerFocused = true;
-          _animatedFlightMove(LatLng(partner!.lat!, partner.lng!), 16.0);
+          _onTargetLocationRequested(targetLoc);
+          ref.read(targetMapFocusLocationProvider.notifier).state = null;
+        } else {
+          final partner = ref.read(partnerProvider);
+          if (partner?.lat != null && partner?.lng != null) {
+            _hasInitialPartnerFocused = true;
+            _animatedFlightMove(LatLng(partner!.lat!, partner.lng!), 16.0);
+          }
         }
       }
       final partnerUid = ref.read(partnerUidProvider);
@@ -95,6 +100,13 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
       final coupleId = ref.read(coupleIdProvider);
       if (coupleId != null && coupleId.isNotEmpty) {
         _subscribeToSavedPlaces(coupleId);
+      }
+    });
+
+    // Sayfa açıkken veya sonradan gelen partnere odaklanma isteklerini dinle
+    ref.listenManual(focusPartnerOnMapProvider, (prev, next) {
+      if (next > 0) {
+        _focusOnPartner();
       }
     });
 
@@ -172,6 +184,9 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
         coupleId: data['coupleId'],
         isAppOpen: data['isAppOpen'] as bool?,
         birthDate: data['birthDate'] as String?,
+        hometown: data['hometown'] as String?,
+        firstName: data['firstName'] as String?,
+        lastName: data['lastName'] as String?,
         speed: (data['speed'] as num?)?.toDouble(),
         currentPlaceTitle: data['currentPlaceTitle'] as String?,
         currentPlaceEmoji: data['currentPlaceEmoji'] as String?,
@@ -337,6 +352,25 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
         }
       }
     });
+  }
+
+  void _focusOnPartner() {
+    final partner = ref.read(partnerProvider);
+    final partnerLat = partner?.lat;
+    final partnerLng = partner?.lng;
+    if (partnerLat != null && partnerLng != null) {
+      final pPos = LatLng(partnerLat, partnerLng);
+      setState(() {
+        _hasInitialPartnerFocused = true;
+        _followTarget = _FollowTarget.partner;
+        _highlightedTargetLocation = null; // Ekstra pin / etiket yok, doğrudan partnere odaklanılır
+      });
+      _flightController?.stop();
+      Future.delayed(const Duration(milliseconds: 380), () {
+        if (!mounted) return;
+        _animatedFlightMove(pPos, 16.5);
+      });
+    }
   }
 
   void _onTargetLocationRequested(AttachedLocation targetLoc) {
@@ -2139,7 +2173,18 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
     HapticFeedback.heavyImpact();
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final partnerName = partner?.name ?? loc('Partnerin', 'Partner');
+    final partnerName = () {
+      final p = partner;
+      if (p?.firstName != null && p!.firstName!.trim().isNotEmpty) {
+        return p.firstName!.trim();
+      }
+      final raw = (p?.name ?? loc('Partnerin', 'Partner')).trim();
+      if (!raw.contains(' ')) return raw;
+      final parts = raw.split(RegExp(r'\s+'));
+      return parts.length > 2
+          ? parts.sublist(0, parts.length - 1).join(' ')
+          : parts.first;
+    }();
 
     // Konum başlığı ve detay metni (Örn: "🏠 Evim" veya "İstanbul · 41.0822, 28.9323")
     final String locationTitle;
@@ -2615,7 +2660,18 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                       height: 120,
                       alignment: Alignment.topCenter,
                       child: _SnapAvatarMarker(
-                        name: currentUser?.name ?? 'Ben',
+                        name: () {
+                          final me = currentUser;
+                          if (me?.firstName != null && me!.firstName!.trim().isNotEmpty) {
+                            return me.firstName!.trim();
+                          }
+                          final raw = (me?.name ?? 'Ben').trim();
+                          if (!raw.contains(' ')) return raw;
+                          final parts = raw.split(RegExp(r'\s+'));
+                          return parts.length > 2
+                              ? parts.sublist(0, parts.length - 1).join(' ')
+                              : parts.first;
+                        }(),
                         avatarUrl: currentUser?.avatarUrl,
                         batteryLevel: currentUser?.batteryLevel,
                         borderColor: palette.id == ThemePalette.classic ? const Color(0xFF388AF6) : palette.secondary,
@@ -2637,7 +2693,18 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                       height: 120,
                       alignment: Alignment.topCenter,
                       child: _SnapAvatarMarker(
-                        name: partner?.name ?? 'Partner',
+                        name: () {
+                          final p = partner;
+                          if (p?.firstName != null && p!.firstName!.trim().isNotEmpty) {
+                            return p.firstName!.trim();
+                          }
+                          final raw = (p?.name ?? 'Partner').trim();
+                          if (!raw.contains(' ')) return raw;
+                          final parts = raw.split(RegExp(r'\s+'));
+                          return parts.length > 2
+                              ? parts.sublist(0, parts.length - 1).join(' ')
+                              : parts.first;
+                        }(),
                         avatarUrl: partner?.avatarUrl,
                         batteryLevel: partner?.batteryLevel,
                         borderColor: isDark ? palette.primaryDark : palette.primary,
@@ -2923,7 +2990,18 @@ class _LiveMapViewState extends ConsumerState<LiveMapView> with TickerProviderSt
                             borderColor: Colors.white.withValues(alpha: 0.25),
                             shadowColor: LoveraColors.primary.withValues(alpha: 0.35),
                             isDark: isDark,
-                            label: partner?.name ?? loc('Partner', 'Partner'),
+                            label: () {
+                              final p = partner;
+                              if (p?.firstName != null && p!.firstName!.trim().isNotEmpty) {
+                                return p.firstName!.trim();
+                              }
+                              final raw = (p?.name ?? loc('Partner', 'Partner')).trim();
+                              if (!raw.contains(' ')) return raw;
+                              final parts = raw.split(RegExp(r'\s+'));
+                              return parts.length > 2
+                                  ? parts.sublist(0, parts.length - 1).join(' ')
+                                  : parts.first;
+                            }(),
                             tooltip: loc('${partner?.name ?? "Partner"}\'a Uç', 'Fly to ${partner?.name ?? "Partner"}'),
                             onTap: () {
                               setState(() => _followTarget = _FollowTarget.partner);
@@ -3649,7 +3727,18 @@ class _SnapMapBottomCard extends StatelessWidget {
                               Icon(Icons.location_on_rounded, size: 12, color: LoveraColors.primary),
                               const SizedBox(width: 2),
                               Text(
-                                '${partner.name} · ${partner.city}',
+                                '${() {
+                                  final p = partner;
+                                  if (p?.firstName != null && p.firstName.toString().trim().isNotEmpty) {
+                                    return p.firstName.toString().trim();
+                                  }
+                                  final raw = (p?.name ?? '').toString().trim();
+                                  if (!raw.contains(' ')) return raw;
+                                  final parts = raw.split(RegExp(r'\s+'));
+                                  return parts.length > 2
+                                      ? parts.sublist(0, parts.length - 1).join(' ')
+                                      : parts.first;
+                                }()} · ${partner.city}',
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,

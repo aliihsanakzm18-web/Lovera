@@ -73,7 +73,11 @@ class _MemoryBackgroundPickerSheetState extends ConsumerState<MemoryBackgroundPi
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final targetName = widget.target == 'chat'
         ? loc('Sohbet Arka Planı', 'Chat Background')
-        : loc('Widget Arka Planı', 'Widget Background');
+        : (widget.target == 'profile'
+            ? loc('Profil Fotoğrafı', 'Profile Photo')
+            : loc('Widget Arka Planı', 'Widget Background'));
+
+    final isProfileTarget = widget.target == 'profile';
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.85,
@@ -134,51 +138,57 @@ class _MemoryBackgroundPickerSheetState extends ConsumerState<MemoryBackgroundPi
           ),
           const SizedBox(height: 10),
 
-          // Sekmeler: 1. Tek Fotoğraf | 2. Otomatik Döngü (Slideshow)
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              color: isDark ? LoveraColors.darkSurfaceAlt : Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: TabBar(
-              controller: _tabController,
-              indicatorSize: TabBarIndicatorSize.tab,
-              indicator: BoxDecoration(
-                color: LoveraColors.primary,
-                borderRadius: BorderRadius.circular(12),
+          if (isProfileTarget)
+            Expanded(
+              child: _buildSinglePhotoTab(isDark),
+            )
+          else ...[
+            // Sekmeler: 1. Tek Fotoğraf | 2. Otomatik Döngü (Slideshow)
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: isDark ? LoveraColors.darkSurfaceAlt : Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(14),
               ),
-              labelColor: Colors.white,
-              unselectedLabelColor: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
-              labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-              tabs: [
-                Tab(
-                  icon: const Icon(Icons.image_outlined, size: 18),
-                  text: loc('Tek Fotoğraf', 'Single Photo'),
+              child: TabBar(
+                controller: _tabController,
+                indicatorSize: TabBarIndicatorSize.tab,
+                indicator: BoxDecoration(
+                  color: LoveraColors.primary,
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                Tab(
-                  icon: const Icon(Icons.autorenew_rounded, size: 18),
-                  text: loc('Otomatik Döngü', 'Slideshow'),
-                ),
-              ],
+                labelColor: Colors.white,
+                unselectedLabelColor: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
+                labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                tabs: [
+                  Tab(
+                    icon: const Icon(Icons.image_outlined, size: 18),
+                    text: loc('Tek Fotoğraf', 'Single Photo'),
+                  ),
+                  Tab(
+                    icon: const Icon(Icons.autorenew_rounded, size: 18),
+                    text: loc('Otomatik Döngü', 'Slideshow'),
+                  ),
+                ],
+              ),
             ),
-          ),
 
-          const SizedBox(height: 8),
+            const SizedBox(height: 8),
 
-          // Sekme İçerikleri
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                // 1. Sekme: Tek Fotoğraf Seçimi
-                _buildSinglePhotoTab(isDark),
+            // Sekme İçerikleri
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  // 1. Sekme: Tek Fotoğraf Seçimi
+                  _buildSinglePhotoTab(isDark),
 
-                // 2. Sekme: Otomatik Döngü (Klasör / Tüm Albüm)
-                _buildSlideshowTab(isDark),
-              ],
+                  // 2. Sekme: Otomatik Döngü (Klasör / Tüm Albüm)
+                  _buildSlideshowTab(isDark),
+                ],
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );

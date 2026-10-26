@@ -3,6 +3,7 @@ import '../../../core/localization/weather_localizer.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -685,6 +686,9 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
           coupleId: data['coupleId'],
           isAppOpen: data['isAppOpen'] as bool?,
           birthDate: data['birthDate'] as String?,
+          hometown: data['hometown'] as String?,
+          firstName: data['firstName'] as String?,
+          lastName: data['lastName'] as String?,
           speed: (data['speed'] as num?)?.toDouble(),
           currentPlaceTitle: data['currentPlaceTitle'] as String?,
           currentPlaceEmoji: data['currentPlaceEmoji'] as String?,
@@ -1347,6 +1351,17 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
     final isDark = theme.brightness == Brightness.dark;
     final level = partner.batteryLevel ?? 0;
     final batteryColor = _getBatteryColor(level);
+    final pName = () {
+      if (partner.firstName != null && partner.firstName!.trim().isNotEmpty) {
+        return partner.firstName!.trim();
+      }
+      final raw = partner.name.trim();
+      if (!raw.contains(' ')) return raw;
+      final parts = raw.split(RegExp(r'\s+'));
+      return parts.length > 2
+          ? parts.sublist(0, parts.length - 1).join(' ')
+          : parts.first;
+    }();
 
     showModalBottomSheet<void>(
       context: context,
@@ -1381,7 +1396,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
               ),
               const SizedBox(height: 14),
               Text(
-                ref.watch(stringsProvider).batterySheetTitle(partner.name),
+                ref.watch(stringsProvider).batterySheetTitle(pName),
                 style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 4),
@@ -1450,7 +1465,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
-                          ref.read(stringsProvider).chargeReminderSentMsg(partner.name),
+                          ref.read(stringsProvider).chargeReminderSentMsg(pName),
                         ),
                         backgroundColor: batteryColor,
                         behavior: SnackBarBehavior.floating,
@@ -1502,7 +1517,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
-                          ref.read(stringsProvider).takeChargerSentMsg(partner.name),
+                          ref.read(stringsProvider).takeChargerSentMsg(pName),
                         ),
                         backgroundColor: const Color(0xFF3B82F6),
                         behavior: SnackBarBehavior.floating,
@@ -1554,7 +1569,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
-                          ref.read(stringsProvider).takePowerbankSentMsg(partner.name),
+                          ref.read(stringsProvider).takePowerbankSentMsg(pName),
                         ),
                         backgroundColor: LoveraColors.primary,
                         behavior: SnackBarBehavior.floating,
@@ -1586,6 +1601,17 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
     final isDark = theme.brightness == Brightness.dark;
     final weatherText = localizeWeather(partner.weather);
     final cityText = partner.city ?? loc('İstanbul', 'Istanbul');
+    final pName = () {
+      if (partner.firstName != null && partner.firstName!.trim().isNotEmpty) {
+        return partner.firstName!.trim();
+      }
+      final raw = partner.name.trim();
+      if (!raw.contains(' ')) return raw;
+      final parts = raw.split(RegExp(r'\s+'));
+      return parts.length > 2
+          ? parts.sublist(0, parts.length - 1).join(' ')
+          : parts.first;
+    }();
 
     showModalBottomSheet<void>(
       context: context,
@@ -1619,7 +1645,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
               ),
               const SizedBox(height: 14),
               Text(
-                '${partner.name}${loc("\'in Hava Durumu", "\'s Weather")}',
+                '${pName}${loc("\'in Hava Durumu", "\'s Weather")}',
                 style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 4),
@@ -1770,9 +1796,21 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
       );
     }
     if (!mounted) return;
+    final pName = () {
+      if (partner.firstName != null && partner.firstName!.trim().isNotEmpty) {
+        return partner.firstName!.trim();
+      }
+      final raw = partner.name.trim();
+      if (!raw.contains(' ')) return raw;
+      final parts = raw.split(RegExp(r'\s+'));
+      return parts.length > 2
+          ? parts.sublist(0, parts.length - 1).join(' ')
+          : parts.first;
+    }();
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(ref.read(stringsProvider).weatherNotifSentMsg(partner.name)),
+        content: Text(ref.read(stringsProvider).weatherNotifSentMsg(pName)),
         backgroundColor: LoveraColors.primary,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1850,6 +1888,9 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
         coupleId: data['coupleId'],
         isAppOpen: data['isAppOpen'] as bool?,
         birthDate: data['birthDate'] as String?,
+        hometown: data['hometown'] as String?,
+        firstName: data['firstName'] as String?,
+        lastName: data['lastName'] as String?,
         speed: (data['speed'] as num?)?.toDouble(),
         currentPlaceTitle: data['currentPlaceTitle'] as String?,
         currentPlaceEmoji: data['currentPlaceEmoji'] as String?,
@@ -2237,6 +2278,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with TickerProvid
                   onPair: () => _push(const PairingView()),
                   onBatteryTap: partner != null ? () => _openBatteryActionsSheet(partner) : null,
                   onWeatherTap: partner != null ? () => _openWeatherActionsSheet(partner) : null,
+                  onOpenMap: widget.onOpenMap,
                 )
                     .animate(delay: 120.ms)
                     .fadeIn(duration: 500.ms)
@@ -2610,7 +2652,11 @@ class _HeroCounterState extends ConsumerState<_HeroCounter> {
   }
 }
 
-class _PartnerCard extends ConsumerWidget {
+final _partnerClockProvider = StreamProvider.autoDispose<int>((ref) {
+  return Stream.periodic(const Duration(seconds: 5), (count) => count);
+});
+
+class _PartnerCard extends ConsumerStatefulWidget {
   const _PartnerCard({
     required this.partner,
     this.isPaired = false,
@@ -2618,6 +2664,7 @@ class _PartnerCard extends ConsumerWidget {
     required this.onPair,
     this.onBatteryTap,
     this.onWeatherTap,
+    this.onOpenMap,
   });
   final AppUser? partner;
   final bool isPaired;
@@ -2625,28 +2672,144 @@ class _PartnerCard extends ConsumerWidget {
   final VoidCallback onPair;
   final VoidCallback? onBatteryTap;
   final VoidCallback? onWeatherTap;
+  final VoidCallback? onOpenMap;
+
+  @override
+  ConsumerState<_PartnerCard> createState() => _PartnerCardState();
+}
+
+class _PartnerCardState extends ConsumerState<_PartnerCard> with SingleTickerProviderStateMixin {
+  late final AnimationController _flipController;
+  late final Animation<double> _flipAnimation;
+  double _baseAngle = 0.0;
+  bool _isBack = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _flipController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 550),
+    );
+    _flipAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _flipController,
+        curve: Curves.easeInOutCubicEmphasized,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _flipController.dispose();
+    super.dispose();
+  }
+
+  void _flipCard() {
+    if (_flipController.isAnimating) return;
+    HapticFeedback.mediumImpact();
+
+    // Kart her basışta sürekli sağ tarafa (saat yönünde, aynı yönde) 180 derece döner
+    _baseAngle = _isBack ? math.pi : 0.0;
+    _flipController.forward(from: 0.0).then((_) {
+      if (mounted) {
+        setState(() {
+          _isBack = !_isBack;
+        });
+      }
+    });
+  }
+
+  void _showEnlargedAvatar(BuildContext context, AppUser p) {
+    HapticFeedback.lightImpact();
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        barrierDismissible: true,
+        barrierColor: Colors.black.withValues(alpha: 0.65),
+        transitionDuration: const Duration(milliseconds: 320),
+        reverseTransitionDuration: const Duration(milliseconds: 260),
+        pageBuilder: (ctx, anim, secondaryAnim) {
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => Navigator.of(ctx).pop(),
+            child: Scaffold(
+              backgroundColor: Colors.transparent,
+              body: Center(
+                child: Hero(
+                  tag: 'partner_avatar_${p.id}',
+                  flightShuttleBuilder: (
+                    flightContext,
+                    animation,
+                    flightDirection,
+                    fromHeroContext,
+                    toHeroContext,
+                  ) {
+                    final isPush = flightDirection == HeroFlightDirection.push;
+                    final srcWidget = isPush ? fromHeroContext.widget : toHeroContext.widget;
+                    return AnimatedBuilder(
+                      animation: animation,
+                      builder: (context, child) {
+                        return Material(
+                          color: Colors.transparent,
+                          child: srcWidget,
+                        );
+                      },
+                    );
+                  },
+                  child: Material(
+                    color: Colors.transparent,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: LoveraColors.primary.withValues(alpha: 0.35),
+                            blurRadius: 32,
+                            spreadRadius: 8,
+                          ),
+                        ],
+                      ),
+                      child: LoveraAvatar(
+                        avatarUrl: p.avatarUrl,
+                        fallbackLetter: p.name,
+                        radius: 130, // Ekranda büyük yuvarlak profil fotoğrafı
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+        transitionsBuilder: (ctx, anim, secondaryAnim, child) {
+          return FadeTransition(
+            opacity: anim,
+            child: child,
+          );
+        },
+      ),
+    );
+  }
 
   bool _isOnline(AppUser p) {
     if (p.isAppOpen != true) return false;
     if (p.lastActive == null) return true;
     final diff = DateTime.now().toUtc().difference(p.lastActive!.toUtc()).abs();
-    return diff.inMinutes < 5;
+    return diff.inSeconds < 120; // 2 dakikadan uzun süre sinyal yoksa açık kalmış sayılmaz
   }
 
-  /// Partner cihazının interneti açık mı ve veri iletebiliyor mu?
-  /// Uygulama ekranda açıkken (isAppOpen) veya arka planda veri eşitlerken (lastNetPing veya lastActive)
-  /// partner ile bağlantı kurulabiliyorsa internet var (yeşil wifi) gösterilir.
-  /// Hiçbir bağlantı/veri akışı 2.5 dakikadan daha taze değilse internet yok (wifi_off) gösterilir.
+  /// Partner cihazının interneti açık mı ve Lovera ile bağlantı kurulabiliyor mu?
   bool _hasInternet(AppUser p) {
     if (_isOnline(p)) return true;
     final now = DateTime.now().toUtc();
     if (p.lastNetPing != null) {
       final diff = now.difference(p.lastNetPing!.toUtc()).abs();
-      if (diff.inSeconds < 150) return true;
+      if (diff.inSeconds < 75) return true;
     }
     if (p.lastActive != null) {
       final diff = now.difference(p.lastActive!.toUtc()).abs();
-      if (diff.inSeconds < 150) return true;
+      if (diff.inSeconds < 75) return true;
     }
     return false;
   }
@@ -2654,8 +2817,8 @@ class _PartnerCard extends ConsumerWidget {
   /// Partnerin anlık durumunu belirler: Kayıtlı yer (Ev, İş vb.) > Arabada > Yürüyor / Koşuyor
   Map<String, dynamic>? _getMovementOrPlaceStatus(AppUser p, WidgetRef ref) {
     // 1. Koordinat kontrolü: Şu an kayıtlı bir yerde mi? (<= 45m)
-    if (p.lat != null && p.lng != null && savedPlaces.isNotEmpty) {
-      for (final place in savedPlaces) {
+    if (p.lat != null && p.lng != null && widget.savedPlaces.isNotEmpty) {
+      for (final place in widget.savedPlaces) {
         final dist = Geolocator.distanceBetween(p.lat!, p.lng!, place.lat, place.lng);
         if (dist <= 45) {
           final strings = ref.watch(stringsProvider);
@@ -2745,12 +2908,15 @@ class _PartnerCard extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
+    // Kartın internet ve süre durumunu her 5 saniyede bir yerel saat ile canlı hesapla
+    ref.watch(_partnerClockProvider);
+
     final theme = Theme.of(context);
-    final p = partner;
+    final p = widget.partner;
 
     if (p == null) {
-      if (isPaired) {
+      if (widget.isPaired) {
         // Kullanıcı eşleşmiş ama Firestore ilk paketi çekiyor (~200ms); "Bağlı değil" flaşlaması YAPMA!
         return _BentoCard(
           child: Row(
@@ -2798,7 +2964,7 @@ class _PartnerCard extends ConsumerWidget {
                 ],
               ),
             ),
-            TextButton(onPressed: onPair, child: Text(ref.watch(stringsProvider).pairNow)),
+            TextButton(onPressed: widget.onPair, child: Text(ref.watch(stringsProvider).pairNow)),
           ],
         ),
       );
@@ -2808,193 +2974,545 @@ class _PartnerCard extends ConsumerWidget {
     final batIcon = _batteryIcon(p.batteryLevel);
     final dynamicStatus = _getMovementOrPlaceStatus(p, ref);
 
-    return _BentoCard(
-      child: Column(
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              LoveraAvatar(
-                avatarUrl: p.avatarUrl,
-                fallbackLetter: p.name,
-                radius: 28,
+    final ghostFrontCard = _buildFrontCard(theme, p, batIcon, batColor, dynamicStatus, isGhost: true);
+    final frontCard = _buildFrontCard(theme, p, batIcon, batColor, dynamicStatus);
+    final backCard = _buildBackCard(theme, p);
+
+    return AnimatedBuilder(
+      animation: _flipAnimation,
+      builder: (context, child) {
+        // Her tıklandığında kesintisiz olarak sağa doğru 180 derece döner
+        final currentAngle = _baseAngle + (_flipAnimation.value * math.pi);
+        // Normalize açı: 0..pi arası ön yüz, pi..2pi arası arka yüz
+        final normalized = currentAngle % (2 * math.pi);
+        final isFrontSide = normalized < (math.pi / 2) || normalized > (1.5 * math.pi);
+
+        // Stack ile ön yüzü ağaçta tutup yüksekliği onun belirlemesini sağlıyoruz.
+        // Böylece kart dönerken veya arkası açıkken yükseklik 1 piksel dahi değişmez,
+        // alttaki butonları asla aşağı itmez veya yukarı çekmez!
+        return Stack(
+          children: [
+            // Boyut sabitleyici (Görünmez ön yüz, tam yüksekliği Layout'a dikte eder)
+            Opacity(
+              opacity: 0.0,
+              child: IgnorePointer(
+                child: ghostFrontCard,
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            p.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                          ),
+            ),
+            // Dönen 3D kart (Positioned.fill ile ön yüzün kapladığı alana sıfıra sıfır oturur)
+            Positioned.fill(
+              child: Transform(
+                transform: Matrix4.identity()
+                  ..setEntry(3, 2, 0.0015) // Derinlik / Perspektif efekti
+                  ..rotateY(currentAngle),
+                alignment: Alignment.center,
+                child: isFrontSide
+                    ? frontCard
+                    : Transform(
+                        transform: Matrix4.identity()..rotateY(math.pi),
+                        alignment: Alignment.center,
+                        child: backCard,
+                      ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildFrontCard(
+    ThemeData theme,
+    AppUser p,
+    IconData batIcon,
+    Color batColor,
+    Map<String, dynamic>? dynamicStatus, {
+    bool isGhost = false,
+  }) {
+    final avatarWidget = LoveraAvatar(
+      avatarUrl: p.avatarUrl,
+      fallbackLetter: p.name,
+      radius: 28,
+    );
+
+    // Kartın ön yüzünde sadece isim (birden fazla isim varsa adlar, soyadı hariç)
+    final displayName = () {
+      if (p.firstName != null && p.firstName!.trim().isNotEmpty) {
+        return p.firstName!.trim();
+      }
+      final clean = p.name.trim();
+      if (!clean.contains(' ')) return clean;
+      final parts = clean.split(RegExp(r'\s+'));
+      if (parts.length > 2) {
+        return parts.sublist(0, parts.length - 1).join(' ');
+      }
+      return parts.first;
+    }();
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _flipCard,
+      child: _BentoCard(
+        child: Column(
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                GestureDetector(
+                  onTap: () => _showEnlargedAvatar(context, p),
+                  child: isGhost
+                      ? avatarWidget
+                      : Hero(
+                          tag: 'partner_avatar_${p.id}',
+                          child: avatarWidget,
                         ),
-                        if (p.city != null && p.city!.isNotEmpty) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: LoveraColors.secondary.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(10),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.location_on_rounded, size: 11, color: LoveraColors.secondary),
-                                const SizedBox(width: 3),
-                                Text(
-                                  p.city!,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    color: LoveraColors.secondary,
+                          ),
+                          if (p.city != null && p.city!.isNotEmpty) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: LoveraColors.secondary.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.location_on_rounded, size: 11, color: LoveraColors.secondary),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    p.city!,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: LoveraColors.secondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Builder(
+                        builder: (_) {
+                          final online = _isOnline(p);
+                          final hasNet = _hasInternet(p);
+                          return Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // İnternet Durum İkonu (Wifi / Mobil Veri / Çevrimdışı)
+                              Container(
+                                padding: const EdgeInsets.all(5),
+                                decoration: BoxDecoration(
+                                  color: hasNet
+                                      ? const Color(0xFF10B981).withValues(alpha: 0.16)
+                                      : Colors.grey.withValues(alpha: 0.16),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  hasNet ? Icons.wifi_rounded : Icons.wifi_off_rounded,
+                                  size: 16,
+                                  color: hasNet ? const Color(0xFF10B981) : LoveraColors.textMuted,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              if (online) ...[
+                                Container(
+                                  width: 7,
+                                  height: 7,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF10B981),
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: const Color(0xFF10B981).withValues(alpha: 0.6),
+                                        blurRadius: 6,
+                                        spreadRadius: 1.5,
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ],
-                            ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  ref.watch(stringsProvider).lastSeenJustNow,
+                                  style: const TextStyle(
+                                    color: Color(0xFF10B981),
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ] else
+                                Text(
+                                  _lastSeen(p, ref),
+                                  style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted, fontSize: 11.5),
+                                ),
+                            ],
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Sağ Üst Alan: Kayıtlı Yer Rozeti veya Hareket (Yürüyor / Arabada) Rozeti
+                if (dynamicStatus != null) ...[
+                  const SizedBox(width: 6),
+                  Material(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(14),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        ref.read(focusPartnerOnMapProvider.notifier).state++;
+                        if (widget.onOpenMap != null) {
+                          widget.onOpenMap!();
+                        } else {
+                          ref.read(activeNavigationIndexProvider.notifier).state = 0;
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: dynamicStatus['bgColor'] as Color,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: (dynamicStatus['color'] as Color).withValues(alpha: 0.35),
+                            width: 1.2,
                           ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 3),
-                    Builder(
-                      builder: (_) {
-                        final online = _isOnline(p);
-                        final hasNet = _hasInternet(p);
-                        return Row(
+                        ),
+                        child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            // İnternet Durum İkonu (Wifi / Mobil Veri / Çevrimdışı)
-                            Container(
-                              padding: const EdgeInsets.all(5),
-                              decoration: BoxDecoration(
-                                color: hasNet
-                                    ? const Color(0xFF10B981).withValues(alpha: 0.16)
-                                    : Colors.grey.withValues(alpha: 0.16),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(
-                                hasNet ? Icons.wifi_rounded : Icons.wifi_off_rounded,
-                                size: 16,
-                                color: hasNet ? const Color(0xFF10B981) : LoveraColors.textMuted,
+                            Text(
+                              dynamicStatus['emoji'] as String,
+                              style: const TextStyle(fontSize: 15),
+                            ),
+                            const SizedBox(width: 5),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 115),
+                              child: Text(
+                                dynamicStatus['title'] as String,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  color: dynamicStatus['color'] as Color,
+                                ),
                               ),
                             ),
-                            const SizedBox(width: 6),
-                            if (online) ...[
-                              Container(
-                                width: 7,
-                                height: 7,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF10B981),
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(0xFF10B981).withValues(alpha: 0.6),
-                                      blurRadius: 6,
-                                      spreadRadius: 1.5,
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _Stat(
+                    icon: batIcon,
+                    label: ref.watch(stringsProvider).batteryLevel,
+                    value: p.batteryLevel == null ? '-' : '%${p.batteryLevel}',
+                    color: batColor,
+                    onTap: widget.onBatteryTap,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _Stat(
+                    icon: (p.weather ?? '').contains('Gece') ||
+                            (p.weather ?? '').contains('Akşam') ||
+                            DateTime.now().hour >= 20 ||
+                            DateTime.now().hour < 6
+                        ? Icons.nights_stay_rounded
+                        : Icons.wb_sunny_rounded,
+                    label: p.city != null && p.city!.isNotEmpty ? p.city! : (ref.watch(stringsProvider).isEn ? 'Weather' : 'Hava Durumu'),
+                    value: (p.weather != null && p.weather!.isNotEmpty)
+                        ? localizeWeather(p.weather)
+                        : (ref.watch(stringsProvider).isEn ? 'Fetching weather...' : 'Hava durumu alınıyor...'),
+                    color: LoveraColors.accentGold,
+                    onTap: widget.onWeatherTap,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBackCard(ThemeData theme, AppUser p) {
+    final isDark = theme.brightness == Brightness.dark;
+    final imageProvider = AvatarCache.getProvider(p.avatarUrl);
+
+    // İsim - Soyisim ayrımı (varsa kaydedilmiş firstName & lastName, yoksa akıllı ayrıştırma)
+    final String firstName;
+    final String lastName;
+    if (p.firstName != null && p.firstName!.trim().isNotEmpty) {
+      firstName = p.firstName!.trim();
+      lastName = (p.lastName != null && p.lastName!.trim().isNotEmpty) ? p.lastName!.trim() : '-';
+    } else {
+      final nameParts = p.name.trim().split(RegExp(r'\s+'));
+      if (nameParts.length > 2) {
+        firstName = nameParts.sublist(0, nameParts.length - 1).join(' ');
+        lastName = nameParts.last;
+      } else if (nameParts.length == 2) {
+        firstName = nameParts.first;
+        lastName = nameParts.last;
+      } else {
+        firstName = nameParts.isNotEmpty ? nameParts.first : p.name;
+        lastName = '-';
+      }
+    }
+
+    // Nereli bilgisi (hometown boşsa anlık şehir veya -)
+    final hometownText = (p.hometown != null && p.hometown!.trim().isNotEmpty)
+        ? p.hometown!.trim()
+        : (p.city != null && p.city!.trim().isNotEmpty ? p.city!.trim() : '-');
+
+    // Doğum tarihi formatı (DD.MM.YYYY)
+    String birthDateText = '-';
+    if (p.birthDate != null && p.birthDate!.isNotEmpty) {
+      final parts = p.birthDate!.split('-');
+      if (parts.length == 3) {
+        birthDateText = '${parts[2]}.${parts[1]}.${parts[0]}';
+      } else {
+        birthDateText = p.birthDate!;
+      }
+    }
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _flipCard,
+      child: _BentoCard(
+        child: SizedBox.expand(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // Kare Şeklinde Profil Fotoğrafı
+                    Container(
+                      width: 90,
+                      height: 90,
+                      decoration: BoxDecoration(
+                        color: isDark ? LoveraColors.darkSurfaceAlt : Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: LoveraColors.primary.withValues(alpha: 0.35),
+                          width: 2.0,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.08),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: imageProvider != null
+                            ? Image(
+                                image: imageProvider,
+                                fit: BoxFit.cover,
+                                gaplessPlayback: true,
+                                errorBuilder: (_, __, ___) => _buildSquareFallback(p, isDark),
+                              )
+                            : _buildSquareFallback(p, isDark),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+
+                    // 2x2 Grid Düzeninde Kimlik Bilgileri: Adı, Soyadı, Memleket, Doğum Tarihi
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Row(
+                            children: [
+                              // ADI
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      loc('ADI', 'FIRST NAME'),
+                                      style: TextStyle(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.5,
+                                        color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 1),
+                                    Text(
+                                      firstName,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.titleSmall?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 13.5,
+                                      ),
                                     ),
                                   ],
                                 ),
                               ),
-                              const SizedBox(width: 5),
-                              Text(
-                                ref.watch(stringsProvider).lastSeenJustNow,
-                                style: const TextStyle(
-                                  color: Color(0xFF10B981),
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 12,
+                              // SOYADI
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      loc('SOYADI', 'LAST NAME'),
+                                      style: TextStyle(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.5,
+                                        color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 1),
+                                    Text(
+                                      lastName,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.titleSmall?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 13.5,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ] else
-                              Text(
-                                _lastSeen(p, ref),
-                                style: theme.textTheme.bodySmall?.copyWith(color: LoveraColors.textMuted, fontSize: 11.5),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              // NERELİ
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      loc('MEMLEKET', 'HOMETOWN'),
+                                      style: TextStyle(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.5,
+                                        color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 1),
+                                    Text(
+                                      hometownText,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.titleSmall?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                          ],
-                        );
-                      },
+                              // DOĞUM TARİHİ
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      loc('DOĞUM TARİHİ', 'DATE OF BIRTH'),
+                                      style: TextStyle(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.5,
+                                        color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 1),
+                                    Text(
+                                      birthDateText,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.titleSmall?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
               ),
 
-              // Sağ Üst Alan: Kayıtlı Yer Rozeti veya Hareket (Yürüyor / Arabada) Rozeti
-              if (dynamicStatus != null) ...[
-                const SizedBox(width: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: dynamicStatus['bgColor'] as Color,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: (dynamicStatus['color'] as Color).withValues(alpha: 0.35),
-                      width: 1.2,
+              const SizedBox(height: 4),
+              // Alt Bilgi Notu
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.touch_app_rounded, size: 12, color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted),
+                  const SizedBox(width: 4),
+                  Text(
+                    loc('Ön yüze dönmek için dokunun', 'Tap to flip back'),
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,
                     ),
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        dynamicStatus['emoji'] as String,
-                        style: const TextStyle(fontSize: 15),
-                      ),
-                      const SizedBox(width: 5),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 115),
-                        child: Text(
-                          dynamicStatus['title'] as String,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: dynamicStatus['color'] as Color,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _Stat(
-                  icon: batIcon,
-                  label: ref.watch(stringsProvider).batteryLevel,
-                  value: p.batteryLevel == null ? '-' : '%${p.batteryLevel}',
-                  color: batColor,
-                  onTap: onBatteryTap,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _Stat(
-                  icon: (p.weather ?? '').contains('Gece') ||
-                          (p.weather ?? '').contains('Akşam') ||
-                          DateTime.now().hour >= 20 ||
-                          DateTime.now().hour < 6
-                      ? Icons.nights_stay_rounded
-                      : Icons.wb_sunny_rounded,
-                  label: p.city != null && p.city!.isNotEmpty ? p.city! : (ref.watch(stringsProvider).isEn ? 'Weather' : 'Hava Durumu'),
-                  value: (p.weather != null && p.weather!.isNotEmpty)
-                      ? localizeWeather(p.weather)
-                      : (ref.watch(stringsProvider).isEn ? 'Fetching weather...' : 'Hava durumu alınıyor...'),
-                  color: LoveraColors.accentGold,
-                  onTap: onWeatherTap,
-                ),
+                ],
               ),
             ],
           ),
-        ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSquareFallback(AppUser p, bool isDark) {
+    return Container(
+      color: LoveraColors.primary.withValues(alpha: 0.15),
+      child: Center(
+        child: Text(
+          p.name.isNotEmpty ? p.name[0].toUpperCase() : '?',
+          style: TextStyle(
+            fontSize: 26,
+            fontWeight: FontWeight.w800,
+            color: LoveraColors.primary,
+          ),
+        ),
       ),
     );
   }
@@ -3034,7 +3552,18 @@ class _Stat extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(icon, color: color, size: 22),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Icon(icon, color: color, size: 22),
+                    if (onTap != null)
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        color: isDark ? LoveraColors.darkTextMuted.withValues(alpha: 0.6) : color.withValues(alpha: 0.5),
+                        size: 18,
+                      ),
+                  ],
+                ),
                 const SizedBox(height: 8),
                 Text(label, style: theme.textTheme.bodySmall?.copyWith(color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted)),
                 Text(value, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),

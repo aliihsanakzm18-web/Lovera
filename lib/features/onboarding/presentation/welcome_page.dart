@@ -20,11 +20,15 @@ class WelcomePage extends ConsumerStatefulWidget {
 class _WelcomePageState extends ConsumerState<WelcomePage> {
   late final TextEditingController _name =
       TextEditingController(text: ref.read(userNameProvider));
+  final TextEditingController _surname = TextEditingController();
+  final TextEditingController _hometown = TextEditingController();
   DateTime? _selectedBirthDate;
 
   @override
   void dispose() {
     _name.dispose();
+    _surname.dispose();
+    _hometown.dispose();
     super.dispose();
   }
 
@@ -101,17 +105,43 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                 style: theme.textTheme.bodyLarge?.copyWith(color: LoveraColors.textMuted, height: 1.45),
               ).animate(delay: 120.ms).fadeIn(),
               const SizedBox(height: 28),
+              // İsim
               TextField(
                 controller: _name,
+                textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.next,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  hintText: loc('Adın', 'First Name'),
+                  prefixIcon: const Icon(Icons.person_outline_rounded),
+                ),
+              ).animate(delay: 180.ms).fadeIn(),
+              const SizedBox(height: 12),
+              // Soyisim
+              TextField(
+                controller: _surname,
+                textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.next,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  hintText: loc('Soyadın', 'Last Name'),
+                  prefixIcon: const Icon(Icons.badge_outlined),
+                ),
+              ).animate(delay: 220.ms).fadeIn(),
+              const SizedBox(height: 12),
+              // Nereli (Memleket / Şehir)
+              TextField(
+                controller: _hometown,
                 textCapitalization: TextCapitalization.words,
                 textInputAction: TextInputAction.done,
                 onChanged: (_) => setState(() {}),
                 decoration: InputDecoration(
-                  hintText: loc('Sana nasıl hitap edelim?', 'What should we call you?'),
-                  prefixIcon: const Icon(Icons.person_outline_rounded),
+                  hintText: loc('Nerelisin? (Memleket / Şehir)', 'Where are you from? (Hometown)'),
+                  prefixIcon: const Icon(Icons.location_city_rounded),
                 ),
-              ).animate(delay: 220.ms).fadeIn(),
-              const SizedBox(height: 14),
+              ).animate(delay: 260.ms).fadeIn(),
+              const SizedBox(height: 12),
+              // Doğum Tarihi
               InkWell(
                 onTap: _pickBirthDate,
                 borderRadius: BorderRadius.circular(AppTheme.radius),
@@ -129,7 +159,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                       Expanded(
                         child: Text(
                           _selectedBirthDate == null
-                              ? loc('Doğum Tarihini Seç (İsteğe Bağlı)', 'Select Date of Birth (Optional)')
+                              ? loc('Doğum Tarihini Seç', 'Select Date of Birth')
                               : '${_selectedBirthDate!.day}.${_selectedBirthDate!.month}.${_selectedBirthDate!.year}',
                           style: TextStyle(
                             fontSize: 15,
@@ -144,21 +174,37 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                     ],
                   ),
                 ),
-              ).animate(delay: 280.ms).fadeIn(),
+              ).animate(delay: 300.ms).fadeIn(),
               const SizedBox(height: 36),
               FilledButton(
                 onPressed: valid
                     ? () async {
-                        final n = _name.text.trim();
-                        ref.read(userNameProvider.notifier).state = n;
+                        final firstName = _name.text.trim();
+                        final lastName = _surname.text.trim();
+                        final fullName = lastName.isNotEmpty ? '$firstName $lastName' : firstName;
+                        final hometownVal = _hometown.text.trim();
+
+                        ref.read(userNameProvider.notifier).state = fullName;
                         final prefs = await SharedPreferences.getInstance();
-                        await prefs.setString('name', n);
-                        await DatabaseService().updateUserName(n);
+                        await prefs.setString('name', fullName);
+                        await prefs.setString('firstName', firstName);
+                        await prefs.setString('lastName', lastName);
+                        await DatabaseService().updateUserName(
+                          fullName,
+                          firstName: firstName,
+                          lastName: lastName,
+                        );
+
+                        if (hometownVal.isNotEmpty) {
+                          await DatabaseService().updateHometown(hometownVal);
+                          await prefs.setString('hometown', hometownVal);
+                        }
 
                         if (_selectedBirthDate != null) {
                           final bDate = _selectedBirthDate!;
                           final bStr = '${bDate.year.toString().padLeft(4, '0')}-${bDate.month.toString().padLeft(2, '0')}-${bDate.day.toString().padLeft(2, '0')}';
-                          await DatabaseService().updateBirthDate(bStr, userName: n);
+                          await DatabaseService().updateBirthDate(bStr, userName: fullName);
+                          await prefs.setString('birthDate', bStr);
                         }
 
                         widget.onNext();

@@ -60,6 +60,9 @@ final pendingChatLocationAttachmentProvider = StateProvider<AttachedLocation?>((
 /// Sohbetteki konuma tıklandığında haritanın odaklanacağı hedef koordinat
 final targetMapFocusLocationProvider = StateProvider<AttachedLocation?>((ref) => null);
 
+/// Haritada doğrudan partnere odaklanmayı ve kamera takibine almayı tetikleyen bayrak/sayaç
+final focusPartnerOnMapProvider = StateProvider<int>((ref) => 0);
+
 /// Onaylanmış aktif buluşma konumu (haritada buluşma rotası çizmek için)
 final activeMeetingLocationProvider = StateProvider<AttachedLocation?>((ref) => null);
 
@@ -67,6 +70,11 @@ final activeMeetingLocationProvider = StateProvider<AttachedLocation?>((ref) => 
 final isChatActiveProvider = Provider<bool>((ref) {
   return ref.watch(activeNavigationIndexProvider) == 2;
 });
+
+/// Kullanıcının bu uygulama oturumunda (cold start / uygulama açılışı sonrası) Kalp Kalbe oyununa girip girmediği.
+/// Uygulama tamamen kapatılıp (kill edilip) yeniden açıldığında false olur.
+/// Uygulama içinde sayfalar arasında gezinirken true kalır.
+final loveQuestionsEnteredThisSessionProvider = StateProvider<bool>((ref) => false);
 
 /// Giriş yapmış kullanıcının anlık bilgileri (konum, pil, şehir vb.)
 final currentUserProvider = StateProvider<AppUser?>((ref) => null);

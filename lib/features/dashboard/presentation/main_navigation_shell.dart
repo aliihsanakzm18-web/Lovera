@@ -292,6 +292,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                     behavior: SnackBarBehavior.floating,
                   ),
                 );
+                ref.read(loveQuestionsEnteredThisSessionProvider.notifier).state = true;
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const LoveQuestionsGameView()),
                 );
@@ -1004,6 +1005,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
     if (accepted && mounted) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
+        ref.read(loveQuestionsEnteredThisSessionProvider.notifier).state = true;
         Navigator.of(context).push(
           PageRouteBuilder(
             pageBuilder: (context, animation, secondaryAnimation) => const LoveQuestionsGameView(),

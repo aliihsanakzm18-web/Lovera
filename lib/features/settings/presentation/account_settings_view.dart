@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -12,6 +13,8 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/state/app_state.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../common/presentation/widgets/background_source_selection_sheet.dart';
+import '../../common/presentation/widgets/memory_background_picker_sheet.dart';
 import '../../onboarding/presentation/onboarding_flow.dart';
 import '../../../core/widgets/avatar_cache.dart';
 import '../../../core/widgets/lovera_theme_background.dart';
@@ -31,68 +34,249 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
     return AvatarCache.getProvider(path);
   }
 
-  // Profil fotoğrafı seçme
-  Future<void> _pickImage() async {
-    final picked = await _picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 240,
-      maxHeight: 240,
-      imageQuality: 60,
-    );
+  // Profil fotoğrafını kaydet ve senkronize et
+  Future<void> _saveAvatar(String base64Str) async {
+    try {
+      // State ve SharedPreferences güncelle
+      ref.read(userAvatarProvider.notifier).state = base64Str;
+      final prefs = await SharedPreferences.getInstance();
+      final currentUid = DatabaseService().uid;
+      if (currentUid != null) {
+        await prefs.setString('avatar_$currentUid', base64Str);
+      }
 
-    if (picked != null) {
-      try {
-        final bytes = await picked.readAsBytes();
-        final base64Str = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+      // Firestore'a kalıcı olarak kaydet (hem partner görsün hem yeniden girince korunsun)
+      await DatabaseService().updateAvatar(base64Str);
 
-        // State ve SharedPreferences güncelle
-        ref.read(userAvatarProvider.notifier).state = base64Str;
-        final prefs = await SharedPreferences.getInstance();
-        final currentUid = DatabaseService().uid;
-        if (currentUid != null) {
-          await prefs.setString('avatar_$currentUid', base64Str);
-        }
-
-        // Firestore'a kalıcı olarak kaydet (hem partner görsün hem yeniden girince korunsun)
-        await DatabaseService().updateAvatar(base64Str);
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(loc('Profil fotoğrafınız güncellendi!', 'Profile photo updated!')),
-              backgroundColor: LoveraColors.secondary,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            ),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(loc('Fotoğraf yüklenemedi: $e', 'Could not upload photo: $e')),
-              backgroundColor: LoveraColors.primary,
-            ),
-          );
-        }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(loc('Profil fotoğrafınız güncellendi!', 'Profile photo updated!')),
+            backgroundColor: LoveraColors.secondary,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(loc('Fotoğraf yüklenemedi: $e', 'Could not upload photo: $e')),
+            backgroundColor: LoveraColors.primary,
+          ),
+        );
       }
     }
   }
 
-  // İsim değiştirme diyaloğu
-  void _editNameDialog(String currentName) {
-    final controller = TextEditingController(text: currentName);
+  // Cihazdan fotoğraf seçme
+  Future<void> _pickImageFromDevice() async {
+    try {
+      final picked = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 240,
+        maxHeight: 240,
+        imageQuality: 60,
+      );
+
+      if (picked != null) {
+        final bytes = await picked.readAsBytes();
+        final base64Str = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+        await _saveAvatar(base64Str);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(loc('Fotoğraf seçilemedi: $e', 'Could not select photo: $e')),
+            backgroundColor: LoveraColors.primary,
+          ),
+        );
+      }
+    }
+  }
+
+  // Ortak anı albümünden fotoğraf seçme
+  void _pickImageFromMemoryAlbum() {
+    final coupleId = ref.read(coupleIdProvider) ?? '';
+    if (coupleId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(loc('Anı albümünden seçmek için önce partnerinizle eşleşmelisiniz.', 'You must pair with your partner first to choose from memories.')),
+          backgroundColor: LoveraColors.primary,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (mCtx) => MemoryBackgroundPickerSheet(
+        coupleId: coupleId,
+        target: 'profile',
+        onSingleImageSelected: (base64Str) async {
+          await _saveAvatar(base64Str);
+        },
+      ),
+    );
+  }
+
+  // Profil fotoğrafı kaynağını seçme (Albüm veya Cihaz)
+  void _showImageSourcePicker() {
+    HapticFeedback.lightImpact();
+    BackgroundSourceSelectionSheet.show(
+      context: context,
+      title: loc('Profil Fotoğrafı Seç', 'Select Profile Photo'),
+      onSelectDevice: _pickImageFromDevice,
+      onSelectMemoryAlbum: _pickImageFromMemoryAlbum,
+      memoryAlbumSubtitle: loc('Birlikte yüklediğiniz anı fotoğraflarından birini seçin', 'Choose from memories you shared together'),
+    );
+  }
+
+  // İsim ve Soyisim değiştirme diyaloğu
+  void _editNameDialog(String currentFullName) async {
+    final curUser = ref.read(currentUserProvider);
+    final prefs = await SharedPreferences.getInstance();
+
+    String initialFirstName = curUser?.firstName ?? prefs.getString('firstName') ?? '';
+    String initialLastName = curUser?.lastName ?? prefs.getString('lastName') ?? '';
+
+    // Eğer daha önce ayrık kaydedilmemişse fallback olarak parçala
+    if (initialFirstName.isEmpty && initialLastName.isEmpty) {
+      final parts = currentFullName.trim().split(RegExp(r'\s+'));
+      if (parts.isNotEmpty) {
+        if (parts.length > 1) {
+          initialLastName = parts.last;
+          initialFirstName = parts.sublist(0, parts.length - 1).join(' ');
+        } else {
+          initialFirstName = parts.first;
+        }
+      }
+    }
+
+    if (!mounted) return;
+
+    final firstNameController = TextEditingController(text: initialFirstName);
+    final lastNameController = TextEditingController(text: initialLastName);
+
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        title: Text(loc('Kullanıcı Adını Değiştir', 'Change Username')),
+        title: Text(loc('Ad ve Soyadı Düzenle', 'Edit Name & Surname')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: firstNameController,
+              textCapitalization: TextCapitalization.words,
+              decoration: InputDecoration(
+                labelText: loc('Adınız', 'First Name'),
+                hintText: loc('Örn: Ali İhsan', 'e.g. Ali Ihsan'),
+                prefixIcon: const Icon(Icons.person_outline_rounded),
+              ),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: lastNameController,
+              textCapitalization: TextCapitalization.words,
+              decoration: InputDecoration(
+                labelText: loc('Soyadınız', 'Last Name'),
+                hintText: loc('Örn: Aküzüm', 'e.g. Akuzum'),
+                prefixIcon: const Icon(Icons.badge_outlined),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(loc('Vazgeç', 'Cancel')),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final fName = firstNameController.text.trim();
+              final lName = lastNameController.text.trim();
+              final newName = lName.isNotEmpty ? '$fName $lName' : fName;
+
+              if (fName.isNotEmpty) {
+                ref.read(userNameProvider.notifier).state = newName;
+                final p = await SharedPreferences.getInstance();
+                await p.setString('name', newName);
+                await p.setString('firstName', fName);
+                await p.setString('lastName', lName);
+
+                try {
+                  await FirebaseAuth.instance.currentUser?.updateDisplayName(newName);
+                  await DatabaseService().updateUserName(
+                    newName,
+                    firstName: fName,
+                    lastName: lName,
+                  );
+                } catch (_) {}
+
+                // CurrentUser provider güncelle
+                final cur = ref.read(currentUserProvider);
+                if (cur != null) {
+                  ref.read(currentUserProvider.notifier).state = AppUser(
+                    id: cur.id,
+                    name: newName,
+                    avatarUrl: cur.avatarUrl,
+                    batteryLevel: cur.batteryLevel,
+                    weather: cur.weather,
+                    city: cur.city,
+                    lat: cur.lat,
+                    lng: cur.lng,
+                    lastActive: cur.lastActive,
+                    coupleId: cur.coupleId,
+                    isAppOpen: cur.isAppOpen,
+                    birthDate: cur.birthDate,
+                    hometown: cur.hometown,
+                    firstName: fName,
+                    lastName: lName,
+                  );
+                }
+
+                if (ctx.mounted) Navigator.pop(ctx);
+
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(loc('Adınız ve soyadınız başarıyla güncellendi!', 'Name and surname updated successfully!')),
+                      backgroundColor: LoveraColors.secondary,
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                  );
+                }
+              }
+            },
+            child: Text(loc('Kaydet', 'Save')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Memleket değiştirme diyaloğu
+  void _editHometownDialog(String? currentHometown) {
+    final controller = TextEditingController(text: currentHometown ?? '');
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        title: Text(loc('Memleketi Düzenle', 'Edit Hometown')),
         content: TextField(
           controller: controller,
           textCapitalization: TextCapitalization.words,
           decoration: InputDecoration(
-            hintText: loc('Yeni kullanıcı adınız', 'Your new username'),
-            prefixIcon: const Icon(Icons.person_outline_rounded),
+            labelText: loc('Nerelisin? (Memleket)', 'Where are you from? (Hometown)'),
+            hintText: loc('Örn: İzmir, İstanbul...', 'e.g. Izmir, Istanbul...'),
+            prefixIcon: const Icon(Icons.location_city_rounded),
           ),
         ),
         actions: [
@@ -102,23 +286,37 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
           ),
           FilledButton(
             onPressed: () async {
-              final newName = controller.text.trim();
-              if (newName.isNotEmpty) {
-                ref.read(userNameProvider.notifier).state = newName;
-                final prefs = await SharedPreferences.getInstance();
-                await prefs.setString('name', newName);
+              final newTown = controller.text.trim();
+              if (newTown.isNotEmpty) {
+                await DatabaseService().updateHometown(newTown);
 
-                try {
-                  await FirebaseAuth.instance.currentUser?.updateDisplayName(newName);
-                  await DatabaseService().updateUserName(newName);
-                } catch (_) {}
+                final cur = ref.read(currentUserProvider);
+                if (cur != null) {
+                  ref.read(currentUserProvider.notifier).state = AppUser(
+                    id: cur.id,
+                    name: cur.name,
+                    avatarUrl: cur.avatarUrl,
+                    batteryLevel: cur.batteryLevel,
+                    weather: cur.weather,
+                    city: cur.city,
+                    lat: cur.lat,
+                    lng: cur.lng,
+                    lastActive: cur.lastActive,
+                    coupleId: cur.coupleId,
+                    isAppOpen: cur.isAppOpen,
+                    birthDate: cur.birthDate,
+                    hometown: newTown,
+                    firstName: cur.firstName,
+                    lastName: cur.lastName,
+                  );
+                }
 
                 if (ctx.mounted) Navigator.pop(ctx);
 
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text(loc('Kullanıcı adınız başarıyla kaydedildi!', 'Username saved successfully!')),
+                      content: Text(loc('Memleketiniz başarıyla güncellendi!', 'Hometown updated successfully!')),
                       backgroundColor: LoveraColors.secondary,
                       behavior: SnackBarBehavior.floating,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -179,6 +377,9 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
           coupleId: cur.coupleId,
           isAppOpen: cur.isAppOpen,
           birthDate: bStr,
+          hometown: cur.hometown,
+          firstName: cur.firstName,
+          lastName: cur.lastName,
         );
       }
 
@@ -315,41 +516,44 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
           Center(
             child: Stack(
               children: [
-                Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: LoveraColors.primary.withValues(alpha: 0.45),
-                      width: 3.0,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.12),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
+                GestureDetector(
+                  onTap: _showImageSourcePicker,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: LoveraColors.primary.withValues(alpha: 0.45),
+                        width: 3.0,
                       ),
-                    ],
-                  ),
-                  child: CircleAvatar(
-                    radius: 54,
-                    backgroundColor: LoveraColors.primarySoft.withValues(alpha: 0.2),
-                    backgroundImage: _getAvatarProvider(avatarPath),
-                    child: _getAvatarProvider(avatarPath) == null
-                        ? Text(
-                            userName.isNotEmpty ? userName[0].toUpperCase() : '?',
-                            style: theme.textTheme.displaySmall?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              color: LoveraColors.primary,
-                            ),
-                          )
-                        : null,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.12),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: CircleAvatar(
+                      radius: 54,
+                      backgroundColor: LoveraColors.primarySoft.withValues(alpha: 0.2),
+                      backgroundImage: _getAvatarProvider(avatarPath),
+                      child: _getAvatarProvider(avatarPath) == null
+                          ? Text(
+                              userName.isNotEmpty ? userName[0].toUpperCase() : '?',
+                              style: theme.textTheme.displaySmall?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                color: LoveraColors.primary,
+                              ),
+                            )
+                          : null,
+                    ),
                   ),
                 ),
                 Positioned(
                   bottom: 0,
                   right: 0,
                   child: GestureDetector(
-                    onTap: _pickImage,
+                    onTap: _showImageSourcePicker,
                     child: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
@@ -384,11 +588,24 @@ class _AccountSettingsViewState extends ConsumerState<AccountSettingsView> {
             child: Column(
               children: [
                 ListTile(
-                  leading: Icon(Icons.person_outline_rounded, color: theme.colorScheme.onSurface),
-                  title: Text(loc('Kullanıcı Adı', 'Username'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                  leading: Icon(Icons.badge_outlined, color: theme.colorScheme.onSurface),
+                  title: Text(loc('Ad Soyad', 'Full Name'), style: const TextStyle(fontWeight: FontWeight.w600)),
                   subtitle: Text(userName.isNotEmpty ? userName : loc('Belirtilmedi', 'Not specified'), style: TextStyle(color: LoveraColors.textMuted)),
                   trailing: Icon(Icons.edit_outlined, size: 20, color: LoveraColors.secondary),
                   onTap: () => _editNameDialog(userName),
+                ),
+                Divider(height: 1, indent: 56, color: theme.dividerColor),
+                ListTile(
+                  leading: Icon(Icons.location_city_rounded, color: theme.colorScheme.onSurface),
+                  title: Text(loc('Memleket', 'Hometown'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Text(
+                    currentUser?.hometown != null && currentUser!.hometown!.isNotEmpty
+                        ? currentUser.hometown!
+                        : loc('Belirtilmedi', 'Not specified'),
+                    style: TextStyle(color: LoveraColors.textMuted),
+                  ),
+                  trailing: Icon(Icons.edit_outlined, size: 20, color: LoveraColors.secondary),
+                  onTap: () => _editHometownDialog(currentUser?.hometown),
                 ),
                 Divider(height: 1, indent: 56, color: theme.dividerColor),
                 ListTile(

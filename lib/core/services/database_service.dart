@@ -32,12 +32,27 @@ class DatabaseService {
     return _db.collection('couples').doc(coupleId).snapshots();
   }
 
-  // Kullanıcı adı güncelle
-  Future<void> updateUserName(String newName) async {
+  // Kullanıcı adı güncelle (tam isim, ve varsa ayrı ad soyad)
+  Future<void> updateUserName(String newName, {String? firstName, String? lastName}) async {
+    if (uid == null) return;
+    try {
+      final Map<String, dynamic> data = {
+        'name': newName,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+      if (firstName != null) data['firstName'] = firstName;
+      if (lastName != null) data['lastName'] = lastName;
+
+      await _db.collection('users').doc(uid).set(data, SetOptions(merge: true)).timeout(const Duration(seconds: 4));
+    } catch (_) {}
+  }
+
+  // Nereli (Memleket / Şehir) güncelle
+  Future<void> updateHometown(String hometown) async {
     if (uid == null) return;
     try {
       await _db.collection('users').doc(uid).set({
-        'name': newName,
+        'hometown': hometown,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true)).timeout(const Duration(seconds: 4));
     } catch (_) {}
@@ -1174,15 +1189,22 @@ class DatabaseService {
       final prefs = await SharedPreferences.getInstance();
       targetUid = prefs.getString('saved_uid');
     }
-    if (targetUid == null || targetUid.isEmpty) return;
+    if (targetUid == null || targetUid.isEmpty) {
+      debugPrint('[PRESENCE] setAppPresence($isOpen) iptal: targetUid null');
+      return;
+    }
 
     try {
+      debugPrint('[PRESENCE] setAppPresence($isOpen) yazılıyor: $targetUid');
       await _db.collection('users').doc(targetUid).set({
         'isAppOpen': isOpen,
         'lastActive': FieldValue.serverTimestamp(),
         'lastNetPing': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true)).timeout(const Duration(seconds: 4));
-    } catch (_) {}
+      debugPrint('[PRESENCE] setAppPresence($isOpen) başarılı: $targetUid');
+    } catch (e) {
+      debugPrint('[PRESENCE] setAppPresence($isOpen) hata: $e');
+    }
   }
 
   // 8. MESAJLAŞMA (CHAT) SİSTEMİ

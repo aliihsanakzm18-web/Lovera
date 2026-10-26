@@ -33,7 +33,6 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
   bool _isFlippingCoinLocal = false;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _gameSub;
   Map<String, dynamic>? _lastGameData;
-  bool _hasHandledExit = false;
 
   @override
   void initState() {
@@ -44,34 +43,25 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // SADECE kullanıcı uygulamayı tamamen kapattığında veya arka plandan kaldırdığında (detached / kill)
-    // oyunu sonlandır. Uygulama içinde dolaşırken veya geçici ekran kilitlerinde oyun kapanmaz.
+    // SADECE kullanıcı uygulamayı tamamen kapattığında (detached / kill)
+    // Oyun durumunu ve cevaplanan tüm soruları (answeredMap) koruyoruz.
+    // Tekrar girildiğinde sırayı belirlemek için oyunu zar/yazı-tura (coin_flip) aşamasına alıyoruz.
+    // Oyun status'u ASLA iptal edilmez veya 'partner_left' yapılmaz; böylece partner oyundan zorla atılmaz.
     if (state == AppLifecycleState.detached) {
-      _leaveGame(reason: 'app_detached');
-    }
-  }
-
-  void _leaveGame({String reason = 'exit'}) {
-    if (_hasHandledExit) return;
-    _hasHandledExit = true;
-
-    final coupleId = ref.read(coupleIdProvider);
-    final myUid = DatabaseService().uid;
-    final myName = ref.read(userNameProvider);
-    final leaveName = myName.isNotEmpty ? myName : loc('Partnerin', 'Partner');
-
-    if (coupleId != null && coupleId.isNotEmpty && myUid != null) {
-      DatabaseService().updateGameState(
-        coupleId: coupleId,
-        gameType: 'love_questions',
-        updates: {
-          'status': 'partner_left',
-          'leftByUid': myUid,
-          'leftByName': leaveName,
-          'leftReason': reason,
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-      ).catchError((_) {});
+      final coupleId = ref.read(coupleIdProvider);
+      if (coupleId != null && coupleId.isNotEmpty) {
+        DatabaseService().updateGameState(
+          coupleId: coupleId,
+          gameType: 'love_questions',
+          updates: {
+            'step': 'coin_flip',
+            'activeQuestionId': null,
+            'answeringUid': null,
+            'isReturnedQuestion': false,
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+        ).catchError((_) {});
+      }
     }
   }
 
@@ -85,18 +75,6 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
         final data = snap.data()!;
         final oldData = _lastGameData;
         _lastGameData = data;
-
-        // Partner oyundan ayrıldıysa uyarı göster ve lobiye yönlendir
-        final status = data['status']?.toString();
-        final leftByUid = data['leftByUid']?.toString();
-        final myUid = DatabaseService().uid;
-
-        if (status == 'partner_left' && leftByUid != null && leftByUid != myUid && !_hasHandledExit) {
-          _hasHandledExit = true;
-          final leftByName = data['leftByName']?.toString() ?? loc('Partnerin', 'Partner');
-          _showPartnerLeftDialog(leftByName);
-          return;
-        }
 
         // Yazı-tura atışı tetiklendiyse yerel animasyonu oynat
         if (data['step'] == 'flipping_coin' && oldData?['step'] != 'flipping_coin') {
@@ -113,52 +91,6 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
         setState(() {});
       }
     });
-  }
-
-  void _showPartnerLeftDialog(String leftByName) {
-    if (!mounted) return;
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dCtx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: Row(
-          children: [
-            const Text('🚪', style: TextStyle(fontSize: 26)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                loc('Oyun Askıya Alındı', 'Game Suspended'),
-                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
-              ),
-            ),
-          ],
-        ),
-        content: Text(
-          loc(
-            '$leftByName oyundan veya uygulamadan ayrıldı.\n\nMerak etme! Tüm cevaplanan sorular ve anılarınız veritabanında güvende. Tekrar oynamak istediğinizde yeni bir davet göndererek kaldığınız yerden devam edebilirsiniz.',
-            '$leftByName left the game or app.\n\nDon\'t worry! All answered questions and memories are safe in the database. When you want to play again, you can resume right where you left off by sending a new invite.',
-          ),
-          style: const TextStyle(fontSize: 14, height: 1.4),
-        ),
-        actions: [
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: LoveraColors.primary,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            ),
-            onPressed: () {
-              Navigator.pop(dCtx); // dialog
-              if (mounted) {
-                // Partneri doğrudan oyun dışına ve ana ekrana döndür
-                Navigator.of(context).popUntil((route) => route.isFirst);
-              }
-            },
-            child: Text(loc('Tamam', 'OK'), style: const TextStyle(fontWeight: FontWeight.w800)),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
@@ -1044,49 +976,24 @@ class _LoveQuestionsGameViewState extends ConsumerState<LoveQuestionsGameView> w
                 ),
               ).animate().fadeIn(duration: 400.ms).scale(begin: const Offset(0.9, 0.9)),
             ] else if (!isFlipping) ...[
-              if (isRoomCreator)
-                SizedBox(
-                  width: 220,
-                  height: 48,
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: LoveraColors.primary,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      elevation: 4,
-                    ),
-                    onPressed: _startCoinFlip,
-                    icon: const Icon(Icons.casino_rounded, size: 20),
-                    label: Text(
-                      loc('Parayı Fırlat! 🪙', 'Flip The Coin! 🪙'),
-                      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
-                    ),
+              SizedBox(
+                width: 240,
+                height: 48,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: LoveraColors.primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    elevation: 4,
                   ),
-                ).animate().fadeIn().scale()
-              else
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: LoveraColors.primary.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: LoveraColors.primary.withValues(alpha: 0.25)),
+                  onPressed: _startCoinFlip,
+                  icon: const Icon(Icons.casino_rounded, size: 22),
+                  label: Text(
+                    loc('Zarı / Parayı Fırlat! 🎲🪙', 'Roll / Flip The Coin! 🎲🪙'),
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text('⏳', style: TextStyle(fontSize: 18)),
-                      const SizedBox(width: 8),
-                      Text(
-                        loc('Odayı kuran parayı atacak...', 'Host will flip the coin...'),
-                        style: TextStyle(
-                          color: isDark ? Colors.white70 : LoveraColors.textDark,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ).animate(onPlay: (controller) => controller.repeat(reverse: true)).fadeIn(duration: 600.ms),
+                ),
+              ).animate().fadeIn().scale(),
             ] else ...[
               Text(
                 loc('Para havada dönüyor...', 'Coin is flipping in the air...'),

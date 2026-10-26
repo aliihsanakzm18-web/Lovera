@@ -13,6 +13,9 @@ class AppUser {
   final String? coupleId;
   final bool? isAppOpen;
   final String? birthDate; // 'YYYY-MM-DD'
+  final String? hometown; // Nereli olduğu (Örn. 'İzmir', 'Ankara')
+  final String? firstName; // Ayrık Ad (Örn. 'Ali İhsan')
+  final String? lastName; // Ayrık Soyad (Örn. 'Aküzüm')
 
   final double? speed; // m/s cinsinden anlık hız (hız * 3.6 = km/s)
   final String? currentPlaceTitle; // Örn. "Evim", "İş Yeri"
@@ -34,6 +37,9 @@ class AppUser {
     this.coupleId,
     this.isAppOpen,
     this.birthDate,
+    this.hometown,
+    this.firstName,
+    this.lastName,
     this.speed,
     this.currentPlaceTitle,
     this.currentPlaceEmoji,
@@ -66,6 +72,9 @@ class AppUser {
         coupleId: (j['coupleId'] ?? j['couple_id']) as String?,
         isAppOpen: (j['isAppOpen'] ?? j['is_app_open']) as bool?,
         birthDate: (j['birthDate'] ?? j['birth_date']) as String?,
+        hometown: (j['hometown'] ?? j['home_town']) as String?,
+        firstName: (j['firstName'] ?? j['first_name']) as String?,
+        lastName: (j['lastName'] ?? j['last_name']) as String?,
         speed: (j['speed'] as num?)?.toDouble(),
         currentPlaceTitle: j['currentPlaceTitle'] as String?,
         currentPlaceEmoji: j['currentPlaceEmoji'] as String?,
@@ -96,6 +105,9 @@ class AppUser {
         'couple_id': coupleId,
         'is_app_open': isAppOpen,
         'birth_date': birthDate,
+        'hometown': hometown,
+        'firstName': firstName,
+        'lastName': lastName,
         'speed': speed,
         'currentPlaceTitle': currentPlaceTitle,
         'currentPlaceEmoji': currentPlaceEmoji,

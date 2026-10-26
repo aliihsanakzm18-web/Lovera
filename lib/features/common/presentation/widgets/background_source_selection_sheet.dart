@@ -13,12 +13,14 @@ class BackgroundSourceSelectionSheet extends StatelessWidget {
   final String title;
   final VoidCallback onSelectDevice;
   final VoidCallback onSelectMemoryAlbum;
+  final String? memoryAlbumSubtitle;
 
   const BackgroundSourceSelectionSheet({
     super.key,
     required this.title,
     required this.onSelectDevice,
     required this.onSelectMemoryAlbum,
+    this.memoryAlbumSubtitle,
   });
 
   static Future<void> show({
@@ -26,6 +28,7 @@ class BackgroundSourceSelectionSheet extends StatelessWidget {
     required String title,
     required VoidCallback onSelectDevice,
     required VoidCallback onSelectMemoryAlbum,
+    String? memoryAlbumSubtitle,
   }) {
     return showModalBottomSheet(
       context: context,
@@ -35,6 +38,7 @@ class BackgroundSourceSelectionSheet extends StatelessWidget {
         title: title,
         onSelectDevice: onSelectDevice,
         onSelectMemoryAlbum: onSelectMemoryAlbum,
+        memoryAlbumSubtitle: memoryAlbumSubtitle,
       ),
     );
   }
@@ -174,7 +178,7 @@ class BackgroundSourceSelectionSheet extends StatelessWidget {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          loc('Tek fotoğraf veya otomatik değişen klasör/döngü', 'Single photo or automatic rotating folder/slideshow'),
+                          memoryAlbumSubtitle ?? loc('Tek fotoğraf veya otomatik değişen klasör/döngü', 'Single photo or automatic rotating folder/slideshow'),
                           style: TextStyle(
                             fontSize: 12,
                             color: isDark ? LoveraColors.darkTextMuted : LoveraColors.textMuted,

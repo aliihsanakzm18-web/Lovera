@@ -200,9 +200,19 @@ class AppStrings {
       : 'Hesabınızı silmek eşleşmenizi, anılarınızı, sohbetlerinizi ve tüm verilerinizi kalıcı olarak yok eder. Bu işlem geri alınamaz!';
 
   // Dashboard
-  String greeting(String name) => isEn 
-      ? (name.isEmpty ? 'Hello 👋' : 'Hello $name 👋')
-      : (name.isEmpty ? 'Merhaba 👋' : 'Merhaba $name 👋');
+  String greeting(String name) {
+    final cleanName = name.trim();
+    final firstName = cleanName.isEmpty
+        ? ''
+        : (cleanName.contains(' ')
+            ? (cleanName.split(RegExp(r'\s+')).length > 2
+                ? cleanName.split(RegExp(r'\s+')).sublist(0, cleanName.split(RegExp(r'\s+')).length - 1).join(' ')
+                : cleanName.split(RegExp(r'\s+')).first)
+            : cleanName);
+    return isEn
+        ? (firstName.isEmpty ? 'Hello 👋' : 'Hello $firstName 👋')
+        : (firstName.isEmpty ? 'Merhaba 👋' : 'Merhaba $firstName 👋');
+  }
   String get distanceTogether => isEn ? 'Together' : 'Yan yanasınız';
   String get distanceAway => isEn ? 'away' : 'uzakta';
   String get dayCounter => isEn ? 'days together' : 'gündür birliktesiniz';
