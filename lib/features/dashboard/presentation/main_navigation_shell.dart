@@ -61,31 +61,11 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
   int _unreadCount = 0;
   String? _shownBreakupId;
   bool _breakupSheetOpen = false;
-  bool _isLockShowing = false;
 
   void _checkAppLock() {
-    if (!AppSettingsService.appLockEnabled || AppSettingsService.isAppUnlocked || _isLockShowing) {
-      return;
+    if (AppSettingsService.appLockEnabled && !AppSettingsService.isAppUnlocked) {
+      if (mounted) setState(() {});
     }
-    _isLockShowing = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).push(
-        PageRouteBuilder(
-          opaque: true,
-          pageBuilder: (_, __, ___) => AppLockScreen(
-            mode: AppLockMode.unlock,
-            isDismissible: false,
-            onSuccess: () {
-              Navigator.of(context, rootNavigator: true).pop();
-              _isLockShowing = false;
-            },
-          ),
-        ),
-      ).then((_) {
-        _isLockShowing = false;
-      });
-    });
   }
 
   @override
@@ -137,6 +117,10 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
     NotificationService().isChessScreenActive = () => ref.read(isChessScreenOpenProvider);
     NotificationService().onNotificationTap = () {
       if (mounted) {
+        if (AppSettingsService.appLockEnabled && !AppSettingsService.isAppUnlocked) {
+          debugPrint('[NOTIFICATION-TAP] Uygulama kilitli, kilit açılmadan yönlendirme engellendi.');
+          return;
+        }
         if (ref.read(isChessScreenOpenProvider)) {
           debugPrint('[NOTIFICATION-TAP] Kullanıcı zaten satranç ekranında, sayfa değişimi engellendi.');
           return;
@@ -386,29 +370,38 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
   Future<void> _checkWidgetLaunch() async {
     try {
       final uri = await HomeWidget.initiallyLaunchedFromHomeWidget();
-      if (uri != null && uri.host == 'open_drawing') {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const DrawingScreen()),
-            );
-          }
-        });
-      } else if (uri != null && uri.host == 'open_chat') {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            _goToPage(2);
-          }
-        });
+      if (uri != null) {
+        if (AppSettingsService.appLockEnabled && !AppSettingsService.isAppUnlocked) {
+          debugPrint('[WIDGET-LAUNCH] Uygulama kilitli, widget ile başlatma engellendi.');
+        } else if (uri.host == 'open_drawing') {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const DrawingScreen()),
+              );
+            }
+          });
+        } else if (uri.host == 'open_chat') {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              _goToPage(2);
+            }
+          });
+        }
       }
       HomeWidget.widgetClicked.listen((uri) {
-        if (uri != null && uri.host == 'open_drawing') {
+        if (uri == null) return;
+        if (AppSettingsService.appLockEnabled && !AppSettingsService.isAppUnlocked) {
+          debugPrint('[WIDGET-CLICK] Uygulama kilitli, widget tıklaması engellendi.');
+          return;
+        }
+        if (uri.host == 'open_drawing') {
           if (mounted) {
             Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const DrawingScreen()),
             );
           }
-        } else if (uri != null && uri.host == 'open_chat') {
+        } else if (uri.host == 'open_chat') {
           if (mounted) {
             _goToPage(2);
           }
@@ -458,6 +451,10 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
     if (stream == null) return;
     _meetingSub = stream.listen((snap) {
       if (!mounted) return;
+      if (AppSettingsService.appLockEnabled && !AppSettingsService.isAppUnlocked) {
+        // Uygulama kilitli durumdayken kilit ekranı üzerine modal/popup açılması engellenir
+        return;
+      }
       final data = snap.data();
       if (data == null) return;
 
@@ -1120,6 +1117,19 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
 
   @override
   Widget build(BuildContext context) {
+    // Güvenlik Kilidi Aktif ve Kilit Henüz Açılmamışsa;
+    // Sayfaların ve alt çubuğun belleğe/ekrana çizilmesine dahi izin vermeden
+    // doğrudan aşılamaz tam ekran Kilit Ekranı (AppLockScreen) sunulur.
+    if (AppSettingsService.appLockEnabled && !AppSettingsService.isAppUnlocked) {
+      return AppLockScreen(
+        mode: AppLockMode.unlock,
+        isDismissible: false,
+        onSuccess: () {
+          setState(() {});
+        },
+      );
+    }
+
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
