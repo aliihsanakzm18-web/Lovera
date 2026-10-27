@@ -765,7 +765,9 @@ class _ChatViewState extends ConsumerState<ChatView> {
                   stream: DatabaseService().partnerStream(partnerUid),
                   builder: (context, snapshot) {
                     final pData = snapshot.data?.data();
-                    final pName = pData?['name'] as String? ?? partner?.name ?? 'Partneriniz';
+                    final rawPName = pData?['name'] as String? ?? partner?.name ?? 'Partneriniz';
+                    final firstOnlyPName = formatFirstNameOnly(rawPName);
+                    final pName = firstOnlyPName.isNotEmpty ? firstOnlyPName : rawPName;
                     final pAvatar = pData?['avatarUrl'] as String? ?? partner?.avatarUrl;
                     final pIsOpen = pData?['isAppOpen'] as bool? ?? partner?.isAppOpen ?? false;
                     
@@ -2114,14 +2116,31 @@ class _FullScreenImageViewerState extends ConsumerState<FullScreenImageViewer> {
           const SizedBox(width: 8),
         ],
       ),
-      body: Center(
-        child: InteractiveViewer(
-          minScale: 0.8,
-          maxScale: 4.0,
-          child: Image.memory(
-            bytes,
-            fit: BoxFit.contain,
-            gaplessPlayback: true,
+      body: Container(
+        color: const Color(0xFF0F0C1B), // Karanlık Lovera arka planı
+        child: Center(
+          child: InteractiveViewer(
+            minScale: 0.8,
+            maxScale: 4.0,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    blurRadius: 20,
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Image.memory(
+                  bytes,
+                  fit: BoxFit.contain,
+                  gaplessPlayback: true,
+                ),
+              ),
+            ),
           ),
         ),
       ),

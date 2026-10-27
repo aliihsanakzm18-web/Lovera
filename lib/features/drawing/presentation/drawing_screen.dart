@@ -228,7 +228,7 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
   }
 
   Future<void> _sendDrawing() async {
-    if (_lines.isEmpty && _currentLine.isEmpty && _texts.isEmpty) {
+    if (_lines.isEmpty && _currentLine.isEmpty && _texts.isEmpty && _stickers.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(ref.read(stringsProvider).drawSomethingFirst),
@@ -260,6 +260,7 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
       _isSending = true;
       _isExporting = true;
       _selectedTextIndex = null;
+      _selectedStickerIndex = null;
     });
     HapticFeedback.mediumImpact();
 
@@ -374,6 +375,9 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
+    final canUndo = _stickers.isNotEmpty || _texts.isNotEmpty || _lines.isNotEmpty;
+    final canClear = _stickers.isNotEmpty || _texts.isNotEmpty || _lines.isNotEmpty || _currentLine.isNotEmpty;
+
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF0F0C1B) : const Color(0xFFF8FAFC),
       appBar: AppBar(
@@ -385,12 +389,12 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
           IconButton(
             icon: const Icon(Icons.undo_rounded),
             tooltip: ref.watch(stringsProvider).isEn ? 'Undo' : 'Geri Al',
-            onPressed: _lines.isEmpty ? null : _undo,
+            onPressed: canUndo ? _undo : null,
           ),
           IconButton(
             icon: const Icon(Icons.delete_sweep_rounded),
             tooltip: ref.watch(stringsProvider).clearCanvas,
-            onPressed: (_lines.isEmpty && _currentLine.isEmpty) ? null : _clearCanvas,
+            onPressed: canClear ? _clearCanvas : null,
           ),
           IconButton(
             icon: const Icon(Icons.flag_outlined),
@@ -502,6 +506,23 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                               GestureDetector(
                                 onTapDown: (details) {
                                   final pos = details.localPosition;
+
+                                  // 1. Önce çıkartmalara tıklanıp tıklanmadığını kontrol et (en üsttekiden başlayarak)
+                                  for (int i = _stickers.length - 1; i >= 0; i--) {
+                                    final sticker = _stickers[i];
+                                    final rect = Rect.fromLTWH(sticker.offset.dx, sticker.offset.dy, sticker.size + 16, sticker.size + 16);
+                                    if (rect.contains(pos)) {
+                                      HapticFeedback.selectionClick();
+                                      setState(() {
+                                        _selectedStickerIndex = i;
+                                        _selectedTextIndex = null;
+                                        _isTextMode = false;
+                                      });
+                                      return;
+                                    }
+                                  }
+
+                                  // 2. Metinlere tıklanıp tıklanmadığını kontrol et
                                   for (int i = _texts.length - 1; i >= 0; i--) {
                                     final item = _texts[i];
                                     final estimatedW = (item.text.length * (item.fontSize * 0.62)).clamp(60.0, 320.0);
@@ -511,6 +532,7 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                       HapticFeedback.selectionClick();
                                       setState(() {
                                         _selectedTextIndex = i;
+                                        _selectedStickerIndex = null;
                                         _isTextMode = true;
                                         _fontSize = item.fontSize;
                                         _selectedColor = item.color;
@@ -519,14 +541,35 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                     }
                                   }
 
-                                  if (_selectedTextIndex != null) {
-                                    setState(() => _selectedTextIndex = null);
+                                  // Boş alana dokunulduğunda seçimleri temizle veya yazı ekleme dialogunu aç
+                                  if (_selectedTextIndex != null || _selectedStickerIndex != null) {
+                                    setState(() {
+                                      _selectedTextIndex = null;
+                                      _selectedStickerIndex = null;
+                                    });
                                   } else if (_isTextMode) {
                                     _showAddTextDialog(defaultPosition: pos);
                                   }
                                 },
                                 onPanStart: (details) {
                                   final pos = details.localPosition;
+
+                                  // Çıkartmaya denk geldiyse çizgi başlatma, o çıkartmayı seç
+                                  for (int i = _stickers.length - 1; i >= 0; i--) {
+                                    final sticker = _stickers[i];
+                                    final rect = Rect.fromLTWH(sticker.offset.dx, sticker.offset.dy, sticker.size + 16, sticker.size + 16);
+                                    if (rect.contains(pos)) {
+                                      HapticFeedback.selectionClick();
+                                      setState(() {
+                                        _selectedStickerIndex = i;
+                                        _selectedTextIndex = null;
+                                        _isTextMode = false;
+                                      });
+                                      return;
+                                    }
+                                  }
+
+                                  // Metne denk geldiyse çizgi başlatma, o metni seç
                                   for (int i = _texts.length - 1; i >= 0; i--) {
                                     final item = _texts[i];
                                     final estimatedW = (item.text.length * (item.fontSize * 0.62)).clamp(60.0, 320.0);
@@ -536,6 +579,7 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                       HapticFeedback.selectionClick();
                                       setState(() {
                                         _selectedTextIndex = i;
+                                        _selectedStickerIndex = null;
                                         _isTextMode = true;
                                         _fontSize = item.fontSize;
                                         _selectedColor = item.color;
@@ -546,7 +590,10 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
 
                                   if (_isTextMode) return;
 
-                                  setState(() => _selectedTextIndex = null);
+                                  setState(() {
+                                    _selectedTextIndex = null;
+                                    _selectedStickerIndex = null;
+                                  });
                                   HapticFeedback.selectionClick();
                                   final paint = Paint()
                                     ..color = _isEraser
@@ -560,9 +607,21 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                   });
                                 },
                                 onPanUpdate: (details) {
+                                  if (_selectedStickerIndex != null && _selectedStickerIndex! < _stickers.length) {
+                                    setState(() {
+                                      final item = _stickers[_selectedStickerIndex!];
+                                      final newX = (item.offset.dx + details.delta.dx).clamp(0.0, 320.0 - item.size);
+                                      final newY = (item.offset.dy + details.delta.dy).clamp(0.0, 320.0 - item.size);
+                                      item.offset = Offset(newX, newY);
+                                    });
+                                    return;
+                                  }
                                   if (_selectedTextIndex != null && _selectedTextIndex! < _texts.length) {
                                     setState(() {
-                                      _texts[_selectedTextIndex!].offset += details.delta;
+                                      final item = _texts[_selectedTextIndex!];
+                                      final newX = (item.offset.dx + details.delta.dx).clamp(0.0, 280.0);
+                                      final newY = (item.offset.dy + details.delta.dy).clamp(0.0, 320.0);
+                                      item.offset = Offset(newX, newY);
                                     });
                                     return;
                                   }
@@ -584,8 +643,10 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                   if (_isTextMode) return;
 
                                   setState(() {
-                                    _lines.add(List.from(_currentLine));
-                                    _currentLine = [];
+                                    if (_currentLine.isNotEmpty) {
+                                      _lines.add(List.from(_currentLine));
+                                      _currentLine = [];
+                                    }
                                   });
                                 },
                                 child: CustomPaint(
@@ -693,6 +754,65 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                 ),
                               ],
 
+                              // Seçili Çıkartma İçin Hızlı İşlem Araç Çubuğu (Sil & Büyüt/Küçült)
+                              if (!_isSending && _selectedStickerIndex != null && _selectedStickerIndex! < _stickers.length) ...[
+                                Builder(
+                                  builder: (context) {
+                                    final selSticker = _stickers[_selectedStickerIndex!];
+                                    final topPos = (selSticker.offset.dy - 44).clamp(8.0, 320.0);
+                                    final leftPos = (selSticker.offset.dx).clamp(8.0, 240.0);
+
+                                    return Positioned(
+                                      top: topPos,
+                                      left: leftPos,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: isDark ? const Color(0xFF1E1938) : Colors.white,
+                                          borderRadius: BorderRadius.circular(20),
+                                          border: Border.all(
+                                            color: isDark ? LoveraColors.primaryDark : LoveraColors.primary,
+                                            width: 1.2,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.12),
+                                              blurRadius: 10,
+                                              offset: const Offset(0, 3),
+                                            ),
+                                          ],
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            // Sil Butonu
+                                            GestureDetector(
+                                              onTap: () {
+                                                HapticFeedback.mediumImpact();
+                                                setState(() {
+                                                  _stickers.removeAt(_selectedStickerIndex!);
+                                                  _selectedStickerIndex = null;
+                                                });
+                                              },
+                                              child: Padding(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                child: Row(
+                                                  children: [
+                                                    const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 14),
+                                                    const SizedBox(width: 4),
+                                                    Text(loc('Sil', 'Delete'), style: const TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ],
+
                               // Tuvaldeki Çıkartmalar
                               for (int i = 0; i < _stickers.length; i++) ...[
                                 Builder(
@@ -703,7 +823,15 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                       left: sticker.offset.dx,
                                       top: sticker.offset.dy,
                                       child: GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
                                         onTap: () {
+                                          HapticFeedback.selectionClick();
+                                          setState(() {
+                                            _selectedStickerIndex = i;
+                                            _selectedTextIndex = null;
+                                          });
+                                        },
+                                        onPanStart: (details) {
                                           HapticFeedback.selectionClick();
                                           setState(() {
                                             _selectedStickerIndex = i;
@@ -712,7 +840,9 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                         },
                                         onPanUpdate: (details) {
                                           setState(() {
-                                            sticker.offset += details.delta;
+                                            final newX = (sticker.offset.dx + details.delta.dx).clamp(0.0, 320.0 - sticker.size);
+                                            final newY = (sticker.offset.dy + details.delta.dy).clamp(0.0, 320.0 - sticker.size);
+                                            sticker.offset = Offset(newX, newY);
                                             _selectedStickerIndex = i;
                                             _selectedTextIndex = null;
                                           });
@@ -725,54 +855,28 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                                 : null,
                                             borderRadius: BorderRadius.circular(12),
                                           ),
-                                          child: Stack(
-                                            clipBehavior: Clip.none,
-                                            children: [
-                                              sticker.isEmoji
-                                                  ? Text(
-                                                      sticker.content,
-                                                      style: TextStyle(fontSize: sticker.size * 0.7),
-                                                    )
-                                                  : (sticker.content.startsWith('data:image') || sticker.content.length > 200)
-                                                      ? Image.memory(
-                                                          base64Decode(
-                                                            sticker.content.contains(',')
-                                                                ? sticker.content.split(',').last
-                                                                : sticker.content,
-                                                          ),
-                                                          width: sticker.size,
-                                                          height: sticker.size,
-                                                          fit: BoxFit.contain,
-                                                        )
-                                                      : Container(
-                                                          width: sticker.size,
-                                                          height: sticker.size,
-                                                          color: Colors.grey,
-                                                        ),
-                                              if (isSelected)
-                                                Positioned(
-                                                  top: -12,
-                                                  right: -12,
-                                                  child: GestureDetector(
-                                                    onTap: () {
-                                                      HapticFeedback.mediumImpact();
-                                                      setState(() {
-                                                        _stickers.removeAt(i);
-                                                        _selectedStickerIndex = null;
-                                                      });
-                                                    },
-                                                    child: Container(
-                                                      padding: const EdgeInsets.all(4),
-                                                      decoration: const BoxDecoration(
-                                                        color: Colors.redAccent,
-                                                        shape: BoxShape.circle,
+                                          child: sticker.isEmoji
+                                              ? Text(
+                                                  sticker.content,
+                                                  style: TextStyle(fontSize: sticker.size * 0.7),
+                                                )
+                                              : (sticker.content.startsWith('data:image') || sticker.content.length > 200)
+                                                  ? Image.memory(
+                                                      base64Decode(
+                                                        sticker.content.contains(',')
+                                                            ? sticker.content.split(',').last
+                                                            : sticker.content,
                                                       ),
-                                                      child: const Icon(Icons.close_rounded, size: 14, color: Colors.white),
+                                                      width: sticker.size,
+                                                      height: sticker.size,
+                                                      fit: BoxFit.contain,
+                                                      gaplessPlayback: true,
+                                                    )
+                                                  : Container(
+                                                      width: sticker.size,
+                                                      height: sticker.size,
+                                                      color: Colors.grey,
                                                     ),
-                                                  ),
-                                                ),
-                                            ],
-                                          ),
                                         ),
                                       ),
                                     );
