@@ -195,8 +195,18 @@ class LoveraDrawingWidgetProvider : HomeWidgetProvider() {
                         try {
                             val originalBitmap = BitmapFactory.decodeFile(file.absolutePath)
                             if (originalBitmap != null) {
-                                val adjustedBitmap = adjustDrawingContrast(originalBitmap, isDarkTheme)
-                                setImageViewBitmap(R.id.widget_drawing_image, adjustedBitmap)
+                                // RemoteViews IPC Binder sınırı 1MB'tır. 512x512'ye sınırlandırarak TransactionTooLargeException'ı önlüyoruz.
+                                val maxDim = 512
+                                val finalBitmap = if (originalBitmap.width > maxDim || originalBitmap.height > maxDim) {
+                                    val aspect = originalBitmap.width.toFloat() / originalBitmap.height.toFloat()
+                                    val targetW = if (aspect >= 1f) maxDim else (maxDim * aspect).toInt().coerceAtLeast(1)
+                                    val targetH = if (aspect >= 1f) (maxDim / aspect).toInt().coerceAtLeast(1) else maxDim
+                                    Bitmap.createScaledBitmap(originalBitmap, targetW, targetH, true)
+                                } else {
+                                    originalBitmap
+                                }
+
+                                setImageViewBitmap(R.id.widget_drawing_image, finalBitmap)
                                 setViewVisibility(R.id.widget_drawing_image, View.VISIBLE)
                                 setViewVisibility(R.id.widget_drawing_placeholder, View.GONE)
 

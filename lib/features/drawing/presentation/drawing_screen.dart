@@ -53,6 +53,7 @@ class StickerCanvasItem {
   final String content;
   final bool isEmoji;
   double size;
+  final Uint8List? imageBytes;
 
   StickerCanvasItem({
     required this.id,
@@ -60,7 +61,17 @@ class StickerCanvasItem {
     required this.content,
     required this.isEmoji,
     this.size = 72.0,
-  });
+    Uint8List? imageBytes,
+  }) : imageBytes = imageBytes ?? (isEmoji ? null : _decodeBase64(content));
+
+  static Uint8List? _decodeBase64(String content) {
+    try {
+      final raw = content.contains(',') ? content.split(',').last : content;
+      return base64Decode(raw);
+    } catch (_) {
+      return null;
+    }
+  }
 }
 
 class DrawingScreen extends ConsumerStatefulWidget {
@@ -78,6 +89,8 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
   int? _selectedTextIndex;
   final List<StickerCanvasItem> _stickers = [];
   int? _selectedStickerIndex;
+  double _canvasWidth = 360.0;
+  double _canvasHeight = 360.0;
 
   // Çizim Araçları
   Color _selectedColor = LoveraColors.primaryDark;
@@ -265,22 +278,24 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
     HapticFeedback.mediumImpact();
 
     try {
-      // Çerçevenin transparan arka plan ve seçim kutucuksuz çizildiğinden emin olmak için bir frame bekle
+      // Çerçevenin transparan arka plan ve seçim kutucuksuz çizildiğinden ve çizimin render edildiğinden emin olmak için bekle
+      await Future<void>.delayed(const Duration(milliseconds: 60));
       await WidgetsBinding.instance.endOfFrame;
 
-      // 1. RepaintBoundary'den yüksek kaliteli şeffaf PNG üret
+      // 1. RepaintBoundary'den yüksek kaliteli şeffaf PNG üret (1.8x piksel oranıyla ~650x650 keskin ve optimum boyut)
       final boundary = _globalKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
       if (boundary == null) {
         throw Exception(loc('Canvas render hatası', 'Canvas render error'));
       }
 
-      final image = await boundary.toImage(pixelRatio: 2.5);
+      final image = await boundary.toImage(pixelRatio: 1.8);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) {
         throw Exception(loc('Görsel dönüştürülemedi', 'Failed to convert image'));
       }
 
       final bytes = byteData.buffer.asUint8List();
+      debugPrint('[DrawingScreen] Exported drawing PNG bytes: ${bytes.length}');
       final base64Image = base64Encode(bytes);
 
       // 2. Kendi cihazımızın widget'ına da kaydedelim (yerel dosya)
@@ -484,22 +499,26 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: AspectRatio(
                     aspectRatio: 1.0,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF161426) : Colors.white,
-                        borderRadius: BorderRadius.circular(26),
-                        border: Border.all(color: LoveraColors.primaryDark.withValues(alpha: 0.33), width: 1.8),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.08),
-                            blurRadius: 20,
-                            offset: const Offset(0, 8),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        _canvasWidth = constraints.maxWidth;
+                        _canvasHeight = constraints.maxHeight;
+                        return Container(
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF161426) : Colors.white,
+                            borderRadius: BorderRadius.circular(26),
+                            border: Border.all(color: LoveraColors.primaryDark.withValues(alpha: 0.33), width: 1.8),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.08),
+                                blurRadius: 20,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(24),
-                        child: RepaintBoundary(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(24),
+                            child: RepaintBoundary(
                           key: _globalKey,
                           child: Stack(
                             children: [
@@ -610,8 +629,10 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                   if (_selectedStickerIndex != null && _selectedStickerIndex! < _stickers.length) {
                                     setState(() {
                                       final item = _stickers[_selectedStickerIndex!];
-                                      final newX = (item.offset.dx + details.delta.dx).clamp(0.0, 320.0 - item.size);
-                                      final newY = (item.offset.dy + details.delta.dy).clamp(0.0, 320.0 - item.size);
+                                      final maxW = (_canvasWidth - item.size).clamp(0.0, _canvasWidth);
+                                      final maxH = (_canvasHeight - item.size).clamp(0.0, _canvasHeight);
+                                      final newX = (item.offset.dx + details.delta.dx).clamp(0.0, maxW);
+                                      final newY = (item.offset.dy + details.delta.dy).clamp(0.0, maxH);
                                       item.offset = Offset(newX, newY);
                                     });
                                     return;
@@ -619,8 +640,10 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                   if (_selectedTextIndex != null && _selectedTextIndex! < _texts.length) {
                                     setState(() {
                                       final item = _texts[_selectedTextIndex!];
-                                      final newX = (item.offset.dx + details.delta.dx).clamp(0.0, 280.0);
-                                      final newY = (item.offset.dy + details.delta.dy).clamp(0.0, 320.0);
+                                      final maxW = (_canvasWidth - 60.0).clamp(0.0, _canvasWidth);
+                                      final maxH = (_canvasHeight - 40.0).clamp(0.0, _canvasHeight);
+                                      final newX = (item.offset.dx + details.delta.dx).clamp(0.0, maxW);
+                                      final newY = (item.offset.dy + details.delta.dy).clamp(0.0, maxH);
                                       item.offset = Offset(newX, newY);
                                     });
                                     return;
@@ -668,8 +691,8 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                 Builder(
                                   builder: (context) {
                                     final selItem = _texts[_selectedTextIndex!];
-                                    final topPos = (selItem.offset.dy - 44).clamp(8.0, 320.0);
-                                    final leftPos = (selItem.offset.dx).clamp(8.0, 240.0);
+                                    final topPos = (selItem.offset.dy - 44).clamp(8.0, _canvasHeight - 50.0);
+                                    final leftPos = (selItem.offset.dx).clamp(8.0, _canvasWidth - 100.0);
 
                                     return Positioned(
                                       top: topPos,
@@ -759,8 +782,8 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                 Builder(
                                   builder: (context) {
                                     final selSticker = _stickers[_selectedStickerIndex!];
-                                    final topPos = (selSticker.offset.dy - 44).clamp(8.0, 320.0);
-                                    final leftPos = (selSticker.offset.dx).clamp(8.0, 240.0);
+                                    final topPos = (selSticker.offset.dy - 44).clamp(8.0, _canvasHeight - 50.0);
+                                    final leftPos = (selSticker.offset.dx).clamp(8.0, _canvasWidth - 100.0);
 
                                     return Positioned(
                                       top: topPos,
@@ -840,8 +863,10 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                         },
                                         onPanUpdate: (details) {
                                           setState(() {
-                                            final newX = (sticker.offset.dx + details.delta.dx).clamp(0.0, 320.0 - sticker.size);
-                                            final newY = (sticker.offset.dy + details.delta.dy).clamp(0.0, 320.0 - sticker.size);
+                                            final maxW = (_canvasWidth - sticker.size).clamp(0.0, _canvasWidth);
+                                            final maxH = (_canvasHeight - sticker.size).clamp(0.0, _canvasHeight);
+                                            final newX = (sticker.offset.dx + details.delta.dx).clamp(0.0, maxW);
+                                            final newY = (sticker.offset.dy + details.delta.dy).clamp(0.0, maxH);
                                             sticker.offset = Offset(newX, newY);
                                             _selectedStickerIndex = i;
                                             _selectedTextIndex = null;
@@ -860,22 +885,19 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                                                   sticker.content,
                                                   style: TextStyle(fontSize: sticker.size * 0.7),
                                                 )
-                                              : (sticker.content.startsWith('data:image') || sticker.content.length > 200)
+                                              : (sticker.imageBytes != null)
                                                   ? Image.memory(
-                                                      base64Decode(
-                                                        sticker.content.contains(',')
-                                                            ? sticker.content.split(',').last
-                                                            : sticker.content,
-                                                      ),
+                                                      sticker.imageBytes!,
                                                       width: sticker.size,
                                                       height: sticker.size,
                                                       fit: BoxFit.contain,
                                                       gaplessPlayback: true,
+                                                      filterQuality: FilterQuality.medium,
                                                     )
                                                   : Container(
                                                       width: sticker.size,
                                                       height: sticker.size,
-                                                      color: Colors.grey,
+                                                      color: Colors.transparent,
                                                     ),
                                         ),
                                       ),
@@ -887,10 +909,12 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                           ),
                         ),
                       ),
-                    ),
-                  ),
+                    );
+                  },
                 ),
               ),
+            ),
+          ),
             ),
 
             const SizedBox(height: 12),
@@ -987,13 +1011,27 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                               context: context,
                               coupleId: coupleId,
                               onStickerSelected: (content, {required bool isEmoji}) {
+                                Uint8List? bytes;
+                                if (!isEmoji) {
+                                  try {
+                                    final raw = content.contains(',') ? content.split(',').last : content;
+                                    bytes = base64Decode(raw);
+                                  } catch (e) {
+                                    debugPrint('[DrawingScreen] Sticker decode error: $e');
+                                  }
+                                }
                                 setState(() {
                                   _stickers.add(
                                     StickerCanvasItem(
                                       id: DateTime.now().millisecondsSinceEpoch.toString(),
-                                      offset: const Offset(120, 120),
+                                      offset: Offset(
+                                        ((_canvasWidth - 80.0) / 2).clamp(10.0, _canvasWidth),
+                                        ((_canvasHeight - 80.0) / 2).clamp(10.0, _canvasHeight),
+                                      ),
                                       content: content,
                                       isEmoji: isEmoji,
+                                      imageBytes: bytes,
+                                      size: 80.0,
                                     ),
                                   );
                                   _selectedStickerIndex = _stickers.length - 1;
@@ -1084,12 +1122,18 @@ class _DrawingScreenState extends ConsumerState<DrawingScreen> {
                           ),
                           child: _selectedStickerIndex != null && _selectedStickerIndex! < _stickers.length
                               ? Slider(
-                                  value: _stickers[_selectedStickerIndex!].size,
+                                  value: _stickers[_selectedStickerIndex!].size.clamp(36.0, 200.0),
                                   min: 36.0,
-                                  max: 180.0,
+                                  max: 200.0,
                                   onChanged: (val) {
                                     setState(() {
-                                      _stickers[_selectedStickerIndex!].size = val;
+                                      final item = _stickers[_selectedStickerIndex!];
+                                      item.size = val;
+                                      final maxW = (_canvasWidth - val).clamp(0.0, _canvasWidth);
+                                      final maxH = (_canvasHeight - val).clamp(0.0, _canvasHeight);
+                                      final clampedX = item.offset.dx.clamp(0.0, maxW);
+                                      final clampedY = item.offset.dy.clamp(0.0, maxH);
+                                      item.offset = Offset(clampedX, clampedY);
                                     });
                                   },
                                 )

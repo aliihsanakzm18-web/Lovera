@@ -1764,6 +1764,11 @@ class _ChatBubble extends ConsumerWidget {
                                     base64Decode(message.mediaBase64!.split(',').last),
                                     fit: BoxFit.contain,
                                     gaplessPlayback: true,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return Center(
+                                        child: Icon(Icons.broken_image_rounded, color: Colors.white54, size: 36),
+                                      );
+                                    },
                                   ),
                                 ),
                               ),
